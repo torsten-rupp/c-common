@@ -75,8 +75,8 @@ int main(int argc, char *argv[])
     n = i*i;
     RingBuffer_put(ringBuffer,&n,1);
   }
-  printf("avail %d\n",RingBuffer_getAvailable(ringBuffer));
-  printf("free %d\n",RingBuffer_getFree(ringBuffer));
+  printf("avail %lu\n",RingBuffer_getAvailable(ringBuffer));
+  printf("free %lu\n",RingBuffer_getFree(ringBuffer));
   for (i = 1; i <= 10; i++)
   {
     RingBuffer_get(ringBuffer,&n,1);
@@ -151,7 +151,7 @@ int main(int argc, char *argv[])
   RINGBUFFER_DELETE(ringBuffer1);
 
   // get array
-  ringBuffer = RINGBUFFER_NEW(char,20);  
+  ringBuffer = RINGBUFFER_NEW(char,20);
   RingBuffer_put(ringBuffer,"123456789ABC",13);
   RingBuffer_get(ringBuffer,s,13);
   RingBuffer_put(ringBuffer,"Hello World!",13);
