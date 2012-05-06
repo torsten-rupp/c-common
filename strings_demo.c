@@ -42,32 +42,44 @@ int main(int argc, char *argv[])
   int    i,j;
   long   nextIndex;
 
-  /* allocate and free a string */
+  // allocate and free a string
   s = String_new();
   String_delete(s);
 
   s = String_newCString("Hello world!");
   String_delete(s);
 
-  /* assign string */
+  // assign string, append string
+  s = String_new();
+  String_setCString(s,"Hello world, ");
+  String_appendCString(s,"I'm here!");
+  String_delete(s);
+
+  // print string
+  s = String_newCString("Hello world!\n");
+  printf("%s\n",String_cString(s));
+  String_delete(s);
+  printf("\n");
+
+  // string length, sub-string, find string
   s = String_new();
   String_setCString(s,"Hello world, I'm here!");
+  printf("string length '%s': %lu characters\n",String_cString(s),String_length(s));
+  t = String_sub(String_new(),s,0,5);
+  printf("sub-string %s",String_cString(t));
+  printf("find string 'world': index %ld\n",String_findCString(s,STRING_BEGIN,"world"));
+  String_delete(t);
   String_delete(s);
-
-  /* print string */
-  s = String_newCString("Hello world!\n");
-  printf("%s",String_cString(s));
   printf("\n");
-  String_delete(s);
 
-  /* format string */
+  // format string
   s = String_new();
   t = String_new();
   String_setCString(s,"Hello");
   String_setCString(t,"world");
   printf("Format result:\n");
   String_format(s,
-                "%d %ld %lld %f %s %S %'s %'S\n",
+                "%d %ld %lld %f %s %S %'s %'S",
                 123,
                 456L,
                 789LL,
@@ -76,66 +88,66 @@ int main(int argc, char *argv[])
                 s,
                 String_cString(t),
                 t
-               );  
+               );
   printf("s=%s\n",String_cString(s));
-  printf("\n");
   String_delete(t);
   String_delete(s);
+  printf("\n");
 
-  /* parse string */
+  // parse string
   s = String_new();
   t = String_new();
   w = String_new();
   String_setCString(s,"Hello 4711 we are 08.15");
+  printf("String: %s\n",String_cString(s));
   if (String_parse(s,STRING_BEGIN,"%S %d % S",NULL,t,&i,w))
   {
     printf("Parse result 1:\n");
-    printf("t=%s\n",String_cString(t));
-    printf("i=%d\n",i);
-    printf("w=%s\n",String_cString(w));
-    printf("\n");
+    printf("string=%s\n",String_cString(t));
+    printf("int=%d\n",i);
+    printf("rest=%s\n",String_cString(w));
   }
   if (String_parse(s,STRING_BEGIN,"Hello ",&nextIndex))
   {
     printf("Parse result 2:\n");
-    printf("next index=%lu\n",nextIndex);
-    printf("\n");
+    printf("next index after 'Hello '=%lu\n",nextIndex);
   }
   String_setCString(s,"foo 1");
+  printf("String: %s\n",String_cString(s));
   if (String_parse(s,STRING_BEGIN,"foo %d %d",NULL,&i,&j))
   {
     printf("Parse result 3a:\n");
     printf("i=%d\n",i);
     printf("j=%d\n",j);
-    printf("\n");
   }
   if (String_parse(s,STRING_BEGIN,"foo %d",NULL,&i))
   {
     printf("Parse result 3b:\n");
     printf("i=%d\n",i);
-    printf("\n");
   }
   String_setCString(s,"foo/");
+  printf("String: %s\n",String_cString(s));
   if (String_parse(s,STRING_BEGIN,"%S/%S",&nextIndex,t,w))
   {
     printf("Parse result 4:\n");
-    printf("next index=%ld\n",nextIndex);
-    printf("\n");
+    printf("next index=%ld=%s\n",nextIndex,(nextIndex == STRING_END) ? "none" : "some");
   }
   String_delete(w);
   String_delete(t);
   String_delete(s);
+  printf("\n");
 
-  /* match string */
+  // match string
   s = String_new();
   t = String_new();
   w = String_new();
   String_setCString(s,"Hello 4711 we are 08.15");
-  if (String_matchCString(s,STRING_BEGIN,".* ([0-7]+) .*are ([[:digit:]]+).*",NULL,t,w))
+  printf("String: %s\n",String_cString(s));
+  if (String_matchCString(s,STRING_BEGIN,".* ([0-7]+) .*are ([[:digit:]]+).*",NULL,NULL,t,w))
   {
     printf("Match result 1:\n");
-    printf("t=%s\n",String_cString(t));
-    printf("w=%s\n",String_cString(w));
+    printf("group 1 [0-7]+=%s\n",String_cString(t));
+    printf("group 2 [[:digit:]]+=%s\n",String_cString(w));
   }
   printf("\n");
   String_delete(w);
@@ -146,37 +158,55 @@ int main(int argc, char *argv[])
   t = String_new();
   w = String_new();
   String_setCString(s,"it_foo.com:345");
+  printf("String: %s\n",String_cString(s));
   if (String_matchCString(s,STRING_BEGIN,"[[:alnum:]_]+:[[:digit:]]+",NULL,NULL))
   {
     printf("Match result 2:\n");
-    printf("match %s\n",String_cString(s));
-    printf("\n");
+    printf("match=%s\n",String_cString(s));
   }
-  printf("\n");
-
   String_delete(w);
   String_delete(t);
   String_delete(s);
+  printf("\n");
 
-  /* misc functions */
-  
+  // misc functions
+  s = String_new();
+  String_setCString(s,"  Hello 'World!'  ");
+  printf("String: #%s#\n",String_cString(s));
+  String_trimRight(s,STRING_WHITE_SPACES);
+  printf("trim right=#%s#\n",String_cString(s));
+  String_trimLeft(s,STRING_WHITE_SPACES);
+  printf("trim left=#%s#\n",String_cString(s));
+  String_toLower(s);
+  printf("lower=#%s#\n",String_cString(s));
+  String_toUpper(s);
+  printf("upper=#%s#\n",String_cString(s));
+  String_escape(s,"'",'\\');
+  printf("escaped '=#%s#\n",String_cString(s));
+  String_unescape(s,'\\');
+  printf("ununescaped '=#%s#\n",String_cString(s));
+  String_quote(s,'\'');
+  printf("quoted=#%s#\n",String_cString(s));
+  String_unquote(s,"'");
+  printf("unquoted=#%s#\n",String_cString(s));
+  String_delete(s);
 
-  /* uncomment to see debug functions */
+  // uncomment to see debug functions
 
   #if 0
-  /* debug functions: lost string */
+  // debug functions: lost string
   s = String_new();
   #endif /* 0 */
 
   #if 0
-  /* debug function: duplicate free */
+  // debug function: duplicate free
   s = String_new();
   String_delete(s);
   String_delete(s);
   #endif /* 0 */
 
   #if 0
-  /* debug function: invalid string */
+  // debug function: invalid string
   printf(String_cString(s));
   String_delete(s);
   #endif /* 0 */
