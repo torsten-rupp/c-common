@@ -53,9 +53,9 @@
 
 /*---------------------------------------------------------------------*/
 
-Errors Device_open(DeviceHandle    *deviceHandle,
-                   const String    deviceName,
-                   DeviceOpenModes deviceOpenMode
+Errors Device_open(DeviceHandle *deviceHandle,
+                   const String deviceName,
+                   DeviceModes  deviceMode
                   )
 {
   off_t  n;
@@ -65,16 +65,16 @@ Errors Device_open(DeviceHandle    *deviceHandle,
   assert(deviceName != NULL);
 
   // open device
-  switch (deviceOpenMode)
+  switch (deviceMode)
   {
-    case DEVICE_OPENMODE_READ:
+    case DEVICE_OPEN_READ:
       deviceHandle->file = fopen(String_cString(deviceName),"rb");
       if (deviceHandle->file == NULL)
       {
         return ERRORX(OPEN_DEVICE,errno,String_cString(deviceName));
       }
       break;
-    case DEVICE_OPENMODE_WRITE:
+    case DEVICE_OPEN_WRITE:
       deviceHandle->file = fopen(String_cString(deviceName),"r+b");
       if (deviceHandle->file == NULL)
       {
@@ -400,9 +400,19 @@ Errors Device_getDeviceInfo(DeviceInfo   *deviceInfo,
 //  deviceInfo->totalBlocks = 0LL;
 //  deviceInfo->mountedFlag = FALSE;
 
-  // get device type
+  // get device meta data
   if (lstat64(String_cString(deviceName),&fileStat) == 0)
   {
+    deviceInfo->timeLastAccess  = fileStat.st_atime;
+    deviceInfo->timeModified    = fileStat.st_mtime;
+    deviceInfo->timeLastChanged = fileStat.st_ctime;
+    deviceInfo->userId          = fileStat.st_uid;
+    deviceInfo->groupId         = fileStat.st_gid;
+    deviceInfo->permission      = (DevicePermission)fileStat.st_mode;
+    deviceInfo->major           = major(fileStat.st_rdev);
+    deviceInfo->minor           = minor(fileStat.st_rdev);
+    deviceInfo->id              = (uint64)fileStat.st_ino;
+
     if      (S_ISCHR(fileStat.st_mode)) deviceInfo->type = DEVICE_TYPE_CHARACTER;
     else if (S_ISBLK(fileStat.st_mode)) deviceInfo->type = DEVICE_TYPE_BLOCK;
   }

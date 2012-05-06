@@ -30,9 +30,9 @@
 // device open modes
 typedef enum
 {
-  DEVICE_OPENMODE_READ,
-  DEVICE_OPENMODE_WRITE
-} DeviceOpenModes;
+  DEVICE_OPEN_READ,
+  DEVICE_OPEN_WRITE
+} DeviceModes;
 
 /***************************** Datatypes *******************************/
 
@@ -64,16 +64,27 @@ typedef enum
   DEVICE_TYPE_UNKNOWN
 } DeviceTypes;
 
+// device permission
+typedef uint32 DevicePermission;
+
 // device system info data
 typedef struct
 {
-  DeviceTypes type;
-  int64       size;             // total size [bytes]
-  ulong       blockSize;        // size of a block [bytes]
+  DeviceTypes      type;
+  int64            size;                     // total size [bytes]
+  ulong            blockSize;                // size of a block [bytes]
 // NYI
 //  int64       freeBlocks;       // number of free blocks
 //  int64       totalBlocks;      // total number of blocks
 //  bool        mountedFlag;      // TRUE iff device is currently mounted
+  uint64           timeLastAccess;           // timestamp of last access
+  uint64           timeModified;             // timestamp of last modification
+  uint64           timeLastChanged;          // timestamp of last changed
+  uint32           userId;                   // user id
+  uint32           groupId;                  // group id
+  DevicePermission permission;               // permission flags
+  uint32           major,minor;              // special type major/minor number
+  uint64           id;                       // unique id (e. g. inode number)
 } DeviceInfo;
 
 /***************************** Variables *******************************/
@@ -91,17 +102,17 @@ typedef struct
 /***********************************************************************\
 * Name   : Device_open
 * Purpose: open device
-* Input  : deviceHandle   - device handle
-*          deviceName     - device name
-*          deviceOpenMode - device open mode; see DEVICE_OPENMODES_*
+* Input  : deviceHandle - device handle
+*          deviceName   - device name
+*          deviceMode   - device open mode; see DEVICE_OPEN_*
 * Output : deviceHandle - device handle
 * Return : ERROR_NONE or error code
 * Notes  : -
 \***********************************************************************/
 
-Errors Device_open(DeviceHandle    *deviceHandle,
-                   const String    deviceName,
-                   DeviceOpenModes deviceOpenMode
+Errors Device_open(DeviceHandle *deviceHandle,
+                   const String deviceName,
+                   DeviceModes  deviceMode
                   );
 
 /***********************************************************************\
