@@ -1,0 +1,12 @@
+2012-05-06 0.04
+  * added debug code: track allocated list nodes
+  * clean-up List_getFirst()/List_getLast()
+
+2010-12-17 0.03
+  * fixed sorting (prev-pointers)
+
+2009-02-13 0.02
+  * clean-up
+
+2008-12-13 0.01
+  * initial public release
