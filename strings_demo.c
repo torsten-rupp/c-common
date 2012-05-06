@@ -38,9 +38,10 @@
 
 int main(int argc, char *argv[])
 {
-  String s,t,w;
-  int    i,j;
-  long   nextIndex;
+  String          s,t,w;
+  int             i,j;
+  long            nextIndex;
+  StringTokenizer stringTokenizer;
 
   // allocate and free a string
   s = String_new();
@@ -166,6 +167,28 @@ int main(int argc, char *argv[])
   }
   String_delete(w);
   String_delete(t);
+  String_delete(s);
+  printf("\n");
+
+  // tokenizer
+  s = String_new();
+  String_setCString(s,"Hello world,, I'm here!");
+  printf("String: %s\n",String_cString(s));
+  String_initTokenizer(&stringTokenizer,s,STRING_BEGIN," ,",NULL,TRUE);
+  while (String_getNextToken(&stringTokenizer,&t,NULL))
+  {
+    printf("token=%s\n",String_cString(t));
+  }
+  String_doneTokenizer(&stringTokenizer);
+
+  String_setCString(s,"'Die Verwandlung' by 'Franz Kafka'!");
+  printf("String: %s\n",String_cString(s));
+  String_initTokenizer(&stringTokenizer,s,STRING_BEGIN," ,","'",TRUE);
+  while (String_getNextToken(&stringTokenizer,&t,NULL))
+  {
+    printf("token=%s\n",String_cString(t));
+  }
+  String_doneTokenizer(&stringTokenizer);
   String_delete(s);
   printf("\n");
 
