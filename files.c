@@ -150,7 +150,7 @@ LOCAL Errors getExtendedAttributes(const String fileName, uint64 *extendedAttrib
   Errors error;
 
   assert(fileName != NULL);
-  assert(attributes != NULL);
+  assert(extendedAttributes != NULL);
 
   // get extended file attributes
   handle = open(String_cString(fileName),O_RDONLY|O_NONBLOCK);
@@ -228,7 +228,9 @@ String File_appendFileName(String fileName, const String name)
 
   if (!String_isEmpty(fileName))
   {
-    if (!String_endsWithChar(fileName,FILES_PATHNAME_SEPARATOR_CHAR))
+    if (   !String_endsWithChar(fileName,FILES_PATHNAME_SEPARATOR_CHAR)
+        && !String_startsWithChar(name,FILES_PATHNAME_SEPARATOR_CHAR)
+       )
     {
       String_appendChar(fileName,FILES_PATHNAME_SEPARATOR_CHAR);
     }
@@ -245,7 +247,9 @@ String File_appendFileNameCString(String fileName, const char *name)
 
   if (!String_isEmpty(fileName))
   {
-    if (!String_endsWithChar(fileName,FILES_PATHNAME_SEPARATOR_CHAR))
+    if (   !String_endsWithChar(fileName,FILES_PATHNAME_SEPARATOR_CHAR)
+        && (name[0] != FILES_PATHNAME_SEPARATOR_CHAR)
+       )
     {
       String_appendChar(fileName,FILES_PATHNAME_SEPARATOR_CHAR);
     }
@@ -261,7 +265,9 @@ String File_appendFileNameChar(String fileName, char ch)
 
   if (!String_isEmpty(fileName))
   {
-    if (!String_endsWithChar(fileName,FILES_PATHNAME_SEPARATOR_CHAR))
+    if (   !String_endsWithChar(fileName,FILES_PATHNAME_SEPARATOR_CHAR)
+        && (ch != FILES_PATHNAME_SEPARATOR_CHAR)
+       )
     {
       String_appendChar(fileName,FILES_PATHNAME_SEPARATOR_CHAR);
     }
@@ -277,7 +283,9 @@ String File_appendFileNameBuffer(String fileName, const char *buffer, ulong buff
 
   if (!String_isEmpty(fileName))
   {
-    if (!String_endsWithChar(fileName,FILES_PATHNAME_SEPARATOR_CHAR))
+    if (   !String_endsWithChar(fileName,FILES_PATHNAME_SEPARATOR_CHAR)
+        && ((bufferLength == 0) || (buffer[0] != FILES_PATHNAME_SEPARATOR_CHAR))
+       )
     {
       String_appendChar(fileName,FILES_PATHNAME_SEPARATOR_CHAR);
     }
@@ -1716,6 +1724,28 @@ bool File_isDirectoryCString(const char *fileName)
 
   return (   (stat(fileName,&fileStat) == 0)
           && S_ISDIR(fileStat.st_mode)
+         );
+}
+
+bool File_isDevice(const String fileName)
+{
+  struct stat fileStat;
+
+  assert(fileName != NULL);
+
+  return (   (stat(String_cString(fileName),&fileStat) == 0)
+          && (S_ISCHR(fileStat.st_mode) || S_ISBLK(fileStat.st_mode))
+         );
+}
+
+bool File_isDeviceCString(const char *fileName)
+{
+  struct stat fileStat;
+
+  assert(fileName != NULL);
+
+  return (   (stat(fileName,&fileStat) == 0)
+          && (S_ISCHR(fileStat.st_mode) || S_ISBLK(fileStat.st_mode))
          );
 }
 
