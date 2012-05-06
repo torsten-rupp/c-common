@@ -1,0 +1,39 @@
+2012-05-06 0.09
+  * implemented String_map*()
+  * support quoted strings in tokenizer
+  * fixed unescape, unquote
+  * fix format %s, %S
+  * support NULL in match to skip matched sub-strings
+  * enclose GNU specific pragam in ifdef
+  * improved debug code
+  * fixed warnings
+
+2010-12-17 0.08
+  * improved debugging functions
+
+2009-02-13 0.07
+  * implemented erase() function to delete critical content in
+    string from memory, e. g. a password
+  * implemented '*' in parse function
+  * fixed formating %c
+
+2008-12-28 0.06
+  * fixed problem when partial parsing strings
+  * improved example
+  * fixed parsing of float/double
+  * added index to String_initTokenizer
+
+2008-12-13 0.05
+  * improved matching function
+
+2008-12-07 0.04
+  * fixed parsing of float numbers starting with "."
+
+2008-12-05 0.03
+  * fixed parsing of negative numbers
+
+2008-11-29 0.02
+  * implemented String_subEquals
+
+2008-09-26 0.01
+  * initial public release
