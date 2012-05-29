@@ -766,7 +766,7 @@ Errors __File_openDescriptor(const char *__fileName__,
       break;
     case FILE_OPEN_WRITE:
       // open file for writing
-      fileHandle->file = fdopen(fileDescriptor,"r+b");
+      fileHandle->file = fdopen(fileDescriptor,"wb");
       if (fileHandle->file == NULL)
       {
         return ERROR(OPEN_FILE,errno);
@@ -863,7 +863,6 @@ Errors __File_close(const char *__fileName__, ulong __lineNb__, FileHandle *file
 
   assert(fileHandle != NULL);
   assert(fileHandle->file != NULL);
-  assert(fileHandle->name != NULL);
 
   #ifndef NDEBUG
     pthread_once(&debugFileInitFlag,debugFileInit);
@@ -923,7 +922,7 @@ Errors __File_close(const char *__fileName__, ulong __lineNb__, FileHandle *file
   fileHandle->file = NULL;
 
   // free resources
-  String_delete(fileHandle->name);
+  if (fileHandle->name != NULL) String_delete(fileHandle->name);
 
   return ERROR_NONE;
 }
@@ -1108,6 +1107,21 @@ Errors File_printLine(FileHandle *fileHandle,
 
   // free resources
   String_delete(line);
+
+  return ERROR_NONE;
+}
+
+Errors File_flush(FileHandle *fileHandle)
+{
+  Errors error;
+
+  assert(fileHandle != NULL);
+  assert(fileHandle->file != NULL);
+
+  if (fflush(fileHandle->file) != 0)
+  {
+    return ERRORX(IO_ERROR,errno,String_cString(fileHandle->name));
+  }
 
   return ERROR_NONE;
 }
