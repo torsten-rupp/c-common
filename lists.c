@@ -40,15 +40,15 @@
     const char      *fileName;
     ulong           lineNb;
     #ifdef HAVE_BACKTRACE
-      void *stackTrace[16];
-      int  stackTraceSize;
+      void const *stackTrace[16];
+      int        stackTraceSize;
     #endif /* HAVE_BACKTRACE */
 
     const char      *deleteFileName;
     ulong           deleteLineNb;
     #ifdef HAVE_BACKTRACE
-      void *deleteStackTrace[16];
-      int  deleteStackTraceSize;
+      void const *deleteStackTrace[16];
+      int        deleteStackTraceSize;
     #endif /* HAVE_BACKTRACE */
 
     const Node *node;
@@ -235,38 +235,6 @@ LOCAL void debugListInit(void)
 }
 #endif /* not NDEBUG */
 
-#if !defined(NDEBUG) && defined(HAVE_BACKTRACE)
-/***********************************************************************\
-* Name   : List_debugDumpStackTrace
-* Purpose: print function names of stack trace
-* Input  : title          - title text
-*          stackTrace     - stack trace
-*          stackTraceSize - size of stack trace
-* Output : -
-* Return : -
-* Notes  : -
-\***********************************************************************/
-
-LOCAL void List_debugDumpStackTrace(FILE *handle, const char *title, int indent, void *stackTrace[], int stackTraceSize)
-{
-  const char **functionNames;
-  int        z,i;
-
-  for (i = 0; i < indent; i++) fprintf(handle," ");
-  fprintf(handle,"C stack trace: %s\n",title);
-  functionNames = (const char **)backtrace_symbols(stackTrace,stackTraceSize);
-  if (functionNames != NULL)
-  {
-    for (z = 1; z < stackTraceSize; z++)
-    {
-      for (i = 0; i < indent; i++) fprintf(handle," ");
-      fprintf(handle,"  %2d %p: %s\n",z,stackTrace[z],functionNames[z]);
-    }
-    free(functionNames);
-  }
-}
-#endif /* !defined(NDEBUG) && defined(HAVE_BACKTRACE) */
-
 // ----------------------------------------------------------------------
 
 #ifndef NDEBUG
@@ -400,8 +368,8 @@ Node *__List_deleteNode(const char *__fileName__, ulong __lineNb__, Node *node)
                 debugListNode->lineNb
                );
         #ifdef HAVE_BACKTRACE
-          List_debugDumpStackTrace(stderr,"allocated at",2,debugListNode->stackTrace,debugListNode->stackTraceSize);
-          List_debugDumpStackTrace(stderr,"deleted at",2,debugListNode->deleteStackTrace,debugListNode->deleteStackTraceSize);
+          debugDumpStackTrace(stderr,"allocated at",2,debugListNode->stackTrace,debugListNode->stackTraceSize);
+          debugDumpStackTrace(stderr,"deleted at",2,debugListNode->deleteStackTrace,debugListNode->deleteStackTraceSize);
         #endif /* HAVE_BACKTRACE */
         HALT_INTERNAL_ERROR("");
       }
@@ -440,7 +408,7 @@ Node *__List_deleteNode(const char *__fileName__, ulong __lineNb__, Node *node)
                 __lineNb__
                );
         #ifdef HAVE_BACKTRACE
-          List_debugPrintCurrentStackTrace();
+          debugDumpCurrentStackTrace(stderr,"",0);
         #endif /* HAVE_BACKTRACE */
         HALT_INTERNAL_ERROR("");
       }
@@ -890,7 +858,7 @@ void List_debugDumpInfo(FILE *handle)
               debugListNode->lineNb
              );
       #ifdef HAVE_BACKTRACE
-        List_debugDumpStackTrace(handle,"allocated at",2,debugListNode->stackTrace,debugListNode->stackTraceSize);
+        debugDumpStackTrace(handle,"allocated at",2,debugListNode->stackTrace,debugListNode->stackTraceSize);
       #endif /* HAVE_BACKTRACE */
     }
   }
@@ -933,21 +901,6 @@ void List_debugCheck()
     }
   }
   pthread_mutex_unlock(&debugListLock);
-}
-
-void List_debugPrintCurrentStackTrace(void)
-{
-  #ifdef HAVE_BACKTRACE
-    const int MAX_STACK_TRACE_SIZE = 256;
-
-    void *stackTrace[MAX_STACK_TRACE_SIZE];
-    int  stackTraceSize;
-  #endif /* HAVE_BACKTRACE */
-
-  #ifdef HAVE_BACKTRACE
-    stackTraceSize = backtrace(stackTrace,MAX_STACK_TRACE_SIZE);
-    List_debugDumpStackTrace(stderr,"",0,stackTrace,stackTraceSize);
-  #endif /* HAVE_BACKTRACE */
 }
 #endif /* not NDEBUG */
 
