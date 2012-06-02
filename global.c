@@ -12,6 +12,9 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
+#ifdef HAVE_BACKTRACE
+  #include <execinfo.h>
+#endif
 #include <assert.h>
 
 #include "global.h"
@@ -71,8 +74,47 @@ void __abort(const char   *filename,
   abort();
 }
 
+#if !defined(NDEBUG) && defined(HAVE_BACKTRACE)
+void debugDumpStackTrace(FILE *handle, const char *title, uint indent, void const *stackTrace[], uint stackTraceSize)
+{
+  const char **functionNames;
+  uint       i,z;
+
+  assert(stackTrace != NULL);
+
+  for (i = 0; i < indent; i++) fprintf(handle," ");
+  fprintf(handle,"C stack trace: %s\n",title);
+  functionNames = (const char **)backtrace_symbols(stackTrace,stackTraceSize);
+  if (functionNames != NULL)
+  {
+    for (z = 1; z < stackTraceSize; z++)
+    {
+      for (i = 0; i < indent; i++) fprintf(handle," ");
+      fprintf(handle,"  %2d %p: %s\n",z,stackTrace[z],functionNames[z]);
+    }
+    free(functionNames);
+  }
+}
+
+void debugDumpCurrentStackTrace(FILE *handle, const char *title, uint indent)
+{
+  const int MAX_STACK_TRACE_SIZE = 256;
+
+  void *currentStackTrace;
+  int  currentStackTraceSize;
+
+  currentStackTrace = malloc(sizeof(void*)*MAX_STACK_TRACE_SIZE);
+  if (currentStackTrace == NULL) return;
+
+  currentStackTraceSize = backtrace(currentStackTrace,MAX_STACK_TRACE_SIZE);
+  debugDumpStackTrace(handle,title,indent,currentStackTrace,currentStackTraceSize);
+
+  free(currentStackTrace);
+}
+#endif /* !defined(NDEBUG) && defined(HAVE_BACKTRACE) */
+
 #ifndef NDEBUG
-void dumpMemory(const void *address, uint length)
+void debugDumpMemory(bool printAddress, const void *address, uint length)
 {
   const byte *p;
   uint       z,i;
@@ -81,34 +123,36 @@ void dumpMemory(const void *address, uint length)
   while (z < length)
   {
     p = (const byte*)address+z;
-    printf("%08lx:%08lx  ",(unsigned long)p,(unsigned long)(p-(byte*)address));
+    if (printAddress) fprintf(stderr,"%08lx:",(unsigned long)p);
+    fprintf(stderr,"%08lx  ",(unsigned long)(p-(byte*)address));
+
 
     for (i = 0; i < 16; i++)
     {
       if ((z+i) < length)
       {
         p = (const byte*)address+z+i;
-        printf("%02x ",((uint)(*p)) & 0xFF);
+        fprintf(stderr,"%02x ",((uint)(*p)) & 0xFF);
       }
       else
       {
-        printf("   ");
+        fprintf(stderr,"   ");
       }
     }
-    printf("  ");
+    fprintf(stderr,"  ");
 
     for (i = 0; i < 16; i++)
     {
       if ((z+i) < length)
       {
         p = (const byte*)address+z+i;
-        printf("%c",isprint((int)(*p))?(*p):'.');
+        fprintf(stderr,"%c",isprint((int)(*p))?(*p):'.');
       }
       else
       {
       }
     }
-    printf("\n");
+    fprintf(stderr,"\n");
 
     z += 16;
   }
