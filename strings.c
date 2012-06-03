@@ -1224,6 +1224,7 @@ LOCAL bool parseString(const char    *string,
               {
                 if (   (string[index] == '\\')
                     && ((index+1) < length)
+                    && !formatToken.blankFlag
                    )
                 {
                   // quoted character
@@ -1241,7 +1242,9 @@ LOCAL bool parseString(const char    *string,
                   if ((formatToken.quoteChar != '\0') && (formatToken.quoteChar == string[index])) stringQuote = &formatToken.quoteChar;
                   if ((stringQuote == NULL) && (stringQuotes != NULL)) stringQuote = strchr(stringQuotes,string[index]);
 
-                  if (stringQuote != NULL)
+                  if (   (stringQuote != NULL)
+                      && !formatToken.blankFlag
+                     )
                   {
                     do
                     {
@@ -1323,6 +1326,7 @@ LOCAL bool parseString(const char    *string,
               {
                 if (   (string[index] == '\\')
                     && ((index+1) < length)
+                    && !formatToken.blankFlag
                    )
                 {
                   // quoted character
@@ -1340,7 +1344,9 @@ LOCAL bool parseString(const char    *string,
                   if ((formatToken.quoteChar != '\0') && (formatToken.quoteChar == string[index])) stringQuote = &formatToken.quoteChar;
                   if ((stringQuote == NULL) && (stringQuotes != NULL)) stringQuote = strchr(stringQuotes,string[index]);
 
-                  if (stringQuote != NULL)
+                  if (   (stringQuote != NULL)
+                      && !formatToken.blankFlag
+                     )
                   {
                     do
                     {
