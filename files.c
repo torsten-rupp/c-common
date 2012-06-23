@@ -1820,9 +1820,6 @@ Errors File_getFileInfo(FileInfo     *fileInfo,
   {
     fileInfo->type = FILE_TYPE_LINK;
     fileInfo->size = 0LL;
-
-    // get extended file attributes (igonore error; destination may not exist)
-    (void)getExtendedAttributes(fileName,&fileInfo->attributes);
   }
   else if (S_ISCHR(fileStat.st_mode))
   {
@@ -1849,26 +1846,12 @@ Errors File_getFileInfo(FileInfo     *fileInfo,
     fileInfo->type        = FILE_TYPE_SPECIAL;
     fileInfo->size        = 0LL;
     fileInfo->specialType = FILE_SPECIAL_TYPE_FIFO;
-
-    // get extended file attributes
-    error = getExtendedAttributes(fileName,&fileInfo->attributes);
-    if (error != ERROR_NONE)
-    {
-      return error;
-    }
   }
   else if (S_ISSOCK(fileStat.st_mode))
   {
     fileInfo->type        = FILE_TYPE_SPECIAL;
     fileInfo->size        = 0LL;
     fileInfo->specialType = FILE_SPECIAL_TYPE_SOCKET;
-
-    // get extended file attributes
-    error = getExtendedAttributes(fileName,&fileInfo->attributes);
-    if (error != ERROR_NONE)
-    {
-      return error;
-    }
   }
   else
   {
