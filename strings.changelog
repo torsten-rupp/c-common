@@ -1,3 +1,7 @@
+2012-06-xx 0.10
+  * support unsigned integer types in String_parse()
+  * fixed memory leak in String_[un]escape(), String_[un]quote()
+
 2012-05-06 0.09
   * implemented String_map*()
   * support quoted strings in tokenizer
