@@ -1,4 +1,4 @@
-2012-05-06 0.04
+2012-07-07 0.04
   * added debug code: track allocated list nodes
   * clean-up List_getFirst()/List_getLast()
 

@@ -65,6 +65,10 @@ typedef int(*ListNodeCompareFunction)(const void *node1, const void *node2, void
   #define List_deleteNode(node) __List_deleteNode(__FILE__,__LINE__,node)
   #define List_insert(list,node,nextNode) __List_insert(__FILE__,__LINE__,list,node,nextNode)
   #define List_append(list,node) __List_append(__FILE__,__LINE__,list,node)
+//List_duplicate
+//List_delete
+//List_clear
+//List_copy
 #endif /* not NDEBUG */
 
 #define LIST_STATIC_INIT {NULL,NULL}

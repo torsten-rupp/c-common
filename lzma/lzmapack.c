@@ -10,7 +10,7 @@
 
 /* Note: compile with
 
-   gcc lzmapack.c -o lzmapack -llzma
+   gcc -o lzmapack lzmapack.c -llzma
 */
 
 /****************************** Includes *******************************/
@@ -60,9 +60,9 @@ int main(int argc, const char *argv[])
   while ((n = getc(stdin)) != EOF)
   {
     ch = (char)n; in++;
-    stream.next_in = &ch;
-    stream.avail_in = 1;
-    stream.next_out = buffer;
+    stream.next_in   = (unsigned char*)&ch;
+    stream.avail_in  = 1;
+    stream.next_out  = (unsigned char*)buffer;
     stream.avail_out = sizeof(buffer);
     result = lzma_code(&stream,LZMA_RUN);
     if (result != LZMA_OK)
@@ -74,7 +74,7 @@ int main(int argc, const char *argv[])
   }
   do
   {
-    stream.next_out = buffer;
+    stream.next_out  = (unsigned char*)buffer;
     stream.avail_out = sizeof(buffer);
     result = lzma_code(&stream,LZMA_FINISH);
     if ((result != LZMA_OK) && (result != LZMA_STREAM_END))

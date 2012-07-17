@@ -1,20 +1,26 @@
 CC = gcc
 CFLAGS = -g -Wall -O3
 
-LD = gcc
-LDFLAGS =
-
 all: lzmapack lzmaunpack
 
 clean:
-	rm -f lzmapack lzmaunpack test.dat
+	rm -f lzmapack lzmaunpack test.dat lzmademo.tar.bz2
 
 lzmapack:
-	gcc -static lzmapack.c -o lzmapack -llzma
+	$(CC) $(CFLAGS) lzmapack.c -o lzmapack -llzma
 
 lzmaunpack:
-	gcc -static lzmaunpack.c -o lzmaunpack -llzma
+	$(CC) $(CFLAGS) lzmaunpack.c -o lzmaunpack -llzma
 
-test:
+test: \
+  lzmapack \
+  lzmaunpack
 	cat lzmapack|./lzmapack|./lzmaunpack > test.dat
 	diff lzmapack test.dat
+
+.PHONY: dist
+dist:
+	tar cjf lzmademo.tar.bz2 \
+          lzmapack.c \
+          lzmaunpack.c \
+          Makefile
