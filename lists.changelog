@@ -1,3 +1,6 @@
+2012-07-19 0.05
+  * fixed possible race-condition in debug code
+
 2012-07-07 0.04
   * added debug code: track allocated list nodes
   * clean-up List_getFirst()/List_getLast()
