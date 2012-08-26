@@ -115,32 +115,44 @@ LOCAL void debugFileInit(void)
 
 LOCAL Errors getExtendedAttributes(const String fileName, uint64 *extendedAttributes)
 {
-  int    handle;
   long   attributes;
-  Errors error;
+  #ifdef FS_IOC_GETFLAGS
+    int    handle;
+    Errors error;
+  #endif /* FS_IOC_GETFLAGS */
 
   assert(fileName != NULL);
   assert(extendedAttributes != NULL);
 
-  // get extended file attributes
-  handle = open(String_cString(fileName),O_RDONLY|O_NONBLOCK);
-  if (handle == -1)
-  {
-    return ERRORX(IO_ERROR,errno,String_cString(fileName));
-  }
   attributes = 0LL;
-  if (ioctl(handle,FS_IOC_GETFLAGS,&attributes) != 0)
-  {
-    error = ERRORX(IO_ERROR,errno,String_cString(fileName));
+  #ifdef FS_IOC_GETFLAGS
+    // get extended file attributes
+    handle = open(String_cString(fileName),O_RDONLY|O_NONBLOCK);
+    if (handle == -1)
+    {
+      return ERRORX(IO_ERROR,errno,String_cString(fileName));
+    }
+    if (ioctl(handle,FS_IOC_GETFLAGS,&attributes) != 0)
+    {
+      error = ERRORX(IO_ERROR,errno,String_cString(fileName));
+      close(handle);
+      return error;
+    }
     close(handle);
-    return error;
-  }
-  close(handle);
+  #else /* FS_IOC_GETFLAGS */
+    UNUSED_VARIABLE(fileName);
+  #endif /* FS_IOC_GETFLAGS */
 
   (*extendedAttributes) = 0LL;
-  if ((attributes & FILE_ATTRIBUTE_COMPRESS   ) != 0LL) (*extendedAttributes) |= FILE_ATTRIBUTE_COMPRESS;
-  if ((attributes & FILE_ATTRIBUTE_NO_COMPRESS) != 0LL) (*extendedAttributes) |= FILE_ATTRIBUTE_NO_COMPRESS;
-  if ((attributes & FILE_ATTRIBUTE_NO_DUMP    ) != 0LL) (*extendedAttributes) |= FILE_ATTRIBUTE_NO_DUMP;
+  #ifdef HAVE_FS_COMPR_FL
+    if ((attributes & FILE_ATTRIBUTE_COMPRESS   ) != 0LL) (*extendedAttributes) |= FILE_ATTRIBUTE_COMPRESS;
+  #endif
+  #ifdef HAVE_FS_NOCOMP_FL
+    if ((attributes & FILE_ATTRIBUTE_NO_COMPRESS) != 0LL) (*extendedAttributes) |= FILE_ATTRIBUTE_NO_COMPRESS;
+  #endif
+  #ifdef HAVE_FS_NODUMP_FL
+    if ((attributes & FILE_ATTRIBUTE_NO_DUMP    ) != 0LL) (*extendedAttributes) |= FILE_ATTRIBUTE_NO_DUMP;
+  #endif
 
   return ERROR_NONE;
 }
@@ -1344,6 +1356,45 @@ uint32 File_userNameToUserId(const char *name)
   return userId;
 }
 
+const char *File_userIdToUserName(char *name, uint nameSize, uint32 userId)
+{
+  long          bufferSize;
+  char          *buffer;
+  struct passwd groupEntry;
+  struct passwd *result;
+
+  assert(name != NULL);
+  assert(nameSize > 0);
+
+  // allocate buffer
+  bufferSize = sysconf(_SC_GETPW_R_SIZE_MAX);
+  if (bufferSize == -1L)
+  {
+    return NULL;
+  }
+  buffer = (char*)malloc(bufferSize);
+  if (buffer == NULL)
+  {
+    return NULL;
+  }
+
+  // get user passwd entry
+  if (getpwuid_r((uid_t)userId,&groupEntry,buffer,bufferSize,&result) != 0)
+  {
+    free(buffer);
+    return NULL;
+  }
+
+  // get group name
+  strncpy(name,result->pw_name,nameSize);
+  name[nameSize-1] = '\0';
+
+  // free resources
+  free(buffer);
+
+  return buffer;
+}
+
 uint32 File_groupNameToGroupId(const char *name)
 {
   long         bufferSize;
@@ -1380,6 +1431,45 @@ uint32 File_groupNameToGroupId(const char *name)
   free(buffer);
 
   return groupId;
+}
+
+const char *File_groupIdToGroupName(char *name, uint nameSize, uint32 groupId)
+{
+  long         bufferSize;
+  char         *buffer;
+  struct group groupEntry;
+  struct group *result;
+
+  assert(name != NULL);
+  assert(nameSize > 0);
+
+  // allocate buffer
+  bufferSize = sysconf(_SC_GETGR_R_SIZE_MAX);
+  if (bufferSize == -1L)
+  {
+    return NULL;
+  }
+  buffer = (char*)malloc(bufferSize);
+  if (buffer == NULL)
+  {
+    return NULL;
+  }
+
+  // get user passwd entry
+  if (getgrgid_r((gid_t)groupId,&groupEntry,buffer,bufferSize,&result) != 0)
+  {
+    free(buffer);
+    return NULL;
+  }
+
+  // get group name
+  strncpy(name,result->gr_name,nameSize);
+  name[nameSize-1] = '\0';
+
+  // free resources
+  free(buffer);
+
+  return buffer;
 }
 
 FileTypes File_getType(const String fileName)

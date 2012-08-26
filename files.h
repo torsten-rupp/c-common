@@ -109,10 +109,16 @@ typedef enum
 #define FILE_DEFAULT_PERMISSION 0xFFFFFFFF
 
 // attributes
-#define FILE_ATTRIBUTE_NONE        0LL
-#define FILE_ATTRIBUTE_COMPRESS    FS_COMPR_FL
-#define FILE_ATTRIBUTE_NO_COMPRESS FS_NOCOMP_FL
-#define FILE_ATTRIBUTE_NO_DUMP     FS_NODUMP_FL
+#define FILE_ATTRIBUTE_NONE 0LL
+#ifdef HAVE_FS_COMPR_FL
+  #define FILE_ATTRIBUTE_COMPRESS    FS_COMPR_FL
+#endif
+#ifdef HAVE_FS_NOCOMP_FL
+  #define FILE_ATTRIBUTE_NO_COMPRESS FS_NOCOMP_FL
+#endif
+#ifdef HAVE_FS_NODUMP_FL
+  #define FILE_ATTRIBUTE_NO_DUMP     FS_NODUMP_FL
+#endif
 
 /***************************** Datatypes *******************************/
 
@@ -671,6 +677,17 @@ Errors File_readDirectoryList(DirectoryListHandle *directoryListHandle,
 uint32 File_userNameToUserId(const char *name);
 
 /***********************************************************************\
+* Name   : File_userNameToUserId
+* Purpose: convert user name to user id
+* Input  : name - user name
+* Output : -
+* Return : user id or FILE_DEFAULT_USER_ID if user not found
+* Notes  : -
+\***********************************************************************/
+
+const char *File_userIdToUserName(char *name, uint nameSize, uint32 userId);
+
+/***********************************************************************\
 * Name   : File_groupNameToGroupId
 * Purpose: convert group name to group id
 * Input  : name - group name
@@ -680,6 +697,17 @@ uint32 File_userNameToUserId(const char *name);
 \***********************************************************************/
 
 uint32 File_groupNameToGroupId(const char *name);
+
+/***********************************************************************\
+* Name   : File_groupNameToGroupId
+* Purpose: convert group name to group id
+* Input  : name - group name
+* Output : -
+* Return : user id or FILE_DEFAULT_GROUP_ID if group not found
+* Notes  : -
+\***********************************************************************/
+
+const char *File_groupIdToGroupName(char *name, uint nameSize, uint32 groupId);
 
 /***********************************************************************\
 * Name   : File_getType
@@ -838,6 +866,64 @@ bool File_isWriteableCString(const char *fileName);
 Errors File_getFileInfo(FileInfo     *fileInfo,
                         const String fileName
                        );
+
+/***********************************************************************\
+* Name   : File_haveAttributeCompress, File_haveAttributeNoCompress,
+*          File_haveAttributeNoDump
+* Purpose: check if compress/no-compress/no-dump attribute is set
+* Input  : fileInfo - file info variable
+* Output : -
+* Return : TRUE if attribute is set, FALSE otherwise
+* Notes  : -
+\***********************************************************************/
+
+INLINE bool File_haveAttributeCompress(const FileInfo *fileInfo);
+#if defined(NDEBUG) || defined(__FILES_IMPLEMENATION__)
+INLINE bool File_haveAttributeCompress(const FileInfo *fileInfo)
+{
+  assert(fileInfo != NULL);
+
+  #ifdef HAVE_FS_COMPR_FL
+    return (fileInfo->attributes & FILE_ATTRIBUTE_COMPRESS) != 0;
+  #else
+    UNUSED_VARIABLE(fileInfo);
+
+    return FALSE;
+  #endif
+}
+#endif /* NDEBUG || __FILES_IMPLEMENATION__ */
+
+INLINE bool File_haveAttributeNoCompress(const FileInfo *fileInfo);
+#if defined(NDEBUG) || defined(__FILES_IMPLEMENATION__)
+INLINE bool File_haveAttributeNoCompress(const FileInfo *fileInfo)
+{
+  assert(fileInfo != NULL);
+
+  #ifdef HAVE_FS_COMPR_FL
+    return (fileInfo->attributes & FILE_ATTRIBUTE_NO_COMPRESS) != 0;
+  #else
+    UNUSED_VARIABLE(fileInfo);
+
+    return FALSE;
+  #endif
+}
+#endif /* NDEBUG || __FILES_IMPLEMENATION__ */
+
+INLINE bool File_haveAttributeNoDump(const FileInfo *fileInfo);
+#if defined(NDEBUG) || defined(__FILES_IMPLEMENATION__)
+INLINE bool File_haveAttributeNoDump(const FileInfo *fileInfo)
+{
+  assert(fileInfo != NULL);
+
+  #ifdef HAVE_FS_COMPR_FL
+    return (fileInfo->attributes & FILE_ATTRIBUTE_NO_DUMP) != 0;
+  #else
+    UNUSED_VARIABLE(fileInfo);
+
+    return FALSE;
+  #endif
+}
+#endif /* NDEBUG || __FILES_IMPLEMENATION__ */
 
 /***********************************************************************\
 * Name   : File_getFileTimeModified
