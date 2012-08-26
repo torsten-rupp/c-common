@@ -1,7 +1,7 @@
 /***********************************************************************\
 *
-* $Source: /home/torsten/cvs/bar/bar/stringlists.h,v $
 * $Revision$
+* $Date$
 * $Author$
 * Contents: string list functions
 * Systems: all
@@ -52,7 +52,9 @@ typedef struct
   #define StringList_append(stringList,string)                                   __StringList_append(__FILE__,__LINE__,stringList,string)
   #define StringList_appendCString(stringList,s)                                 __StringList_appendCString(__FILE__,__LINE__,stringList,s)
   #define StringList_appendChar(stringList,ch)                                   __StringList_appendChar(__FILE__,__LINE__,stringList,ch)
-  #define StringList_appendBuffer(tringList,buffer,bufferLength)                 __StringList_appendBuffer(__FILE__,__LINE__,stringList,buffer,bufferLength)
+  #define StringList_appendBuffer(stringList,buffer,bufferLength)                __StringList_appendBuffer(__FILE__,__LINE__,stringList,buffer,bufferLength)
+  #define StringList_getFirst(stringList,string)                                 __StringList_getFirst(__FILE__,__LINE__,stringList,string)
+  #define StringList_getLast(stringList,string)                                  __StringList_getLast(__FILE__,__LINE__,stringList,string)
 #endif /* not NDEBUG */
 
 /***********************************************************************\
@@ -274,7 +276,7 @@ StringNode *StringList_remove(StringList *stringList, StringNode *stringNode);
 
 /***********************************************************************\
 * Name   : StringList_first
-* Purpose: first string from list
+* Purpose: get first string from list
 * Input  : stringList - string list
 *          string     - string variable (can be NULL)
 * Output : -
@@ -291,12 +293,19 @@ INLINE String StringList_first(const StringList *stringList, String string)
 
   if (string != NULL)
   {
-    String_set(string,stringList->head->string);
+    if (stringList->head != NULL)
+    {
+      String_set(string,stringList->head->string);
+    }
+    else
+    {
+      String_clear(string);
+    }
     return string;
   }
   else
   {
-    return stringList->head->string;
+    return (stringList->head != NULL) ? stringList->head->string : NULL;
   }
 }
 #endif /* NDEBUG || __STRINGLISTS_IMPLEMENATION__ */
@@ -320,12 +329,19 @@ INLINE String StringList_last(const StringList *stringList, String string)
 
   if (string != NULL)
   {
-    String_set(string,stringList->tail->string);
+    if (stringList->head != NULL)
+    {
+      String_set(string,stringList->tail->string);
+    }
+    else
+    {
+      String_clear(string);
+    }
     return string;
   }
   else
   {
-    return stringList->tail->string;
+    return (stringList->head != NULL) ? stringList->tail->string : NULL;
   }
 }
 #endif /* NDEBUG || __STRINGLISTS_IMPLEMENATION__ */
@@ -341,7 +357,11 @@ INLINE String StringList_last(const StringList *stringList, String string)
 *          is returned directly and have to be freed
 \***********************************************************************/
 
+#ifdef NDEBUG
 String StringList_getFirst(StringList *stringList, String string);
+#else /* not NDEBUG */
+String __StringList_getFirst(const char *fileName, ulong lineNb, StringList *stringList, String string);
+#endif /* NDEBUG */
 
 /***********************************************************************\
 * Name   : StringList_getLast
@@ -354,7 +374,11 @@ String StringList_getFirst(StringList *stringList, String string);
 *          is returned directly and have to be freed
 \***********************************************************************/
 
+#ifdef NDEBUG
 String StringList_getLast(StringList *stringList, String string);
+#else /* not NDEBUG */
+String __StringList_getLast(const char *fileName, ulong lineNb, StringList *stringList, String string);
+#endif /* NDEBUG */
 
 /***********************************************************************\
 * Name   : StringList_find, StringList_findCString
