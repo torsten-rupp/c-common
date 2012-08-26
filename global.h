@@ -63,8 +63,17 @@
   #define PI 3.14159265358979323846
 #endif
 
-// time constants
-#define MILLI_PER_SECOND 1000
+// bits/byte conversion
+#define BYTES_TO_BITS(n) ((n)*8LL)
+#define BITS_TO_BYTES(n) ((n)/8LL)
+
+// time constants, time conversions
+#define MS_PER_SECOND 1000L
+#define US_PER_SECOND 1000000LL
+
+#define S_TO_MS(n) ((n)*1000L)
+#define S_TO_US(n) ((n)*1000000LL)
+#define MS_TO_US(n) ((n)*1000LL)
 
 // minimal and maximal values for some scalar data types
 #define MIN_CHAR           CHAR_MIN
