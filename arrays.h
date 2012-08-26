@@ -22,8 +22,8 @@
 
 /***************************** Constants *******************************/
 
-#define ARRAY_BEGIN 0
-#define ARRAY_END   -1
+#define ARRAY_BEGIN 0L
+#define ARRAY_END   -1L
 
 /***************************** Datatypes *******************************/
 
@@ -43,6 +43,27 @@ typedef char(*ArrayElementIterateFunction)(void *userData, void *data);
 #ifndef NDEBUG
   #define Array_new(elementSize,length) __Array_new(__FILE__,__LINE__,elementSize,length)
 #endif /* not NDEBUG */
+
+/***********************************************************************\
+* Name   : ARRAY_ITERATE
+* Purpose: iterated over array and execute block
+* Input  : array     - array
+*          variable - iteration variable
+* Output : -
+* Return : -
+* Notes  : variable will contain all elements in array
+*          usage:
+*            ARRAY_ITERATE(array,variable)
+*            {
+*              ... = variable->...
+*            }
+\***********************************************************************/
+
+#define ARRAY_ITERATE(array,variable) \
+  for ((variable) = 0, Array_get(array,0,variable); \
+       (variable) < Array_length(array); \
+       (variable)++, Array_get(array,0,variable) \
+      )
 
 /***************************** Forwards ********************************/
 
@@ -136,7 +157,7 @@ void *Array_get(const Array array, ulong index, void *data);
 * Name   : Array_insert
 * Purpose: insert element into array
 * Input  : array     - array
-*          nextIndex - index of next element or ARRAY_END
+*          nextIndex - index of next element or ARRAY_BEGIN/ARRAY_END
 *          data      - element data
 * Output : -
 * Return : TRUE if element inserted, FALSE otherweise
@@ -228,7 +249,6 @@ void Array_debugPrintStatistics(void);
 \***********************************************************************/
 
 void Array_debugCheck(void);
-
 #endif /* not NDEBUG */
 
 #ifdef __cplusplus
