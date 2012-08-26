@@ -198,6 +198,27 @@ typedef void                void32;
 #define SIZE_OF_ARRAY(array) (sizeof(array)/sizeof(array[0]))
 
 /***********************************************************************\
+* Name   : FOR_ARRAY
+* Purpose: iterated over array and execute block
+* Input  : array    - array
+*          variable - iteration variable
+* Output : -
+* Return : -
+* Notes  : variable will contain indizes of array
+*          usage:
+*            FOR_ARRAY(array,variable)
+*            {
+*              ... = variable->...
+*            }
+\***********************************************************************/
+
+#define FOR_ARRAY(array,variable) \
+  for ((variable) = 0; \
+       (variable) < SIZE_OF_ARRAY(array); \
+       (variable)++ \
+      )
+
+/***********************************************************************\
 * Name   : ALIGN
 * Purpose: align value to boundary
 * Input  : n         - address
