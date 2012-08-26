@@ -350,7 +350,7 @@ LOCAL bool processValue(const ConfigValue *configValue,
         }
 
         // calculate value
-        data = strtod(value,0);
+        data = strtod(value,0)*factor;
         if (   (data < configValue->doubleValue.min)
             || (data > configValue->doubleValue.max)
            )
@@ -897,6 +897,11 @@ void ConfigValue_formatDone(ConfigValueFormat *configValueFormat)
   }
 }
 
+#ifdef __GNUC__
+#pragma GCC push_options
+#pragma GCC diagnostic ignored "-Wfloat-equal"
+#endif /* __GNUC__ */
+
 bool ConfigValue_format(ConfigValueFormat *configValueFormat,
                         String            line
                        )
@@ -1358,6 +1363,10 @@ bool ConfigValue_format(ConfigValueFormat *configValueFormat,
     return FALSE;
   }
 }
+
+#ifdef __GNUC__
+#pragma GCC pop_options
+#endif /* __GNUC__ */
 
 #ifdef __GNUG__
 }
