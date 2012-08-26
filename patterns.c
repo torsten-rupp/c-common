@@ -19,8 +19,9 @@
 #include <assert.h>
 
 #include "global.h"
+#include "strings.h"
 
-#include "bar.h"
+#include "errors.h"
 
 #include "patterns.h"
 
@@ -123,7 +124,7 @@ LOCAL Errors compilePattern(const char   *pattern,
             z++;
             break;
         }
-      }     
+      }
       break;
     case PATTERN_TYPE_REGEX:
       String_setCString(matchString,pattern);
@@ -198,11 +199,11 @@ Errors Pattern_initCString(Pattern *pattern, const char *string, PatternTypes pa
   Errors error;
 
   assert(pattern != NULL);
-  
-  /* initialize pattern */
+
+  // initialize pattern
   pattern->type = patternType;
 
-  /* compile pattern */
+  // compile pattern
   error = compilePattern(string,
                          patternType,
                          &pattern->regexBegin,
@@ -293,24 +294,24 @@ bool Pattern_checkIsPattern(const String string)
 {
   const char *PATTERNS_CHARS = "*?[{";
 
-  long z;
-  bool patternFlag;
+  ulong i;
+  bool  patternFlag;
 
   assert(string != NULL);
 
-  z = 0;
+  i = 0L;
   patternFlag = FALSE;
-  while ((z < String_length(string)) && !patternFlag)
+  while ((i < String_length(string)) && !patternFlag)
   {
-    if (String_index(string,z) != '\\')
+    if (String_index(string,i) != '\\')
     {
-      patternFlag = (strchr(PATTERNS_CHARS,String_index(string,z)) != NULL);
+      patternFlag = (strchr(PATTERNS_CHARS,String_index(string,i)) != NULL);
     }
     else
     {
-      z++;
+      i++;
     }
-    z++;
+    i++;
   }
 
   return patternFlag;
