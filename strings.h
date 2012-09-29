@@ -33,8 +33,6 @@
 
 /***************************** Datatypes *******************************/
 
-/***************************** Variables *******************************/
-
 // string
 typedef struct __String* String;
 
@@ -64,11 +62,14 @@ typedef struct
 typedef int(*StringCompareFunction)(void *userData, char ch1, char ch2);
 typedef const char*(*StringIterateFunction)(void *userData, char ch);
 
+// number unit
 typedef struct
 {
   const char *name;
   uint64     factor;
 } StringUnit;
+
+/***************************** Variables *******************************/
 
 /****************************** Macros *********************************/
 
@@ -147,7 +148,7 @@ typedef struct
 \***********************************************************************/
 
 #define STRING_CHAR_ITERATE(string,iteratorVariable,variable) \
-  for (iteratorVariable = 0; \
+  for (iteratorVariable = 0, variable = String_index(string,0L); \
        (iteratorVariable) < String_length(string); \
        iteratorVariable++, variable = String_index(string,iteratorVariable) \
       )
