@@ -245,7 +245,7 @@ LOCAL bool getInteger64Option(int64                 *value,
   }
   else
   {
-    factor = 1;
+    factor = 1LL;
   }
 
   // calculate value
@@ -429,10 +429,10 @@ LOCAL bool processOption(const CommandLineOption *commandLineOption,
         }
         else
         {
-          factor = 1;
+          factor = 1L;
         }
 
-        (*commandLineOption->variable.d) = strtod(value,0);
+        (*commandLineOption->variable.d) = strtod(value,0)*(double)factor;
         if (   ((*commandLineOption->variable.d) < commandLineOption->doubleOption.min)
             || ((*commandLineOption->variable.d) > commandLineOption->doubleOption.max)
            )
@@ -1397,6 +1397,21 @@ void CmdOption_printHelp(FILE                    *outputHandle,
             if (commandLineOptions[i].defaultValue.i != 0)
             {
               fprintf(outputHandle,", default: ");
+              j = 0;
+              while (   (j < commandLineOptions[i].integerOption.unitCount)
+                     && ((commandLineOptions[i].defaultValue.i % commandLineOptions[i].integerOption.units[j].factor) != 0)
+                    )
+              {
+                j++;
+              }
+              if (j < commandLineOptions[i].integerOption.unitCount)
+              {
+                fprintf(outputHandle,"%d%s",commandLineOptions[i].defaultValue.i/(int)commandLineOptions[i].integerOption.units[j].factor,commandLineOptions[i].integerOption.units[j].name);
+              }
+              else
+              {
+                fprintf(outputHandle,"%d",commandLineOptions[i].defaultValue.i);
+              }
             }
             (void)fputc(')',outputHandle);
           }
