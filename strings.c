@@ -11,7 +11,7 @@
 #define __STRINGS_IMPLEMENATION__
 
 /****************************** Includes *******************************/
-#include "config.h"
+#include <config.h>  // use <...> to support separated build directory
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -290,7 +290,7 @@ LOCAL_INLINE void ensureStringLength(struct __String *string, ulong newLength)
 //??? error message?
     if (newData == NULL)
     {
-      fprintf(stderr,"FATAL ERROR: insufficient memory for allocating string (%d bytes) - program halted: %s\n",newMaxLength,strerror(errno));
+      fprintf(stderr,"FATAL ERROR: insufficient memory for allocating string (%lu bytes) - program halted: %s\n",newMaxLength,strerror(errno));
       exit(128);
     }
     #ifndef NDEBUG
@@ -1686,75 +1686,81 @@ LOCAL bool matchString(const String  string,
 
   assert(string != NULL);
   assert(string->data != NULL);
-  assert((index == STRING_BEGIN) || (index == STRING_END) || (index < string->length));
   assert(pattern != NULL);
 
-  // compile pattern
-  if (regcomp(&regex,pattern,REG_ICASE|REG_EXTENDED) != 0)
+  if (index < string->length)
   {
-    return FALSE;
-  }
-
-  // count sub-patterns (=1 for total matched string + number of matched-sub-strings)
-  va_copy(arguments,matchedSubStrings);
-  subMatchCount = 1;
-  do
-  {
-    matchedSubString = (String)va_arg(arguments,void*);
-    if (matchedSubString != NULL) subMatchCount++;
-  }
-  while (matchedSubString != NULL);
-  va_end(arguments);
-
-  // allocate sub-patterns array
-  subMatches = (regmatch_t*)malloc(subMatchCount*sizeof(regmatch_t));
-  if (subMatches == NULL)
-  {
-    regfree(&regex);
-    return FALSE;
-  }
-
-  // match
-  matchFlag = (regexec(&regex,
-                       &string->data[index],
-                       subMatchCount,
-                       subMatches,
-                       0
-                      ) == 0
-              );
-
-  // get sub-matches
-  if (matchFlag)
-  {
-    if (nextIndex != NULL)
+    // compile pattern
+    if (regcomp(&regex,pattern,REG_ICASE|REG_EXTENDED) != 0)
     {
-      (*nextIndex) = subMatches[0].rm_eo-subMatches[0].rm_so;
+      return FALSE;
     }
 
-    if (matchedString != NULL)
-    {
-      String_setBuffer(matchedString,&string->data[subMatches[0].rm_so],subMatches[0].rm_eo-subMatches[0].rm_so);
-    }
-
+    // count sub-patterns (=1 for total matched string + number of matched-sub-strings)
     va_copy(arguments,matchedSubStrings);
-    for (z = 1; z < subMatchCount; z++)
+    subMatchCount = 1;
+    do
     {
       matchedSubString = (String)va_arg(arguments,void*);
-      assert(matchedSubString != NULL);
-      if (matchedSubString != STRING_NO_ASSIGN)
+      if (matchedSubString != NULL) subMatchCount++;
+    }
+    while (matchedSubString != NULL);
+    va_end(arguments);
+
+    // allocate sub-patterns array
+    subMatches = (regmatch_t*)malloc(subMatchCount*sizeof(regmatch_t));
+    if (subMatches == NULL)
+    {
+      regfree(&regex);
+      return FALSE;
+    }
+
+    // match
+    matchFlag = (regexec(&regex,
+                         &string->data[index],
+                         subMatchCount,
+                         subMatches,
+                         0
+                        ) == 0
+                );
+
+    // get sub-matches
+    if (matchFlag)
+    {
+      if (nextIndex != NULL)
       {
-        if (subMatches[z].rm_so != -1)
+        (*nextIndex) = subMatches[0].rm_eo-subMatches[0].rm_so;
+      }
+
+      if (matchedString != NULL)
+      {
+        String_setBuffer(matchedString,&string->data[subMatches[0].rm_so],subMatches[0].rm_eo-subMatches[0].rm_so);
+      }
+
+      va_copy(arguments,matchedSubStrings);
+      for (z = 1; z < subMatchCount; z++)
+      {
+        matchedSubString = (String)va_arg(arguments,void*);
+        assert(matchedSubString != NULL);
+        if (matchedSubString != STRING_NO_ASSIGN)
         {
-          String_setBuffer(matchedSubString,&string->data[subMatches[z].rm_so],subMatches[z].rm_eo-subMatches[z].rm_so);
+          if (subMatches[z].rm_so != -1)
+          {
+            String_setBuffer(matchedSubString,&string->data[subMatches[z].rm_so],subMatches[z].rm_eo-subMatches[z].rm_so);
+          }
         }
       }
+      va_end(arguments);
     }
-    va_end(arguments);
-  }
 
-  // free resources
-  free(subMatches);
-  regfree(&regex);
+    // free resources
+    free(subMatches);
+    regfree(&regex);
+  }
+  else
+  {
+    matchFlag = FALSE;
+  }
 
   return matchFlag;
 }
@@ -2692,7 +2698,7 @@ String String_replaceAllCString(String string, ulong index, const char *from, co
   return String_mapCString(string,index,&from,&to,1);
 }
 
-String String_replaceAllChar(String string, ulong index, ulong length, char fromCh, char toCh)
+String String_replaceAllChar(String string, ulong index, char fromCh, char toCh)
 {
   STRING_CHECK_VALID(string);
 

@@ -9,7 +9,7 @@
 \***********************************************************************/
 
 /****************************** Includes *******************************/
-#include "config.h"
+#include <config.h>  // use <...> to support separated build directory 
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -72,6 +72,8 @@ LOCAL Errors compilePattern(const char   *pattern,
   String regexString;
   int    regexFlags;
   ulong  z;
+  int    error;
+  char   buffer[256];
 
   assert(pattern != NULL);
   assert(regexBegin != NULL);
@@ -81,8 +83,9 @@ LOCAL Errors compilePattern(const char   *pattern,
   matchString = String_new();
   regexString = String_new();
 
-  regexFlags = REG_ICASE|REG_NOSUB;
-  switch (patternType)
+  regexFlags = REG_NOSUB;
+  if ((patternType & PATTERN_OPTION_IGNORE_CASE) == PATTERN_OPTION_IGNORE_CASE) regexFlags |= REG_ICASE;
+  switch (patternType & PATTERN_TYPE_MASK)
   {
     case PATTERN_TYPE_GLOB:
       z = 0;
@@ -148,21 +151,24 @@ LOCAL Errors compilePattern(const char   *pattern,
 
   String_set(regexString,matchString);
   if (String_index(regexString,STRING_BEGIN) != '^') String_insertChar(regexString,STRING_BEGIN,'^');
-  if (regcomp(regexBegin,String_cString(regexString),regexFlags) != 0)
+  error = regcomp(regexBegin,String_cString(regexString),regexFlags);
+  if (error != 0)
   {
+    regerror(error,regexBegin,buffer,sizeof(buffer)-1); buffer[sizeof(buffer)-1] = '\0';
     String_delete(regexString);
     String_delete(matchString);
-    return ERROR_INVALID_PATTERN;
+    return ERRORX_(INVALID_PATTERN,0,buffer);
   }
 
   String_set(regexString,matchString);
   if (String_index(regexString,STRING_END) != '$') String_insertChar(regexString,STRING_BEGIN,'$');
   if (regcomp(regexEnd,String_cString(regexString),regexFlags) != 0)
   {
+    regerror(error,regexBegin,buffer,sizeof(buffer)-1); buffer[sizeof(buffer)-1] = '\0';
     regfree(regexBegin);
     String_delete(regexString);
     String_delete(matchString);
-    return ERROR_INVALID_PATTERN;
+    return ERRORX_(INVALID_PATTERN,0,buffer);
   }
 
   String_set(regexString,matchString);
@@ -170,11 +176,12 @@ LOCAL Errors compilePattern(const char   *pattern,
   if (String_index(regexString,STRING_END) != '$') String_insertChar(regexString,STRING_END,'$');
   if (regcomp(regexExact,String_cString(regexString),regexFlags) != 0)
   {
+    regerror(error,regexBegin,buffer,sizeof(buffer)-1); buffer[sizeof(buffer)-1] = '\0';
     regfree(regexEnd);
     regfree(regexBegin);
     String_delete(regexString);
     String_delete(matchString);
-    return ERROR_INVALID_PATTERN;
+    return ERRORX_(INVALID_PATTERN,0,buffer);
   }
 
   /* free resources */

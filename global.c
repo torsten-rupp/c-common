@@ -9,7 +9,7 @@
 \***********************************************************************/
 
 /****************************** Includes *******************************/
-#include "config.h"
+#include <config.h>  // use <...> to support separated build directory
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -132,7 +132,6 @@ void debugDumpMemory(bool printAddress, const void *address, uint length)
     p = (const byte*)address+z;
     if (printAddress) fprintf(stderr,"%08lx:",(unsigned long)p);
     fprintf(stderr,"%08lx  ",(unsigned long)(p-(byte*)address));
-
 
     for (i = 0; i < 16; i++)
     {
