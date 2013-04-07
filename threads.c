@@ -11,10 +11,13 @@
 #define __THREADS_IMPLEMENATION__
 
 /****************************** Includes *******************************/
+#include <config.h>  // use <...> to support separated build directory
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <pthread.h>
 #include <semaphore.h>
+#include <limits.h>
 #include <unistd.h>
 #include <assert.h>
 
@@ -75,18 +78,38 @@ LOCAL void threadStart(ThreadStartInfo *startInfo)
   userData      = startInfo->userData;
   sem_post(&startInfo->lock);
 
-  #ifdef LINUX
+  #if   defined(PLATFORM_LINUX)
     if (nice(niceLevel) == -1)
     {
       // ignore error
     }
-  #endif /* LINUX */
+  #elif defined(PLATFORM_WINDOWS)
+  #endif /* PLATFORM_... */
 
   assert(entryFunction != NULL);
   entryFunction(userData);
 }
 
 /*---------------------------------------------------------------------*/
+
+uint Thread_getNumberOfCores(void)
+{
+  #if   defined(PLATFORM_LINUX)
+  #elif defined(PLATFORM_WINDOWS)
+    SYSTEM_INFO info;
+  #endif /* PLATFORM_... */
+
+  #if   defined(PLATFORM_LINUX)
+    #if defined(HAVE_SYSCONF) && defined(HAVE__SC_NPROCESSORS_CONF)
+      return (uint)sysconf(_SC_NPROCESSORS_CONF);
+    #else
+      return 1;
+    #endif
+  #elif defined(PLATFORM_WINDOWS)
+    GetSystemInfo(&info);
+    return (uint)info.dwNumberOfProcessors;
+  #endif /* PLATFORM_... */
+}
 
 bool Thread_init(Thread     *thread,
                  const char *name,

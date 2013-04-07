@@ -12,6 +12,8 @@
 #define __TRHEADS__
 
 /****************************** Includes *******************************/
+#include <config.h>  // use <...> to support separated build directory
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <pthread.h>
@@ -72,6 +74,17 @@ typedef struct
 #ifdef __cplusplus
   extern "C" {
 #endif
+
+/***********************************************************************\
+* Name   : Thread_getNumberOfCores
+* Purpose: get number of cpu cores
+* Input  : -
+* Output : -
+* Return : number of cpu cores
+* Notes  : -
+\***********************************************************************/
+
+uint Thread_getNumberOfCores(void);
 
 /***********************************************************************\
 * Name   : Thread_init
