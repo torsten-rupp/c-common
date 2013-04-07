@@ -12,15 +12,19 @@
 #define __FILES__
 
 /****************************** Includes *******************************/
-#include "config.h"
+#include <config.h>  // use <...> to support separated build directory
 
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <dirent.h>
-#include <linux/fs.h>
 #include <assert.h>
+
+#if   defined(PLATFORM_LINUX)
+  #include <linux/fs.h>
+#elif defined(PLATFORM_WINDOWS)
+#endif /* PLATFORM_... */
 
 #include "global.h"
 #include "strings.h"
@@ -30,12 +34,11 @@
 
 /***************************** Constants *******************************/
 
-#ifdef FILE_SEPARAPTOR_CHAR
-  #define _FILES_PATHNAME_SEPARATOR_CHARS_STRING1(z) _FILES_PATHNAME_SEPARATOR_CHARS_STRING2(z)
-  #define _FILES_PATHNAME_SEPARATOR_CHARS_STRING2(z) #z
+#define FILE_TMP_DIRECTORY File_getSystemTmpDirectory()
 
-  #define FILES_PATHNAME_SEPARATOR_CHAR FILE_SEPARAPTOR_CHAR
-  #define FILES_PATHNAME_SEPARATOR_CHARS _FILES_PATHNAME_SEPARATOR_CHARS_STRING1(FILE_SEPARAPTOR_CHAR)
+#if defined(FILE_SEPARATOR_STRING) && defined(FILE_SEPARATOR_STRING)
+  #define FILES_PATHNAME_SEPARATOR_CHAR FILE_SEPARATOR_CHAR
+  #define FILES_PATHNAME_SEPARATOR_CHARS FILE_SEPARATOR_STRING
 #else
   #define FILES_PATHNAME_SEPARATOR_CHAR '/'
   #define FILES_PATHNAME_SEPARATOR_CHARS "/"
@@ -44,6 +47,10 @@
 #define FILE_CAST_SIZE (sizeof(time_t)+sizeof(time_t))
 
 // file types
+// work-around Windows:
+#ifdef FILE_TYPE_UNKNOWN
+  #undef FILE_TYPE_UNKNOWN
+#endif
 typedef enum
 {
   FILE_TYPE_NONE,
@@ -83,25 +90,73 @@ typedef enum
 } FileSpecialTypes;
 
 // permission flags
-#define FILE_PERMISSION_USER_READ    S_IRUSR
-#define FILE_PERMISSION_USER_WRITE   S_IWUSR
-#define FILE_PERMISSION_USER_EXECUTE S_IXUSR
-#define FILE_PERMISSION_USER_ACCESS  S_IXUSR
+#ifdef HAVE_S_IRUSR
+  #define FILE_PERMISSION_USER_READ     S_IRUSR
+#else
+  #define FILE_PERMISSION_USER_READ     0
+#endif
+#ifdef HAVE_S_IWUSR
+  #define FILE_PERMISSION_USER_WRITE    S_IWUSR
+#else
+  #define FILE_PERMISSION_USER_WRITE    0
+#endif
+#ifdef HAVE_S_IXUSR
+  #define FILE_PERMISSION_USER_EXECUTE  S_IXUSR
+#else
+  #define FILE_PERMISSION_USER_EXECUTE  0
+#endif
+#ifdef HAVE_S_IXUSR
+  #define FILE_PERMISSION_USER_ACCESS   S_IXUSR
+#else
+  #define FILE_PERMISSION_USER_ACCESS   0
+#endif
 
-#define FILE_PERMISSION_GROUP_READ    S_IRGRP
-#define FILE_PERMISSION_GROUP_WRITE   S_IWGRP
-#define FILE_PERMISSION_GROUP_EXECUTE S_IXGRP
-#define FILE_PERMISSION_GROUP_ACCESS  S_IXGRP
+#ifdef HAVE_S_IRGRP
+  #define FILE_PERMISSION_GROUP_READ    S_IRGRP
+#else
+  #define FILE_PERMISSION_GROUP_READ    0
+#endif
+#ifdef HAVE_S_IWGRP
+  #define FILE_PERMISSION_GROUP_WRITE   S_IWGRP
+#else
+  #define FILE_PERMISSION_GROUP_WRITE   0
+#endif
+#ifdef HAVE_S_IXGRP
+  #define FILE_PERMISSION_GROUP_EXECUTE S_IXGRP
+#else
+  #define FILE_PERMISSION_GROUP_EXECUTE 0
+#endif
+#ifdef HAVE_S_IXGRP
+  #define FILE_PERMISSION_GROUP_ACCESS  S_IXGRP
+#else
+  #define FILE_PERMISSION_GROUP_ACCESS  0
+#endif
 
-#define FILE_PERMISSION_OTHER_READ    S_IROTH
-#define FILE_PERMISSION_OTHER_WRITE   S_IWOTH
-#define FILE_PERMISSION_OTHER_EXECUTE S_IXOTH
-#define FILE_PERMISSION_OTHER_ACCESS  S_IXOTH
+#ifdef HAVE_S_IROTH
+  #define FILE_PERMISSION_OTHER_READ    S_IROTH
+#else
+  #define FILE_PERMISSION_OTHER_READ    0
+#endif
+#ifdef HAVE_S_IWOTH
+  #define FILE_PERMISSION_OTHER_WRITE   S_IWOTH
+#else
+  #define FILE_PERMISSION_OTHER_WRITE   0
+#endif
+#ifdef HAVE_S_IXOTH
+  #define FILE_PERMISSION_OTHER_EXECUTE S_IXOTH
+#else
+  #define FILE_PERMISSION_OTHER_EXECUTE 0
+#endif
+#ifdef HAVE_S_IXOTH
+  #define FILE_PERMISSION_OTHER_ACCESS  S_IXOTH
+#else
+  #define FILE_PERMISSION_OTHER_ACCESS  0
+#endif
 
-#define FILE_PERMISSION_READ    (FILE_PERMISSION_USER_READ|FILE_PERMISSION_GROUP_READ|FILE_PERMISSION_OTHER_READ)
-#define FILE_PERMISSION_WRITE   (FILE_PERMISSION_USER_WRITE|FILE_PERMISSION_GROUP_WRITE|FILE_PERMISSION_OTHER_WRITE)
-#define FILE_PERMISSION_EXECUTE (FILE_PERMISSION_USER_EXECUTE|FILE_PERMISSION_GROUP_EXECUTE|FILE_PERMISSION_OTHER_EXECUTE)
-#define FILE_PERMISSION_MASK    (FILE_PERMISSION_READ|FILE_PERMISSION_WRITE|FILE_PERMISSION_EXECUTE)
+#define FILE_PERMISSION_READ      (FILE_PERMISSION_USER_READ|FILE_PERMISSION_GROUP_READ|FILE_PERMISSION_OTHER_READ)
+#define FILE_PERMISSION_WRITE     (FILE_PERMISSION_USER_WRITE|FILE_PERMISSION_GROUP_WRITE|FILE_PERMISSION_OTHER_WRITE)
+#define FILE_PERMISSION_EXECUTE   (FILE_PERMISSION_USER_EXECUTE|FILE_PERMISSION_GROUP_EXECUTE|FILE_PERMISSION_OTHER_EXECUTE)
+#define FILE_PERMISSION_MASK      (FILE_PERMISSION_READ|FILE_PERMISSION_WRITE|FILE_PERMISSION_EXECUTE)
 
 // default user, group ids, permission
 #define FILE_DEFAULT_USER_ID    0xFFFFFFFF
@@ -332,7 +387,32 @@ bool File_getNextSplitFileName(StringTokenizer *stringTokenizer, String *const n
 /*---------------------------------------------------------------------*/
 
 /***********************************************************************\
-* Name   : File_getTmpFileName
+* Name   : File_getSystemTmpDirectory
+* Purpose: get system temporary directory name
+* Input  : -
+* Output : -
+* Return : temporary directory name
+* Notes  : -
+\***********************************************************************/
+
+const char *File_getSystemTmpDirectory(void);
+
+/***********************************************************************\
+* Name   : File_getTmpFile, File_getTmpFileCString
+* Purpose: create and get a temporary file name
+* Input  : fileName  - variable for temporary file name
+*          pattern   - pattern with XXXXXX or NULL
+*          directory - directory to create temporary file (can be NULL)
+* Output : fileName - temporary file name
+* Return : TRUE iff temporary file created, FALSE otherwise
+* Notes  : -
+\***********************************************************************/
+
+Errors File_getTmpFile(FileHandle *fileHandle, const String pattern, const String directory);
+Errors File_getTmpFileCString(FileHandle *fileHandle, char const *pattern, const String directory);
+
+/***********************************************************************\
+* Name   : File_getTmpFileName, File_getTmpFileNameCString
 * Purpose: create and get a temporary file name
 * Input  : fileName  - variable for temporary file name
 *          pattern   - pattern with XXXXXX or NULL
@@ -346,7 +426,7 @@ Errors File_getTmpFileName(String fileName, const String pattern, const String d
 Errors File_getTmpFileNameCString(String fileName, char const *pattern, const String directory);
 
 /***********************************************************************\
-* Name   : File_getTmpDirectoryName
+* Name   : File_getTmpDirectoryName, File_getTmpDirectoryNameCString
 * Purpose: create and get a temporary directory name
 * Input  : directoryName - variable for temporary directory name
 *          pattern       - pattern with XXXXXX or NULL
@@ -679,9 +759,11 @@ uint32 File_userNameToUserId(const char *name);
 /***********************************************************************\
 * Name   : File_userNameToUserId
 * Purpose: convert user name to user id
-* Input  : name - user name
-* Output : -
-* Return : user id or FILE_DEFAULT_USER_ID if user not found
+* Input  : name     - name variable
+*          nameSize - max. size of name
+*          userId   - user id
+* Output : name - user name
+* Return : user name or "NONE" if user not found
 * Notes  : -
 \***********************************************************************/
 
@@ -701,9 +783,11 @@ uint32 File_groupNameToGroupId(const char *name);
 /***********************************************************************\
 * Name   : File_groupNameToGroupId
 * Purpose: convert group name to group id
-* Input  : name - group name
-* Output : -
-* Return : user id or FILE_DEFAULT_GROUP_ID if group not found
+* Input  : name     - name variable
+*          nameSize - max. size of name
+*          groupId  - group id
+* Output : name - group name
+* Return : group name or "NONE" if user not found
 * Notes  : -
 \***********************************************************************/
 
