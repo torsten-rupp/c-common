@@ -73,13 +73,12 @@ typedef int(*ListNodeCompareFunction)(const void *node1, const void *node2, void
 
 #define LIST_STATIC_INIT {NULL,NULL}
 
-#ifndef NDEBUG
-  #define __LIST_NEW_NODE(fileName,lineNb,type) (type*)__List_newNode(fileName,lineNb,sizeof(type))
-  #define __LIST_DELETE_NODE(fileName,lineNb,node) __List_deleteNode(fileName,lineNb,(Node*)node)
-#endif /* not NDEBUG */
-
 #define LIST_NEW_NODE(type) (type*)List_newNode(sizeof(type))
 #define LIST_DELETE_NODE(node) List_deleteNode((Node*)node)
+#ifndef NDEBUG
+  #define LIST_NEW_NODEX(fileName,lineNb,type) (type*)__List_newNode(fileName,lineNb,sizeof(type))
+  #define LIST_DELETE_NODEX(node) __List_deleteNode(fileName,lineNb,(Node*)node)
+#endif /* not NDEBUG */
 
 #define LIST_DEFINE(type,define) \
   typedef struct { define; } type; \
@@ -174,7 +173,7 @@ Node *__List_deleteNode(const char *__fileName__, ulong __lineNb__, Node *node);
 
 /***********************************************************************\
 * Name   : List_init
-* Purpose: initialise list
+* Purpose: initialize list
 * Input  : list - list to initialize
 * Output : -
 * Return : -
