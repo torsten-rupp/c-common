@@ -77,7 +77,7 @@ typedef int(*ListNodeCompareFunction)(const void *node1, const void *node2, void
 #define LIST_DELETE_NODE(node) List_deleteNode((Node*)node)
 #ifndef NDEBUG
   #define LIST_NEW_NODEX(fileName,lineNb,type) (type*)__List_newNode(fileName,lineNb,sizeof(type))
-  #define LIST_DELETE_NODEX(node) __List_deleteNode(fileName,lineNb,(Node*)node)
+  #define LIST_DELETE_NODEX(fileName,lineNb,node) __List_deleteNode(fileName,lineNb,(Node*)node)
 #endif /* not NDEBUG */
 
 #define LIST_DEFINE(type,define) \
