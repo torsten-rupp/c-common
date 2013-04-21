@@ -135,6 +135,20 @@
 #endif /* not NDEBUG */
 
 /****************************** Macros *********************************/
+#ifndef NDEBUG
+  #define FILE_CHECK_VALID(fileHandle) \
+    do \
+    { \
+      fileCheckValid(fileHandle); \
+    } \
+    while (0)
+#else /* NDEBUG */
+  #define FILE_CHECK_VALID(fileHandle) \
+    do \
+    { \
+    } \
+    while (0)
+#endif /* not NDEBUG */
 
 /***************************** Forwards ********************************/
 
@@ -150,6 +164,55 @@ LOCAL void debugFileInit(void)
   pthread_mutex_init(&debugFileLock,NULL);
   List_init(&debugOpenFileList);
   List_init(&debugClosedFileList);
+}
+#endif /* NDEBUG */
+
+#ifndef NDEBUG
+LOCAL void fileCheckValid(FileHandle *fileHandle)
+{
+  DebugFileNode *debugFileNode;
+
+  assert(fileHandle != NULL);
+
+  pthread_once(&debugFileInitFlag,debugFileInit);
+
+  pthread_mutex_lock(&debugFileLock);
+  {
+    // check if file was closed
+    debugFileNode = debugClosedFileList.head;
+    while ((debugFileNode != NULL) && (debugFileNode->fileHandle != fileHandle))
+    {
+      debugFileNode = debugFileNode->next;
+    }
+    if (debugFileNode != NULL)
+    {
+      #ifdef HAVE_BACKTRACE
+        debugDumpCurrentStackTrace(stderr,"",0);
+      #endif /* HAVE_BACKTRACE */
+      HALT_INTERNAL_ERROR("File 0x%08x was closed at %s, %lu",
+                          fileHandle,
+                          debugFileNode->closeFileName,
+                          debugFileNode->closeLineNb
+                         );
+    }
+
+    // check if file is open
+    debugFileNode = debugOpenFileList.head;
+    while ((debugFileNode != NULL) && (debugFileNode->fileHandle != fileHandle))
+    {
+      debugFileNode = debugFileNode->next;
+    }
+    if (debugFileNode == NULL)
+    {
+      #ifdef HAVE_BACKTRACE
+        debugDumpCurrentStackTrace(stderr,"",0);
+      #endif /* HAVE_BACKTRACE */
+      HALT_INTERNAL_ERROR("File 0x%08x is not open",
+                          fileHandle
+                         );
+    }
+  }
+  pthread_mutex_unlock(&debugFileLock);
 }
 #endif /* NDEBUG */
 
@@ -592,6 +655,27 @@ Errors __File_getTmpFileCString(const char *__fileName__,
 
     pthread_mutex_lock(&debugFileLock);
     {
+      // check if file is already in open-list
+      debugFileNode = debugOpenFileList.head;
+      while ((debugFileNode != NULL) && (debugFileNode->fileHandle != fileHandle))
+      {
+        debugFileNode = debugFileNode->next;
+      }
+      if (debugFileNode != NULL)
+      {
+        fprintf(stderr,"DEBUG WARNING: file '%s' at %s, line %lu opened again at %s, %lu\n",
+                String_cString(debugFileNode->fileHandle->name),
+                debugFileNode->fileName,
+                debugFileNode->lineNb,
+                __fileName__,
+                __lineNb__
+               );
+        #ifdef HAVE_BACKTRACE
+          debugDumpCurrentStackTrace(stderr,"",0);
+        #endif /* HAVE_BACKTRACE */
+        HALT_INTERNAL_ERROR("");
+      }
+
       // find file in closed-list; reuse or allocate new debug node
       debugFileNode = debugClosedFileList.head;
       while ((debugFileNode != NULL) && (debugFileNode->fileHandle != fileHandle))
@@ -993,6 +1077,26 @@ Errors __File_openCString(const char *__fileName__,
 
     pthread_mutex_lock(&debugFileLock);
     {
+      // check if file is already in open-list
+      debugFileNode = debugOpenFileList.head;
+      while ((debugFileNode != NULL) && (debugFileNode->fileHandle != fileHandle))
+      {
+        debugFileNode = debugFileNode->next;
+      }
+      if (debugFileNode != NULL)
+      {
+        #ifdef HAVE_BACKTRACE
+          debugDumpCurrentStackTrace(stderr,"",0);
+        #endif /* HAVE_BACKTRACE */
+        HALT_INTERNAL_ERROR("File '%s' at %s, line %lu opened again at %s, %lu",
+                            String_cString(debugFileNode->fileHandle->name),
+                            debugFileNode->fileName,
+                            debugFileNode->lineNb,
+                            __fileName__,
+                            __lineNb__
+                           );
+      }
+
       // find file in closed-list; reuse or allocate new debug node
       debugFileNode = debugClosedFileList.head;
       while ((debugFileNode != NULL) && (debugFileNode->fileHandle != fileHandle))
@@ -1129,6 +1233,26 @@ Errors __File_openDescriptor(const char *__fileName__,
 
     pthread_mutex_lock(&debugFileLock);
     {
+      // check if file is already in open-list
+      debugFileNode = debugOpenFileList.head;
+      while ((debugFileNode != NULL) && (debugFileNode->fileHandle != fileHandle))
+      {
+        debugFileNode = debugFileNode->next;
+      }
+      if (debugFileNode != NULL)
+      {
+        #ifdef HAVE_BACKTRACE
+          debugDumpCurrentStackTrace(stderr,"",0);
+        #endif /* HAVE_BACKTRACE */
+        HALT_INTERNAL_ERROR("File '%s' at %s, line %lu opened again at %s, %lu",
+                            String_cString(debugFileNode->fileHandle->name),
+                            debugFileNode->fileName,
+                            debugFileNode->lineNb,
+                            __fileName__,
+                            __lineNb__
+                           );
+      }
+
       // find file in closed-list; reuse or allocate new debug node
       debugFileNode = debugClosedFileList.head;
       while ((debugFileNode != NULL) && (debugFileNode->fileHandle != fileHandle))
@@ -1182,6 +1306,7 @@ Errors __File_close(const char *__fileName__, ulong __lineNb__, FileHandle *file
 
   assert(fileHandle != NULL);
   assert(fileHandle->file != NULL);
+  FILE_CHECK_VALID(fileHandle);
 
   #ifndef NDEBUG
     if (fileHandle->deleteOnCloseFlag)
@@ -1226,15 +1351,14 @@ Errors __File_close(const char *__fileName__, ulong __lineNb__, FileHandle *file
       }
       else
       {
-        fprintf(stderr,"DEBUG WARNING: file '%p' not found in debug list at %s, line %lu\n",
-                fileHandle->file,
-                __fileName__,
-                __lineNb__
-               );
         #ifdef HAVE_BACKTRACE
           debugDumpCurrentStackTrace(stderr,"",0);
         #endif /* HAVE_BACKTRACE */
-        HALT_INTERNAL_ERROR("");
+        HALT_INTERNAL_ERROR("File '%p' not found in debug list at %s, line %lu",
+                            fileHandle->file,
+                            __fileName__,
+                            __lineNb__
+                           );
       }
     }
     pthread_mutex_unlock(&debugFileLock);
@@ -1248,7 +1372,6 @@ Errors __File_close(const char *__fileName__, ulong __lineNb__, FileHandle *file
 
   // close file
   fclose(fileHandle->file);
-  fileHandle->file = NULL;
 
   // free resources
   if (fileHandle->name != NULL) String_delete(fileHandle->name);
@@ -1263,6 +1386,7 @@ bool File_eof(FileHandle *fileHandle)
 
   assert(fileHandle != NULL);
   assert(fileHandle->file != NULL);
+  FILE_CHECK_VALID(fileHandle);
 
   ch = getc(fileHandle->file);
   if (ch != EOF)
@@ -1285,11 +1409,11 @@ Errors File_read(FileHandle *fileHandle,
                 )
 {
   ssize_t n;
-  ulong   length;
 
   assert(fileHandle != NULL);
   assert(fileHandle->file != NULL);
   assert(buffer != NULL);
+  FILE_CHECK_VALID(fileHandle);
 
   if (bytesRead != NULL)
   {
@@ -1338,6 +1462,7 @@ Errors File_write(FileHandle *fileHandle,
   assert(fileHandle != NULL);
   assert(fileHandle->file != NULL);
   assert(buffer != NULL);
+  FILE_CHECK_VALID(fileHandle);
 
   n = fwrite(buffer,1,bufferLength,fileHandle->file);
   if (n > 0) fileHandle->index += n;
@@ -1365,6 +1490,7 @@ Errors File_readLine(FileHandle *fileHandle,
   assert(fileHandle != NULL);
   assert(fileHandle->file != NULL);
   assert(line != NULL);
+  FILE_CHECK_VALID(fileHandle);
 
   String_clear(line);
   do
@@ -1404,6 +1530,7 @@ Errors File_writeLine(FileHandle   *fileHandle,
   assert(fileHandle != NULL);
   assert(fileHandle->file != NULL);
   assert(line != NULL);
+  FILE_CHECK_VALID(fileHandle);
 
   error = File_write(fileHandle,String_cString(line),String_length(line));
   if (error != ERROR_NONE)
@@ -1431,6 +1558,7 @@ Errors File_printLine(FileHandle *fileHandle,
   assert(fileHandle != NULL);
   assert(fileHandle->file != NULL);
   assert(format != NULL);
+  FILE_CHECK_VALID(fileHandle);
 
   // initialize variables
   line = String_new();
@@ -1518,6 +1646,7 @@ Errors File_flush(FileHandle *fileHandle)
 {
   assert(fileHandle != NULL);
   assert(fileHandle->file != NULL);
+  FILE_CHECK_VALID(fileHandle);
 
   if (fflush(fileHandle->file) != 0)
   {
@@ -1530,6 +1659,7 @@ Errors File_flush(FileHandle *fileHandle)
 uint64 File_getSize(FileHandle *fileHandle)
 {
   assert(fileHandle != NULL);
+  FILE_CHECK_VALID(fileHandle);
 
   return fileHandle->size;
 }
@@ -1541,6 +1671,7 @@ Errors File_tell(FileHandle *fileHandle, uint64 *offset)
   assert(fileHandle != NULL);
   assert(fileHandle->file != NULL);
   assert(offset != NULL);
+  FILE_CHECK_VALID(fileHandle);
 
   n = FTELL(fileHandle->file);
   if (n == (off_t)(-1))
@@ -1562,6 +1693,7 @@ Errors File_seek(FileHandle *fileHandle,
 {
   assert(fileHandle != NULL);
   assert(fileHandle->file != NULL);
+  FILE_CHECK_VALID(fileHandle);
 
   if (FSEEK(fileHandle->file,(off_t)offset,SEEK_SET) == -1)
   {
@@ -1578,6 +1710,7 @@ Errors File_truncate(FileHandle *fileHandle,
 {
   assert(fileHandle != NULL);
   assert(fileHandle->file != NULL);
+  FILE_CHECK_VALID(fileHandle);
 
   if (size < fileHandle->size)
   {
@@ -1604,6 +1737,7 @@ Errors File_dropCaches(FileHandle *fileHandle,
 
   assert(fileHandle != NULL);
   assert(fileHandle->file != NULL);
+  FILE_CHECK_VALID(fileHandle);
 
   (void)fflush(fileHandle->file);
   #if defined(HAVE_FDATASYNC) || defined(HAVE_POSIX_FADVISE)
@@ -3105,6 +3239,9 @@ void File_debugDumpInfo(FILE *handle)
   {
     LIST_ITERATE(&debugOpenFileList,debugFileNode)
     {
+      assert(debugFileNode->fileHandle != NULL);
+      assert(debugFileNode->fileHandle->name != NULL);
+
       fprintf(handle,"DEBUG: file '%s' opened at %s, line %lu\n",
               String_cString(debugFileNode->fileHandle->name),
               debugFileNode->fileName,
