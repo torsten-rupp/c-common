@@ -285,59 +285,6 @@ LOCAL void Semaphore_debugInit(void)
 }
 
 /***********************************************************************\
-* Name   : Semaphore_debugPrintInfo
-* Purpose:
-* Input  : -
-* Output : -
-* Return : -
-* Notes  : -
-\***********************************************************************/
-
-LOCAL void Semaphore_debugPrintInfo(void)
-{
-  Semaphore  *semaphore;
-  const char *semaphoreState;
-  uint       z;
-
-  fprintf(stderr,"Semaphore debug info:\n");
-  LIST_ITERATE(&debugSemaphoreList,semaphore)
-  {
-    switch (semaphore->lockType)
-    {
-      case SEMAPHORE_LOCK_TYPE_NONE:
-        assert(semaphore->readLockCount == 0);
-        assert(semaphore->readWriteLockCount == 0);
-        semaphoreState = "none";
-        break;
-      case SEMAPHORE_LOCK_TYPE_READ:
-        assert(semaphore->readWriteLockCount == 0);
-        semaphoreState = "read";
-        break;
-      case SEMAPHORE_LOCK_TYPE_READ_WRITE:
-        assert(semaphore->readLockCount == 0);
-        semaphoreState = "read/write";
-        break;
-      #ifndef NDEBUG
-        default:
-          HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
-          break; /* not reached */
-      #endif /* NDEBUG */
-    }
-    fprintf(stderr,"  '%s':\n",semaphore->name);
-    fprintf(stderr,"    locked '%s'\n",semaphoreState);
-    for (z = 0; z < semaphore->lockedByCount; z++)
-    {
-      fprintf(stderr,
-              "    by thread 0x%lx at %s, line %lu\n",
-              semaphore->lockedBy[z].thread,
-              semaphore->lockedBy[z].fileName,
-              semaphore->lockedBy[z].lineNb
-             );
-    }
-  }
-}
-
-/***********************************************************************\
 * Name   : signalHandler
 * Purpose: signal handler
 * Input  : signalNumber - signal number
@@ -659,10 +606,10 @@ LOCAL void unlock(const char *fileName, ulong lineNb, Semaphore *semaphore)
 
         // send modified signal
         __SEMAPHORE_SIGNAL(DEBUG_READ_WRITE,"MODIFIED",&semaphore->modified);
-
-        // unlock
-        __SEMAPHORE_UNLOCK(DEBUG_READ_WRITE,"RW",semaphore,semaphore->readLockCount);
       }
+
+      // unlock
+      __SEMAPHORE_UNLOCK(DEBUG_READ_WRITE,"RW",semaphore,semaphore->readLockCount);
       break;
     #ifndef NDEBUG
       default:
@@ -870,18 +817,18 @@ bool __Semaphore_init(const char *name, Semaphore *semaphore)
   semaphore->readRequestCount      = 0;
   semaphore->readWriteRequestCount = 0;
 
-#if 0
   pthread_mutexattr_init(&semaphore->lockAttributes);
   pthread_mutexattr_settype(&semaphore->lockAttributes,PTHREAD_MUTEX_RECURSIVE);
-#endif /* 0 */
-  if (pthread_mutex_init(&semaphore->lock,NULL) != 0)
+  if (pthread_mutex_init(&semaphore->lock,&semaphore->lockAttributes) != 0)
   {
+    pthread_mutexattr_destroy(&semaphore->lockAttributes);
     pthread_mutex_destroy(&semaphore->requestLock);
     return FALSE;
   }
   if (pthread_cond_init(&semaphore->readLockZero,NULL) != 0)
   {
     pthread_mutex_destroy(&semaphore->lock);
+    pthread_mutexattr_destroy(&semaphore->lockAttributes);
     pthread_mutex_destroy(&semaphore->requestLock);
     return FALSE;
   }
@@ -889,7 +836,7 @@ bool __Semaphore_init(const char *name, Semaphore *semaphore)
   {
     pthread_cond_destroy(&semaphore->readLockZero);
     pthread_mutex_destroy(&semaphore->lock);
-//    pthread_mutexattr_destroy(&semaphore->lockAttributes);
+    pthread_mutexattr_destroy(&semaphore->lockAttributes);
     pthread_mutex_destroy(&semaphore->requestLock);
     return FALSE;
   }
@@ -943,7 +890,7 @@ void Semaphore_done(Semaphore *semaphore)
   pthread_cond_destroy(&semaphore->modified);
   pthread_cond_destroy(&semaphore->readLockZero);
   pthread_mutex_destroy(&semaphore->lock);
-//  pthread_mutexattr_destroy(&semaphore->lockAttributes);
+  pthread_mutexattr_destroy(&semaphore->lockAttributes);
   pthread_mutex_destroy(&semaphore->requestLock);
 }
 
@@ -1110,6 +1057,61 @@ void Semaphore_setEnd(Semaphore *semaphore)
     unlock(__FILE__,__LINE__,semaphore);
   #endif /* NDEBUG */
 }
+
+#ifndef NDEBUG
+/***********************************************************************\
+* Name   : Semaphore_debugPrintInfo
+* Purpose: print debug info
+* Input  : -
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+void Semaphore_debugPrintInfo(void)
+{
+  Semaphore  *semaphore;
+  const char *semaphoreState;
+  uint       z;
+
+  fprintf(stderr,"Semaphore debug info:\n");
+  LIST_ITERATE(&debugSemaphoreList,semaphore)
+  {
+    switch (semaphore->lockType)
+    {
+      case SEMAPHORE_LOCK_TYPE_NONE:
+        assert(semaphore->readLockCount == 0);
+        assert(semaphore->readWriteLockCount == 0);
+        semaphoreState = "none";
+        break;
+      case SEMAPHORE_LOCK_TYPE_READ:
+        assert(semaphore->readWriteLockCount == 0);
+        semaphoreState = "read";
+        break;
+      case SEMAPHORE_LOCK_TYPE_READ_WRITE:
+        assert(semaphore->readLockCount == 0);
+        semaphoreState = "read/write";
+        break;
+      #ifndef NDEBUG
+        default:
+          HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
+          break; /* not reached */
+      #endif /* NDEBUG */
+    }
+    fprintf(stderr,"  '%s':\n",semaphore->name);
+    fprintf(stderr,"    locked '%s'\n",semaphoreState);
+    for (z = 0; z < semaphore->lockedByCount; z++)
+    {
+      fprintf(stderr,
+              "    by thread 0x%lx at %s, line %lu\n",
+              semaphore->lockedBy[z].thread,
+              semaphore->lockedBy[z].fileName,
+              semaphore->lockedBy[z].lineNb
+             );
+    }
+  }
+}
+#endif /* not NDEBUG */
 
 #ifdef __cplusplus
   }

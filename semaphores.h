@@ -66,7 +66,7 @@ typedef struct Semaphore
   #elif defined(PLATFORM_WINDOWS)
     HANDLE              lock;
   #endif /* PLATFORM_... */
-//  pthread_mutexattr_t lockAttributes;
+  pthread_mutexattr_t lockAttributes;
 
   SemaphoreLockTypes  lockType;              // current lock type
   uint                readLockCount;         // number of read locks
@@ -368,6 +368,19 @@ bool Semaphore_isLockPending(Semaphore *semaphore, SemaphoreLockTypes semaphoreL
 \***********************************************************************/
 
 void Semaphore_setEnd(Semaphore *semaphore);
+
+#ifndef NDEBUG
+/***********************************************************************\
+* Name   : Semaphore_debugPrintInfo
+* Purpose: print debug info
+* Input  : -
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+void Semaphore_debugPrintInfo(void);
+#endif /* not NDEBUG */
 
 #ifdef __cplusplus
   }
