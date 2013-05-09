@@ -65,10 +65,6 @@ typedef int(*ListNodeCompareFunction)(const void *node1, const void *node2, void
   #define List_deleteNode(node) __List_deleteNode(__FILE__,__LINE__,node)
   #define List_insert(list,node,nextNode) __List_insert(__FILE__,__LINE__,list,node,nextNode)
   #define List_append(list,node) __List_append(__FILE__,__LINE__,list,node)
-//List_duplicate
-//List_delete
-//List_clear
-//List_copy
 #endif /* not NDEBUG */
 
 #define LIST_STATIC_INIT {NULL,NULL}
@@ -492,6 +488,24 @@ Node *List_getFirst(void *list);
 \***********************************************************************/
 
 Node *List_getLast(void *list);
+
+/***********************************************************************\
+* Name   : List_contains
+* Purpose: check if list contain node
+* Input  : list                   - list
+*          node                   - node
+*          listNodeEqualsFunction - equals function or NULL
+*          listNodeEqualsUserData - user data for equals function
+* Output : -
+* Return : TRUE if list contain node, FALSE otherwise
+* Notes  : -
+\***********************************************************************/
+
+bool List_contains(const void             *list,
+                   const void             *node,
+                   ListNodeEqualsFunction listNodeEqualsFunction,
+                   void                   *listNodeEqualsUserData
+                  );
 
 /***********************************************************************\
 * Name   : List_findFirst
