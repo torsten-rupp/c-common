@@ -8,6 +8,8 @@
 *
 \***********************************************************************/
 
+#define __DICTIONARY_IMPLEMENATION__
+
 /****************************** Includes *******************************/
 #include <stdlib.h>
 #include <stdio.h>
@@ -887,12 +889,12 @@ bool Dictionary_add(Dictionary *dictionary,
   return TRUE;
 }
 
-void Dictionary_rem(Dictionary             *dictionary,
-                    const void             *keyData,
-                    ulong                  keyLength,
-                    DictionaryFreeFunction dictionaryFreeFunction,
-                    void                   *dictionaryFreeUserData
-                   )
+void Dictionary_remove(Dictionary             *dictionary,
+                       const void             *keyData,
+                       ulong                  keyLength,
+                       DictionaryFreeFunction dictionaryFreeFunction,
+                       void                   *dictionaryFreeUserData
+                      )
 {
   ulong                hash;
   SemaphoreLock        semaphoreLock;
@@ -962,16 +964,6 @@ bool Dictionary_find(Dictionary *dictionary,
   }
 
   return foundFlag;
-}
-
-bool Dictionary_contain(Dictionary *dictionary,
-                        const void *keyData,
-                        ulong      keyLength
-                       )
-{
-  assert(dictionary != NULL);
-
-  return Dictionary_find(dictionary,keyData,keyLength,NULL,NULL);
 }
 
 void Dictionary_initIterator(DictionaryIterator *dictionaryIterator,

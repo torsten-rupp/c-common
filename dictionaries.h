@@ -200,7 +200,7 @@ bool Dictionary_add(Dictionary *dictionary,
                    );
 
 /***********************************************************************\
-* Name   : Dictionary_rem
+* Name   : Dictionary_remove
 * Purpose: remove entry from dictionary
 * Input  : dictionary             - dictionary
 *          keyData                - key data
@@ -214,12 +214,12 @@ bool Dictionary_add(Dictionary *dictionary,
 * Notes  : -
 \***********************************************************************/
 
-void Dictionary_rem(Dictionary             *dictionary,
-                    const void             *keyData,
-                    ulong                  keyLength,
-                    DictionaryFreeFunction dictionaryFreeFunction,
-                    void                   *dictionaryFreeUserData
-                   );
+void Dictionary_remove(Dictionary             *dictionary,
+                       const void             *keyData,
+                       ulong                  keyLength,
+                       DictionaryFreeFunction dictionaryFreeFunction,
+                       void                   *dictionaryFreeUserData
+                      );
 
 /***********************************************************************\
 * Name   : Dictionary_find
@@ -241,8 +241,8 @@ bool Dictionary_find(Dictionary *dictionary,
                     );
 
 /***********************************************************************\
-* Name   : Dictionary_contain
-* Purpose: check if entry is in dictionary
+* Name   : Dictionary_contains
+* Purpose: check if entry is contained in dictionary
 * Input  : dictionary - dictionary
 *          keyData    - key data
 *          keyLength  - length of key data
@@ -251,10 +251,21 @@ bool Dictionary_find(Dictionary *dictionary,
 * Notes  : -
 \***********************************************************************/
 
-bool Dictionary_contain(Dictionary *dictionary,
-                        const void *keyData,
-                        ulong      keyLength
-                       );
+INLINE bool Dictionary_contains(Dictionary *dictionary,
+                                const void *keyData,
+                                ulong      keyLength
+                               );
+#if defined(NDEBUG) || defined(__DICTIONARY_IMPLEMENATION__)
+INLINE bool Dictionary_contains(Dictionary *dictionary,
+                                const void *keyData,
+                                ulong      keyLength
+                               )
+{
+  assert(dictionary != NULL);
+
+  return Dictionary_find(dictionary,keyData,keyLength,NULL,NULL);
+}
+#endif /* defined(NDEBUG) || defined(__DICTIONARY_IMPLEMENATION__) */
 
 /***********************************************************************\
 * Name   : Dictionary_initIterator
