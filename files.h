@@ -28,6 +28,7 @@
 
 #include "global.h"
 #include "strings.h"
+#include "lists.h"
 #include "errors.h"
 
 /****************** Conditional compilation switches *******************/
@@ -201,33 +202,51 @@ typedef struct
 // file permission
 typedef uint32 FilePermission;
 
+// file attributes
+typedef uint64 FileAttributes;
+
+// file extended attributes
+typedef struct FileExtendedAttributeNode
+{
+  LIST_NODE_HEADER(struct FileExtendedAttributeNode);
+
+  String name;
+  void   *data;
+  uint   dataLength;
+} FileExtendedAttributeNode;
+
+typedef struct
+{
+  LIST_HEADER(FileExtendedAttributeNode);
+} FileExtendedAttributeList;
+
 // file cast: change if file is modified in some way
 typedef byte FileCast[FILE_CAST_SIZE];
 
 // file info data
 typedef struct
 {
-  FileTypes        type;                     // file type; see FileTypes
-  int64            size;                     // size of file [bytes]
-  uint64           timeLastAccess;           // timestamp of last access
-  uint64           timeModified;             // timestamp of last modification
-  uint64           timeLastChanged;          // timestamp of last changed
-  uint32           userId;                   // user id
-  uint32           groupId;                  // group id
-  FilePermission   permission;               // permission flags
-  FileSpecialTypes specialType;              // special type; see FileSpecialTypes
-  uint32           major,minor;              // special type major/minor number
-  uint64           attributes;               // attributes
+  FileTypes        type;              // file type; see FileTypes
+  int64            size;              // size of file [bytes]
+  uint64           timeLastAccess;    // timestamp of last access
+  uint64           timeModified;      // timestamp of last modification
+  uint64           timeLastChanged;   // timestamp of last changed
+  uint32           userId;            // user id
+  uint32           groupId;           // group id
+  FilePermission   permission;        // permission flags
+  FileSpecialTypes specialType;       // special type; see FileSpecialTypes
+  uint32           major,minor;       // special type major/minor number
+  FileAttributes   attributes;        // attributes
 
-  uint64           id;                       // unique id (e. g. inode number)
-  uint             linkCount;                // number of hard links
-  FileCast         cast;                     // cast value for checking if file was changed
+  uint64           id;                // unique id (e. g. inode number)
+  uint             linkCount;         // number of hard links
+  FileCast         cast;              // cast value for checking if file was changed
 } FileInfo;
 
 // file system info data
 typedef struct
 {
-  ulong  blockSize;                          // size of block [bytes]
+  ulong  blockSize;                   // size of block [bytes]
   uint64 freeBytes;
   uint64 totalBytes;
   uint   maxFileNameLength;
@@ -987,11 +1006,25 @@ bool File_isWriteableCString(const char *fileName);
 *          fileName - file name
 * Output : fileInfo - file info
 * Return : ERROR_NONE or error code
-* Notes  : -
+* Notes  : fileInfo must _not_ be initialized
 \***********************************************************************/
 
 Errors File_getFileInfo(FileInfo     *fileInfo,
                         const String fileName
+                       );
+
+/***********************************************************************\
+* Name   : File_setFileInfo
+* Purpose: set file info (time, owner, permission)
+* Input  : fileName - file name
+*          fileInfo - file info
+* Output : -
+* Return : ERROR_NONE or error code
+* Notes  : -
+\***********************************************************************/
+
+Errors File_setFileInfo(const String fileName,
+                        FileInfo     *fileInfo
                        );
 
 /***********************************************************************\
@@ -1053,6 +1086,78 @@ INLINE bool File_haveAttributeNoDump(const FileInfo *fileInfo)
 #endif /* NDEBUG || __FILES_IMPLEMENATION__ */
 
 /***********************************************************************\
+* Name   : File_initExtendedAttributes
+* Purpose: initialize extended attributes list
+* Input  : fileExtendedAttributeList - extended attributes list
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+void File_initExtendedAttributes(FileExtendedAttributeList *fileExtendedAttributeList);
+
+/***********************************************************************\
+* Name   : File_doneExtendedAttributes
+* Purpose: deinitialize extended attributes list
+* Input  : fileExtendedAttributeList - extended attributes list
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+void File_doneExtendedAttributes(FileExtendedAttributeList *fileExtendedAttributeList);
+
+/***********************************************************************\
+* Name   : File_addExtendedAttribute, File_addExtendedAttributeCString
+* Purpose: add file extended attribute to list
+* Input  : name       - name of attribute
+*          data       - data
+*          dataLength - length of data
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+void File_addExtendedAttribute(FileExtendedAttributeList *fileExtendedAttributeList,
+                               const String              name,
+                               const void                *data,
+                               uint                      dataLength
+                              );
+void File_addExtendedAttributeCString(FileExtendedAttributeList *fileExtendedAttributeList,
+                                      const char                *name,
+                                      const void                *data,
+                                      uint                      dataLength
+                                     );
+
+/***********************************************************************\
+* Name   : File_getExtendedAttributes
+* Purpose: get extended attributes of file
+* Input  : fileExtendedAttributeList - extended attributes list
+*          fileName                  - file name
+* Output : -
+* Return : ERROR_NONE or error code
+* Notes  : fileExtendedAttributeList must _not_ be initialized
+\***********************************************************************/
+
+Errors File_getExtendedAttributes(FileExtendedAttributeList *fileExtendedAttributeList,
+                                  const String              fileName
+                                 );
+
+/***********************************************************************\
+* Name   : File_setExtendedAttributes
+* Purpose: set extended attributes of file
+* Input  : fileName                  - file name
+*          fileExtendedAttributeList - extended attributes list
+* Output : -
+* Return : ERROR_NONE or error code
+* Notes  : -
+\***********************************************************************/
+
+Errors File_setExtendedAttributes(const String                    fileName,
+                                  const FileExtendedAttributeList *fileExtendedAttributeList
+                                 );
+
+/***********************************************************************\
 * Name   : File_getFileTimeModified
 * Purpose: get file modified time
 * Input  : fileName - file name
@@ -1092,20 +1197,6 @@ Errors File_setOwner(const String fileName,
                      uint32       userId,
                      uint32       groupId
                     );
-
-/***********************************************************************\
-* Name   : File_setFileInfo
-* Purpose: set file info (time, owner, permission)
-* Input  : fileName - file name
-*          fileInfo - file info
-* Output : -
-* Return : ERROR_NONE or error code
-* Notes  : -
-\***********************************************************************/
-
-Errors File_setFileInfo(const String fileName,
-                        FileInfo     *fileInfo
-                       );
 
 /***********************************************************************\
 * Name   : File_makeDirectory, File_makeDirectoryCString

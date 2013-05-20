@@ -34,6 +34,9 @@
 #ifdef HAVE_GRP_H
   #include <grp.h>
 #endif
+#ifdef HAVE_SYS_XATTR_H
+  #include <sys/xattr.h>
+#endif
 #include <errno.h>
 #ifdef HAVE_BACKTRACE
   #include <execinfo.h>
@@ -222,15 +225,15 @@ LOCAL void fileCheckValid(const char *fileName,
 #endif /* NDEBUG */
 
 /***********************************************************************\
-* Name   : getExtendedAttributes
-* Purpose: get extended file attributes
+* Name   : getAttributes
+* Purpose: get file attributes
 * Input  : fileName - file name
-* Output : attributes - extended file attributes
+* Output : attributes - file attributes
 * Return : ERROR_NONE or error code
 * Notes  : -
 \***********************************************************************/
 
-LOCAL Errors getExtendedAttributes(const String fileName, uint64 *extendedAttributes)
+LOCAL Errors getAttributes(const String fileName, FileAttributes *fileAttributes)
 {
   long   attributes;
   #ifdef FS_IOC_GETFLAGS
@@ -239,11 +242,11 @@ LOCAL Errors getExtendedAttributes(const String fileName, uint64 *extendedAttrib
   #endif /* FS_IOC_GETFLAGS */
 
   assert(fileName != NULL);
-  assert(extendedAttributes != NULL);
+  assert(fileAttributes != NULL);
 
   attributes = 0LL;
   #ifdef FS_IOC_GETFLAGS
-    // get extended file attributes
+    // get file attributes
     handle = open(String_cString(fileName),O_RDONLY|O_NONBLOCK);
     if (handle == -1)
     {
@@ -260,19 +263,42 @@ LOCAL Errors getExtendedAttributes(const String fileName, uint64 *extendedAttrib
     UNUSED_VARIABLE(fileName);
   #endif /* FS_IOC_GETFLAGS */
 
-  (*extendedAttributes) = 0LL;
+  (*fileAttributes) = 0LL;
   #ifdef HAVE_FS_COMPR_FL
-    if ((attributes & FILE_ATTRIBUTE_COMPRESS   ) != 0LL) (*extendedAttributes) |= FILE_ATTRIBUTE_COMPRESS;
+    if ((attributes & FILE_ATTRIBUTE_COMPRESS   ) != 0LL) (*fileAttributes) |= FILE_ATTRIBUTE_COMPRESS;
   #endif
   #ifdef HAVE_FS_NOCOMP_FL
-    if ((attributes & FILE_ATTRIBUTE_NO_COMPRESS) != 0LL) (*extendedAttributes) |= FILE_ATTRIBUTE_NO_COMPRESS;
+    if ((attributes & FILE_ATTRIBUTE_NO_COMPRESS) != 0LL) (*fileAttributes) |= FILE_ATTRIBUTE_NO_COMPRESS;
   #endif
   #ifdef HAVE_FS_NODUMP_FL
-    if ((attributes & FILE_ATTRIBUTE_NO_DUMP    ) != 0LL) (*extendedAttributes) |= FILE_ATTRIBUTE_NO_DUMP;
+    if ((attributes & FILE_ATTRIBUTE_NO_DUMP    ) != 0LL) (*fileAttributes) |= FILE_ATTRIBUTE_NO_DUMP;
   #endif
 
   return ERROR_NONE;
 }
+
+/***********************************************************************\
+* Name   : freeExtendedAttributeNode
+* Purpose: free allocated extended attribute node
+* Input  : fileExtendedAttributeNode - extended attribute node
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+LOCAL void freeExtendedAttributeNode(FileExtendedAttributeNode *fileExtendedAttributeNode, void *userData)
+{
+  assert(fileExtendedAttributeNode != NULL);
+  assert(fileExtendedAttributeNode->name != NULL);
+  assert(fileExtendedAttributeNode->data != NULL);
+
+  UNUSED_VARIABLE(userData);
+
+  free(fileExtendedAttributeNode->data);
+  String_delete(fileExtendedAttributeNode->name);
+}
+
+/*---------------------------------------------------------------------*/
 
 
 /*---------------------------------------------------------------------*/
@@ -2605,14 +2631,14 @@ Errors File_getFileInfo(FileInfo     *fileInfo,
   cast.d1 = fileStat.st_ctime;
   memcpy(fileInfo->cast,&cast,sizeof(FileCast));
 
-  // store meta data
+  // store specific meta data
   if      (S_ISREG(fileStat.st_mode))
   {
     fileInfo->type = (fileStat.st_nlink > 1) ? FILE_TYPE_HARDLINK : FILE_TYPE_FILE;
     fileInfo->size = fileStat.st_size;
 
-    // get extended file attributes
-    error = getExtendedAttributes(fileName,&fileInfo->attributes);
+    // get file attributes
+    error = getAttributes(fileName,&fileInfo->attributes);
     if (error != ERROR_NONE)
     {
       return error;
@@ -2623,8 +2649,8 @@ Errors File_getFileInfo(FileInfo     *fileInfo,
     fileInfo->type = FILE_TYPE_DIRECTORY;
     fileInfo->size = 0LL;
 
-    // get extended file attributes
-    error = getExtendedAttributes(fileName,&fileInfo->attributes);
+    // get file attributes
+    error = getAttributes(fileName,&fileInfo->attributes);
     if (error != ERROR_NONE)
     {
       return error;
@@ -2676,6 +2702,247 @@ Errors File_getFileInfo(FileInfo     *fileInfo,
     fileInfo->type        = FILE_TYPE_UNKNOWN;
     fileInfo->size        = 0LL;
     fileInfo->attributes  = 0LL;
+  }
+
+#if 0
+  // get extended attributes
+  error = File_getExtendedAttributes(&fileInfo->extendedAttributeList,fileName);
+  if (error != ERROR_NONE)
+  {
+    return error;
+  }
+  #endif
+
+  return ERROR_NONE;
+}
+
+Errors File_setFileInfo(const String fileName,
+                        FileInfo     *fileInfo
+                       )
+{
+  struct utimbuf utimeBuffer;
+  Errors         error;
+
+  assert(fileName != NULL);
+  assert(fileInfo != NULL);
+
+  // set meta data
+  switch (fileInfo->type)
+  {
+    case FILE_TYPE_FILE:
+    case FILE_TYPE_DIRECTORY:
+    case FILE_TYPE_HARDLINK:
+    case FILE_TYPE_SPECIAL:
+      utimeBuffer.actime  = fileInfo->timeLastAccess;
+      utimeBuffer.modtime = fileInfo->timeModified;
+      if (utime(String_cString(fileName),&utimeBuffer) != 0)
+      {
+        return ERRORX_(IO_ERROR,errno,String_cString(fileName));
+      }
+      #ifdef HAVE_CHOWN
+        if (chown(String_cString(fileName),fileInfo->userId,fileInfo->groupId) != 0)
+        {
+          return ERRORX_(IO_ERROR,errno,String_cString(fileName));
+        }
+      #endif /* HAVE_CHOWN */
+      #ifdef HAVE_CHMOD
+        if (chmod(String_cString(fileName),(mode_t)fileInfo->permission) != 0)
+        {
+          return ERRORX_(IO_ERROR,errno,String_cString(fileName));
+        }
+      #endif /* HAVE_CHMOD */
+      break;
+    case FILE_TYPE_LINK:
+      #ifdef HAVE_LCHMOD
+        if (lchown(String_cString(fileName),fileInfo->userId,fileInfo->groupId) != 0)
+        {
+          return ERRORX_(IO_ERROR,errno,String_cString(fileName));
+        }
+      #endif /* HAVE_LCHMOD */
+      break;
+    default:
+      #ifndef NDEBUG
+        HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
+      #endif /* NDEBUG */
+      break; /* not reached */
+  }
+
+#if 0
+  // set extended attributes
+  error = File_setExtendedAttributes(fileName,&fileInfo->extendedAttributeList);
+  if (error != ERROR_NONE)
+  {
+    return error;
+  }
+#endif
+
+  return ERROR_NONE;
+}
+
+void File_initExtendedAttributes(FileExtendedAttributeList *fileExtendedAttributeList)
+{
+  assert(fileExtendedAttributeList != NULL);
+
+  List_init(fileExtendedAttributeList);
+}
+
+void File_doneExtendedAttributes(FileExtendedAttributeList *fileExtendedAttributeList)
+{
+  assert(fileExtendedAttributeList != NULL);
+
+  List_done(fileExtendedAttributeList,(ListNodeFreeFunction)freeExtendedAttributeNode,NULL);
+}
+
+void File_addExtendedAttribute(FileExtendedAttributeList *fileExtendedAttributeList,
+                               const String              name,
+                               const void                *data,
+                               uint                      dataLength
+                              )
+{
+  File_addExtendedAttributeCString(fileExtendedAttributeList,String_cString(name),data,dataLength);
+}
+
+void File_addExtendedAttributeCString(FileExtendedAttributeList *fileExtendedAttributeList,
+                                      const char                *name,
+                                      const void                *data,
+                                      uint                      dataLength
+                                     )
+{
+  FileExtendedAttributeNode *fileExtendedAttributeNode;
+
+  assert(fileExtendedAttributeList != NULL);
+  assert(name != NULL);
+  assert(data != NULL);
+
+  // allocate file extended attribute node
+  fileExtendedAttributeNode = LIST_NEW_NODE(FileExtendedAttributeNode);
+  if (fileExtendedAttributeNode == NULL)
+  {
+    HALT_INSUFFICIENT_MEMORY();
+  }
+  fileExtendedAttributeNode->data = malloc(dataLength);
+  if (fileExtendedAttributeNode->data == NULL)
+  {
+    HALT_INSUFFICIENT_MEMORY();
+  }
+
+  // add extended attribute to list
+  fileExtendedAttributeNode->name       = String_newCString(name);
+  memcpy(fileExtendedAttributeNode->data,data,dataLength);
+  fileExtendedAttributeNode->dataLength = dataLength;
+  List_append(fileExtendedAttributeList,fileExtendedAttributeNode);
+}
+
+Errors File_getExtendedAttributes(FileExtendedAttributeList *fileExtendedAttributeList,
+                                  const String              fileName
+                                 )
+{
+  int                       n;
+  char                      *names;
+  uint                      namesLength;
+  const char                *name;
+  void                      *data;
+  uint                      dataLength;
+  FileExtendedAttributeNode *fileExtendedAttributeNode;
+
+  assert(fileExtendedAttributeList != NULL);
+  assert(fileName != NULL);
+
+  // init variables
+  List_init(fileExtendedAttributeList);
+
+  // allocate buffer for attribute names
+  n = listxattr(String_cString(fileName),NULL,0);
+  if (n < 0)
+  {
+    return ERRORX_(IO_ERROR,errno,String_cString(fileName));
+  }
+  namesLength = (uint)n;
+  names = (char*)malloc(namesLength);
+  if (names == NULL)
+  {
+    return ERROR_INSUFFICIENT_MEMORY;
+  }
+
+  // get attribute names
+  if (listxattr(String_cString(fileName),names,namesLength) < 0)
+  {
+    free(names);
+    return ERRORX_(IO_ERROR,errno,String_cString(fileName));
+  }
+
+  // get attributes
+  name = names;
+  while ((name-names) < namesLength)
+  {
+    // allocate buffer for data
+    n = lgetxattr(String_cString(fileName),name,NULL,0);
+    if (n < 0)
+    {
+      free(names);
+      return ERRORX_(IO_ERROR,errno,String_cString(fileName));
+    }
+    dataLength = (uint)n;
+    data = malloc(dataLength);
+    if (data == NULL)
+    {
+      free(names);
+      return ERROR_INSUFFICIENT_MEMORY;
+    }
+
+    // get extended attribute
+    n = lgetxattr(String_cString(fileName),name,data,dataLength);
+    if (n < 0)
+    {
+      free(data);
+      free(names);
+      return ERRORX_(IO_ERROR,errno,String_cString(fileName));
+    }
+
+    // store in attribute list
+    fileExtendedAttributeNode = LIST_NEW_NODE(FileExtendedAttributeNode);
+    if (fileExtendedAttributeNode == NULL)
+    {
+      free(data);
+      free(names);
+      return ERROR_INSUFFICIENT_MEMORY;
+    }
+    fileExtendedAttributeNode->name       = String_newCString(name);
+    fileExtendedAttributeNode->data       = data;
+    fileExtendedAttributeNode->dataLength = dataLength;
+    List_append(fileExtendedAttributeList,fileExtendedAttributeNode);
+
+    // next attribute
+    name += strlen(name)+1;
+  }
+
+  // free resources
+  free(names);
+
+  return ERROR_NONE;
+}
+
+Errors File_setExtendedAttributes(const String                    fileName,
+                                  const FileExtendedAttributeList *fileExtendedAttributeList
+                                 )
+{
+  FileExtendedAttributeNode *fileExtendedAttributeNode;
+
+  assert(fileName != NULL);
+  assert(fileExtendedAttributeList != NULL);
+
+  LIST_ITERATE(fileExtendedAttributeList,fileExtendedAttributeNode)
+  {
+    if (lsetxattr(String_cString(fileName),
+                  String_cString(fileExtendedAttributeNode->name),
+                  fileExtendedAttributeNode->data,
+                  fileExtendedAttributeNode->dataLength,
+                  0
+                 ) != 0
+       )
+    {
+      return ERRORX_(IO_ERROR,errno,String_cString(fileName));
+    }
   }
 
   return ERROR_NONE;
@@ -2734,58 +3001,6 @@ Errors File_setOwner(const String fileName,
 
     return ERROR_FUNCTION_NOT_SUPPORTED;
   #endif /* HAVE_CHOWN */
-}
-
-Errors File_setFileInfo(const String fileName,
-                        FileInfo     *fileInfo
-                       )
-{
-  struct utimbuf utimeBuffer;
-
-  assert(fileName != NULL);
-  assert(fileInfo != NULL);
-
-  switch (fileInfo->type)
-  {
-    case FILE_TYPE_FILE:
-    case FILE_TYPE_DIRECTORY:
-    case FILE_TYPE_HARDLINK:
-    case FILE_TYPE_SPECIAL:
-      utimeBuffer.actime  = fileInfo->timeLastAccess;
-      utimeBuffer.modtime = fileInfo->timeModified;
-      if (utime(String_cString(fileName),&utimeBuffer) != 0)
-      {
-        return ERRORX_(IO_ERROR,errno,String_cString(fileName));
-      }
-      #ifdef HAVE_CHOWN
-        if (chown(String_cString(fileName),fileInfo->userId,fileInfo->groupId) != 0)
-        {
-          return ERRORX_(IO_ERROR,errno,String_cString(fileName));
-        }
-      #endif /* HAVE_CHOWN */
-      #ifdef HAVE_CHMOD
-        if (chmod(String_cString(fileName),(mode_t)fileInfo->permission) != 0)
-        {
-          return ERRORX_(IO_ERROR,errno,String_cString(fileName));
-        }
-      #endif /* HAVE_CHMOD */
-      break;
-    case FILE_TYPE_LINK:
-      #ifdef HAVE_LCHMOD
-        if (lchown(String_cString(fileName),fileInfo->userId,fileInfo->groupId) != 0)
-        {
-          return ERRORX_(IO_ERROR,errno,String_cString(fileName));
-        }
-      #endif /* HAVE_LCHMOD */
-      break;
-    default:
-      #ifndef NDEBUG
-        HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
-      #endif /* NDEBUG */
-      break; /* not reached */
-  }
-
-  return ERROR_NONE;
 }
 
 Errors File_makeDirectory(const String   pathName,
