@@ -43,6 +43,9 @@ int main(int argc, char *argv[])
   long            nextIndex;
   StringTokenizer stringTokenizer;
 
+  UNUSED_VARIABLE(argc);
+  UNUSED_VARIABLE(argv);
+
   // allocate and free a string
   s = String_new();
   String_delete(s);
@@ -76,11 +79,13 @@ int main(int argc, char *argv[])
   // format string
   s = String_new();
   t = String_new();
+  w = String_new();
   String_setCString(s,"Hello");
   String_setCString(t,"world");
+  String_setCString(w,"\t'Die Verwandlung'\nFranz Kafka\r!");
   printf("Format result:\n");
   String_format(s,
-                "%d %ld %lld %f %s %S %'s %'S",
+                "%d %ld %lld %f %s %S %'s %'S %'S",
                 123,
                 456L,
                 789LL,
@@ -88,9 +93,11 @@ int main(int argc, char *argv[])
                 String_cString(s),
                 s,
                 String_cString(t),
-                t
+                t,
+                w
                );
   printf("s=%s\n",String_cString(s));
+  String_delete(w);
   String_delete(t);
   String_delete(s);
   printf("\n");
