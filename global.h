@@ -714,9 +714,6 @@ typedef void                void32;
     } \
     while (0)
 
-  #define DEBUG_TEST_CODE(condition) \
-    if (getenv(condition) != NULL)
-
 #else /* not NDEBUG */
 
   #define DEBUG_MEMORY_FENCE(name)
@@ -731,7 +728,25 @@ typedef void                void32;
     } \
     while (0)
 
-  #define DEBUG_TEST_CODE(condition) \
+#endif /* NDEBUG */
+
+/***********************************************************************\
+* Name   : DEBUG_TEST_CODE
+* Purpose: execute test code
+* Input  : name - environment variable name
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+#ifndef NDEBUG
+
+  #define DEBUG_TEST_CODE(name) \
+    if (getenv(name) != NULL)
+
+#else /* not NDEBUG */
+
+  #define DEBUG_TEST_CODE(name) \
     if (FALSE)
 
 #endif /* NDEBUG */
@@ -1043,6 +1058,36 @@ inline double normDegree360(double n)
 }
 
 #endif
+
+/*---------------------------------------------------------------------*/
+
+/***********************************************************************\
+* Name   : stringEqualsIgnoreCase
+* Purpose: compare strings for equal
+* Input  : s1, s2 - strings
+* Output : -
+* Return : TRUE if equals
+* Notes  : -
+\***********************************************************************/
+
+static inline bool stringEquals(const char *s1, const char *s2)
+{
+  return strcmp(s1,s2) == 0;
+}
+
+/***********************************************************************\
+* Name   : stringEqualsIgnoreCase
+* Purpose: compare strings for equal and ignore case
+* Input  : s1, s2 - strings
+* Output : -
+* Return : TRUE if equals
+* Notes  : -
+\***********************************************************************/
+
+static inline bool stringEqualsIgnoreCase(const char *s1, const char *s2)
+{
+  return strcasecmp(s1,s2) == 0;
+}
 
 /*---------------------------------------------------------------------*/
 
