@@ -40,8 +40,10 @@ typedef struct
   extern "C" {
 #endif
 
-void freeData(void *data, void *userData)
+LOCAL void freeData(void *data, void *userData)
 {
+  UNUSED_VARIABLE(userData);
+
   free(data);
 }
 
@@ -58,6 +60,9 @@ int main(int argc, char *argv[])
   int        *p;
   char       s[100];
   const char *t;
+
+  UNUSED_VARIABLE(argc);
+  UNUSED_VARIABLE(argv);
 
   // init/done ring buffer
 
