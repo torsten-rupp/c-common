@@ -3,7 +3,7 @@
 * $Source$
 * $Revision$
 * $Author$
-* Contents: 
+* Contents:
 * Systems :
 *
 \***********************************************************************/
@@ -47,7 +47,7 @@ typedef int bool;
 * Notes      : -
 \***********************************************************************/
 
-void printUsage(const char *ProgramName)
+static void printUsage(const char *ProgramName)
  {
   fprintf(stderr,"...\n");
   fprintf(stderr,"Usage: %s\n",ProgramName);
@@ -63,7 +63,7 @@ int main(int argc, char *argv[])
 
   char       memory[32*1024];
   TinyMemory tinyMemory;
-  void       *p0,*p1,*p2,*p3;
+  void       *p0,*p1,*p2;
 
   endOfOptionsFlag = FALSE;
   z = 1;
