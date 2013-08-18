@@ -44,14 +44,18 @@ typedef struct
 
 /***************************** Functions *******************************/
 
-void freeStringNode(StringNode *stringNode, void *userData)
+LOCAL void freeStringNode(StringNode *stringNode, void *userData)
 {
+  UNUSED_VARIABLE(stringNode);
+  UNUSED_VARIABLE(userData);
+
   /* code to free the data of a single node */
 }
 
-int compareStringNodes(StringNode *stringNode1, StringNode *stringNode2, void *userData)
+LOCAL int compareStringNodes(StringNode *stringNode1, StringNode *stringNode2, void *userData)
 {
-fprintf(stderr,"%s,%d: %s %s\n",__FILE__,__LINE__,stringNode1->s,stringNode2->s);
+  UNUSED_VARIABLE(userData);
+
   return strcmp(stringNode1->s,stringNode2->s);
 }
 
@@ -61,6 +65,9 @@ int main(int argc, char *argv[])
  {
   StringList stringList;
   StringNode *stringNode;
+
+  UNUSED_VARIABLE(argc);
+  UNUSED_VARIABLE(argv);
 
   /* create a list, traverse it, delete list */
   List_init(&stringList);
