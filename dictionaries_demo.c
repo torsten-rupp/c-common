@@ -3,7 +3,7 @@
 * $Source$
 * $Revision$
 * $Author$
-* Contents: 
+* Contents:
 * Systems :
 *
 \***********************************************************************/
@@ -36,24 +36,7 @@
   extern "C" {
 #endif
 
-/***********************************************************************\
-* Name       : PrintUsage
-* Purpose    : print "usage" help
-* Input      : -
-* Output     : -
-* Return     : -
-* Side-effect: unknown
-* Notes      : -
-\***********************************************************************/
-
-void printUsage(const char *ProgramName)
- {
-  fprintf(stderr,"...\n");
-  fprintf(stderr,"Usage: %s\n",ProgramName);
-  fprintf(stderr,"Options:\n");
- }
-
-uint64 getTimestamp(void)
+LOCAL uint64 getTimestamp(void)
 {
   struct timeval tv;
 
@@ -115,7 +98,7 @@ int main(int argc, char *argv[])
     fgets(line,sizeof(line),file);
     n++;
 
-    if (!Dictionary_contain(&dictionary,line,strlen(line)+1))
+    if (!Dictionary_contains(&dictionary,line,strlen(line)+1))
     {
       HALT_INTERNAL_ERROR("Table does not contain line #%lu: '%s'\n",n,line);
     }
