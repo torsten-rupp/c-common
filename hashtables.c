@@ -147,7 +147,7 @@ LOCAL_INLINE ulong rotHash(ulong hash, int n)
 
 LOCAL ulong calculateHash(const void *keyData, ulong keyLength)
 {
-  ulong      hashBytes[4];
+  byte       hashBytes[4];
   const byte *p;
   uint       z;
 
@@ -155,10 +155,10 @@ LOCAL ulong calculateHash(const void *keyData, ulong keyLength)
 
   p = (const byte*)keyData;
 
-  hashBytes[0] = (keyLength > 0)?(*p):0; p++;
-  hashBytes[1] = (keyLength > 1)?(*p):0; p++;
-  hashBytes[2] = (keyLength > 2)?(*p):0; p++;
-  hashBytes[3] = (keyLength > 3)?(*p):0; p++;
+  hashBytes[0] = (keyLength > 0) ? (*p) : 0; p++;
+  hashBytes[1] = (keyLength > 1) ? (*p) : 0; p++;
+  hashBytes[2] = (keyLength > 2) ? (*p) : 0; p++;
+  hashBytes[3] = (keyLength > 3) ? (*p) : 0; p++;
   for (z = 4; z < keyLength; z++)
   {
     hashBytes[z%4] ^= (*p); p++;
@@ -657,7 +657,7 @@ bool HashTable_add(HashTable *hashTable,
 
   /* add entry in existing table */
   if (findFreeEntry(hashTable,hash,&hashTableEntryTable,&entryIndex))
-  {   
+  {
     assert(hashTableEntryTable->entries != NULL);
 
     // allocate key memory
@@ -756,7 +756,7 @@ bool HashTable_add(HashTable *hashTable,
     z++;
   }
   if (hashTableEntryTable != NULL)
-  {   
+  {
     assert(hashTableEntryTable->entries != NULL);
 
     // allocate key memory
@@ -965,7 +965,7 @@ bool HashTable_getNext(HashTableIterator *hashTableIterator,
         foundFlag = TRUE;
       }
 
-      /* next entry */    
+      /* next entry */
       if (hashTableIterator->j < TABLE_SIZES[hashTableIterator->hashTable->entryTables[hashTableIterator->i].sizeIndex]-1)
       {
         hashTableIterator->j++;
