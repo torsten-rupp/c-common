@@ -28,6 +28,8 @@
 // string map types
 typedef enum
 {
+  STRINGMAP_TYPE_NONE,
+
   STRINGMAP_TYPE_INT,
   STRINGMAP_TYPE_INT64,
   STRINGMAP_TYPE_UINT,
@@ -50,18 +52,22 @@ typedef struct
 } StringMapType;
 
 // string map value
-typedef union
+typedef struct
 {
-  int    i;
-  int64  l;
-  uint   ui;
-  uint64 ul;
-  double d;
-  bool   b;
-  char   c;
-  char   *s;
-  String string;
-  void   *p;
+  String text;
+  union
+  {
+    int    i;
+    int64  l;
+    uint   ui;
+    uint64 ul;
+    double d;
+    bool   b;
+    char   c;
+    char   *s;
+    String string;
+    void   *p;
+  } data;
 } StringMapValue;
 
 extern const StringMapValue STRINGMAP_VALUE_NONE;
@@ -82,7 +88,7 @@ typedef struct
 typedef struct __StringMap* StringMap;
 
 // convert to enum value
-typedef int(*StringMapToEnumFunction)(const char*);
+typedef bool(*StringMapParseFunction)(const char*, int *value);
 
 /***************************** Variables *******************************/
 
@@ -92,15 +98,17 @@ typedef int(*StringMapToEnumFunction)(const char*);
   #define StringMap_new()                                  __StringMap_new(__FILE__,__LINE__)
   #define StringMap_duplicate(stringMap)                   __StringMap_duplicate(__FILE__,__LINE__,stringMap)
   #define StringMap_delete(stringMap)                      __StringMap_delete(__FILE__,__LINE__,stringMap)
-  #define StringMap_put(stringMap,name,value)              __StringMap_putInt(__FILE__,__LINE__,stringMap,name,value)
-  #define StringMap_putInt(stringMap,name,value)           __StringMap_putInt(__FILE__,__LINE__,stringMap,name,value)
-  #define StringMap_putInt64(stringMap,name,value)         __StringMap_putInt64(__FILE__,__LINE__,stringMap,name,value)
-  #define StringMap_putUInt(stringMap,name,value)          __StringMap_putUInt(__FILE__,__LINE__,stringMap,name,value)
-  #define StringMap_putUInt64(stringMap,name,value)        __StringMap_putUInt64(__FILE__,__LINE__,stringMap,name,value)
-  #define StringMap_putDouble(stringMap,name,value)        __StringMap_putDouble(__FILE__,__LINE__,stringMap,name,value)
-  #define StringMap_putChar(stringMap,name,value)          __StringMap_putChar(__FILE__,__LINE__,stringMap,name,value)
-  #define StringMap_putCString(stringMap,name,value)       __StringMap_putCString(__FILE__,__LINE__,stringMap,name,value)
-  #define StringMap_putString(stringMap,name,value)        __StringMap_putString(__FILE__,__LINE__,stringMap,name,value)
+  #define StringMap_putText(stringMap,name,value)          __StringMap_putText(__FILE__,__LINE__,stringMap,name,text)
+  #define StringMap_putTextCString(stringMap,name,value)   __StringMap_putTextCString(__FILE__,__LINE__,stringMap,name,text)
+  #define StringMap_put(stringMap,name,value)              __StringMap_put(__FILE__,__LINE__,stringMap,name,value)
+  #define StringMap_putInt(stringMap,name,data)            __StringMap_putInt(__FILE__,__LINE__,stringMap,name,data)
+  #define StringMap_putInt64(stringMap,name,data)          __StringMap_putInt64(__FILE__,__LINE__,stringMap,name,data)
+  #define StringMap_putUInt(stringMap,name,data)           __StringMap_putUInt(__FILE__,__LINE__,stringMap,name,data)
+  #define StringMap_putUInt64(stringMap,name,data)         __StringMap_putUInt64(__FILE__,__LINE__,stringMap,name,data)
+  #define StringMap_putDouble(stringMap,name,data)         __StringMap_putDouble(__FILE__,__LINE__,stringMap,name,data)
+  #define StringMap_putChar(stringMap,name,data)           __StringMap_putChar(__FILE__,__LINE__,stringMap,name,data)
+  #define StringMap_putCString(stringMap,name,data)        __StringMap_putCString(__FILE__,__LINE__,stringMap,name,data)
+  #define StringMap_putString(stringMap,name,data)         __StringMap_putString(__FILE__,__LINE__,stringMap,name,data)
   #define StringMap_remove(stringMap,name)                 __StringMap_remove(__FILE__,__LINE__,stringMap,name)
 #endif /* not NDEBUG */
 
@@ -243,8 +251,27 @@ const char *StringMap_indexName(const StringMap stringMap, uint index);
 StringMapValue StringMap_indexValue(const StringMap stringMap, uint index);
 
 /***********************************************************************\
-* Name   : StringMap_put*
-* Purpose: put string into map
+* Name   : StringMap_putText, StringMap_putTextCString
+* Purpose: put text into map
+* Input  : stringMap - string map
+*          name      - name
+*          text      - text
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+#ifdef NDEBUG
+void StringMap_putText(StringMap stringMap, const char *name, String text);
+void StringMap_putTextCString(StringMap stringMap, const char *name, const char *text);
+#else /* not NDEBUG */
+void __StringMap_putText(const char *__fileName__, ulong __lineNb__, StringMap stringMap, const char *name, String text);
+void __StringMap_putTextCString(const char *__fileName__, ulong __lineNb__, StringMap stringMap, const char *name, const char *text);
+#endif /* NDEBUG */
+
+/***********************************************************************\
+* Name   : StringMap_put
+* Purpose: put value into map
 * Input  : stringMap - string map
 *          name      - name
 *          value     - value
@@ -255,51 +282,91 @@ StringMapValue StringMap_indexValue(const StringMap stringMap, uint index);
 
 #ifdef NDEBUG
 void StringMap_put(StringMap stringMap, const char *name, void *value);
-void StringMap_putInt(StringMap stringMap, const char *name, int value);
-void StringMap_putInt64(StringMap stringMap, const char *name, int64 value);
-void StringMap_putUInt(StringMap stringMap, const char *name, int value);
-void StringMap_putUInt64(StringMap stringMap, const char *name, int64 value);
-void StringMap_putDouble(StringMap stringMap, const char *name, double value);
-void StringMap_putBool(StringMap stringMap, const char *name, bool value);
-void StringMap_putChar(StringMap stringMap, const char *name, char value);
-void StringMap_putCString(StringMap stringMap, const char *name, const char *value);
-void StringMap_putString(StringMap stringMap, const char *name, String value);
 #else /* not NDEBUG */
 void __StringMap_put(const char *__fileName__, ulong __lineNb__, StringMap stringMap, const char *name, void *value);
-void __StringMap_putInt(const char *__fileName__, ulong __lineNb__, StringMap stringMap, const char *name, int value);
-void __StringMap_putInt64(const char *__fileName__, ulong __lineNb__, StringMap stringMap, const char *name, int64 value);
-void __StringMap_putUInt(const char *__fileName__, ulong __lineNb__, StringMap stringMap, const char *name, int value);
-void __StringMap_putUInt64(const char *__fileName__, ulong __lineNb__, StringMap stringMap, const char *name, int64 value);
-void __StringMap_putDouble(const char *__fileName__, ulong __lineNb__, StringMap stringMap, const char *name, double value);
-void __StringMap_putBool(const char *__fileName__, ulong __lineNb__, StringMap stringMap, const char *name, bool value);
-void __StringMap_putChar(const char *__fileName__, ulong __lineNb__, StringMap stringMap, const char *name, char value);
-void __StringMap_putCString(const char *__fileName__, ulong __lineNb__, StringMap stringMap, const char *name, const char *value);
-void __StringMap_putString(const char *__fileName__, ulong __lineNb__, StringMap stringMap, const char *name, String value);
 #endif /* NDEBUG */
 
 /***********************************************************************\
-* Name   : StringMap_get*
-* Purpose: get value from string map
+* Name   : StringMap_put*
+* Purpose: put data into map
+* Input  : stringMap - string map
+*          name      - name
+*          data      - data
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+#ifdef NDEBUG
+void StringMap_putInt(StringMap stringMap, const char *name, int data);
+void StringMap_putInt64(StringMap stringMap, const char *name, int64 data);
+void StringMap_putUInt(StringMap stringMap, const char *name, int data);
+void StringMap_putUInt64(StringMap stringMap, const char *name, int64 data);
+void StringMap_putDouble(StringMap stringMap, const char *name, double data);
+void StringMap_putBool(StringMap stringMap, const char *name, bool data);
+void StringMap_putChar(StringMap stringMap, const char *name, char data);
+void StringMap_putCString(StringMap stringMap, const char *name, const char *data);
+void StringMap_putString(StringMap stringMap, const char *name, String data);
+#else /* not NDEBUG */
+void __StringMap_putInt(const char *__fileName__, ulong __lineNb__, StringMap stringMap, const char *name, int data);
+void __StringMap_putInt64(const char *__fileName__, ulong __lineNb__, StringMap stringMap, const char *name, int64 data);
+void __StringMap_putUInt(const char *__fileName__, ulong __lineNb__, StringMap stringMap, const char *name, int data);
+void __StringMap_putUInt64(const char *__fileName__, ulong __lineNb__, StringMap stringMap, const char *name, int64 data);
+void __StringMap_putDouble(const char *__fileName__, ulong __lineNb__, StringMap stringMap, const char *name, double data);
+void __StringMap_putBool(const char *__fileName__, ulong __lineNb__, StringMap stringMap, const char *name, bool data);
+void __StringMap_putChar(const char *__fileName__, ulong __lineNb__, StringMap stringMap, const char *name, char data);
+void __StringMap_putCString(const char *__fileName__, ulong __lineNb__, StringMap stringMap, const char *name, const char *data);
+void __StringMap_putString(const char *__fileName__, ulong __lineNb__, StringMap stringMap, const char *name, String data);
+#endif /* NDEBUG */
+
+/***********************************************************************\
+* Name   : StringMap_getText, StringMap_getTextCString  
+* Purpose: get text value from string map
 * Input  : stringMap    - stringMap
 *          name         - value name
-*          maxLength    - max. length of C-string (including NUL)
 *          defaultValue - default value
 * Output : value value or default value
-* Return : TRUE if read, FALSE otherwise
+* Return : string or NULL
+* Notes  : -
+\***********************************************************************/
+
+String StringMap_getText(const StringMap stringMap, const char *name, const String defaultValue);
+const char *StringMap_getTextCString(const StringMap stringMap, const char *name, const char *defaultValue);
+
+/***********************************************************************\
+* Name   : StringMap_get
+* Purpose: get value from string map
+* Input  : stringMap - stringMap
+*          name      - value name
+* Output : -
+* Return : string map value or NULL
 * Notes  : -
 \***********************************************************************/
 
 StringMapValue StringMap_get(const StringMap stringMap, const char *name);
-bool StringMap_getInt(const StringMap stringMap, const char *name, int *value, int defaultValue);
-bool StringMap_getInt64(const StringMap stringMap, const char *name, int64 *value, int64 defaultValue);
-bool StringMap_getUInt(const StringMap stringMap, const char *name, int *value, uint defaultValue);
-bool StringMap_getUInt64(const StringMap stringMap, const char *name, int64 *value, uint64 defaultValue);
-bool StringMap_getDouble(const StringMap stringMap, const char *name, double *value, double defaultValue);
-bool StringMap_getBool(const StringMap stringMap, const char *name, bool *value, bool defaultValue);
-bool StringMap_getEnum(const StringMap stringMap, const char *name, void *value, StringMapToEnumFunction stringMapToEnumFunction, int defaultValue);
-bool StringMap_getChar(const StringMap stringMap, const char *name, char *value, char defaultValue);
-bool StringMap_getCString(const StringMap stringMap, const char *name, char *value, uint maxLength, const char *defaultValue);
-bool StringMap_getString(const StringMap stringMap, const char *name, String value, const String defaultValue);
+
+/***********************************************************************\
+* Name   : StringMap_get*
+* Purpose: get data from string map
+* Input  : stringMap    - stringMap
+*          name         - value name
+*          maxLength    - max. length of C-string (including NUL)
+*          defaultValue - default data
+* Output : data - value or default value
+* Return : TRUE if read, FALSE otherwise
+* Notes  : -
+\***********************************************************************/
+
+bool StringMap_getInt(const StringMap stringMap, const char *name, int *data, int defaultValue);
+bool StringMap_getInt64(const StringMap stringMap, const char *name, int64 *data, int64 defaultValue);
+bool StringMap_getUInt(const StringMap stringMap, const char *name, uint *data, uint defaultValue);
+bool StringMap_getUInt64(const StringMap stringMap, const char *name, uint64 *data, uint64 defaultValue);
+bool StringMap_getDouble(const StringMap stringMap, const char *name, double *data, double defaultValue);
+bool StringMap_getBool(const StringMap stringMap, const char *name, bool *data, bool defaultValue);
+bool StringMap_getEnum(const StringMap stringMap, const char *name, void *data, StringMapParseFunction stringMapParseFunction, int defaultValue);
+bool StringMap_getChar(const StringMap stringMap, const char *name, char *data, char defaultValue);
+bool StringMap_getCString(const StringMap stringMap, const char *name, char *data, uint maxLength, const char *defaultValue);
+bool StringMap_getString(const StringMap stringMap, const char *name, String data, const String defaultValue);
 
 /***********************************************************************\
 * Name   : StringMap_remove
@@ -344,21 +411,21 @@ bool StringMap_contain(const StringMap stringMap, const char *name);
 /***********************************************************************\
 * Name   : StringMap_parse
 * Purpose: parse string map
-* Input  : stringMap - stringMap variable
-*          types     - types
-*          typeCount - type count
-*          quoteChar - quote character
-*          index     - start index or STRING_BEGIN
-* Output : nextIndex - index of next character in string not parsed or
-*                      STRING_END if string completely parsed (can be
-*                      NULL)
+* Input  : stringMap  - stringMap variable
+*          types      - types
+*          typeCount  - type count
+*          quoteChars - quote characters
+*          index      - start index or STRING_BEGIN
+* Output : nextIndex  - index of next character in string not parsed or
+*                       STRING_END if string completely parsed (can be
+*                       NULL)
 * Return : TRUE is fully parsed or nextIndex != NULL , FALSE on error
 * Notes  : parses map of the format:
 *            <name>=<value> ...
 \***********************************************************************/
 
-bool StringMap_parse(StringMap stringMap, const String string, char quoteChar, ulong index, long *nextIndex);
-bool StringMap_parseCString(StringMap stringMap, const char *s, char quoteChar, ulong index, long *nextIndex);
+bool StringMap_parse(StringMap stringMap, const String string, const char *quoteChars, ulong index, long *nextIndex);
+bool StringMap_parseCString(StringMap stringMap, const char *s, const char *quoteChars, ulong index, long *nextIndex);
 
 /***********************************************************************\
 * Name   : StringMap_toCStringArray

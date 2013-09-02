@@ -13,12 +13,12 @@ typedef enum
   UNKNOWN
 } Enum;
 
-static Enum toEnum(const char *name)
+static bool parse(const char *name, Enum *value)
 {
-  if      (strcmp(name,"A") == 0) return A;
-  else if (strcmp(name,"B") == 0) return B;
-  else if (strcmp(name,"C") == 0) return C;
-  else                            return UNKNOWN;
+  if      (strcmp(name,"A") == 0) { (*value) = A; return TRUE;  }
+  else if (strcmp(name,"B") == 0) { (*value) = B; return TRUE;  }
+  else if (strcmp(name,"C") == 0) { (*value) = C; return TRUE;  }
+  else                            {               return FALSE; }
 }
 
 int main(int argc, char *argv[])
@@ -48,43 +48,47 @@ int main(int argc, char *argv[])
 
   STRINGMAP_ITERATE(stringMap,z,name,value)
   {
-    printf("%s: %p\n",name,value.p);
+    printf("%s: %p\n",name,value.data.p);
   }
 
-  printf("a=%d\n",StringMap_get(stringMap,"a").i);
-  printf("b=%lf\n",StringMap_get(stringMap,"b").d);
-  printf("c=%s\n",StringMap_get(stringMap,"c").s);
+  printf("a=%d\n",StringMap_get(stringMap,"a").data.i);
+  printf("b=%lf\n",StringMap_get(stringMap,"b").data.d);
+  printf("c=%s\n",StringMap_get(stringMap,"c").data.s);
 
   StringMap_remove(stringMap,"b");
 
   STRINGMAP_ITERATE(stringMap,z,name,value)
   {
-    printf("%s: %p\n",name,value.p);
+    printf("%s: %p\n",name,value.data.p);
   }
 
-  printf("a=%d\n",StringMap_get(stringMap,"a").i);
-  printf("b=%lf\n",StringMap_get(stringMap,"b").d);
-  printf("c=%s\n",StringMap_get(stringMap,"c").s);
+  printf("a=%d\n",StringMap_get(stringMap,"a").data.i);
+  printf("b=%lf\n",StringMap_get(stringMap,"b").data.d);
+  printf("c=%s\n",StringMap_get(stringMap,"c").data.s);
 
   StringMap_delete(stringMap);
 
   // map parser
   s = String_new();
-  String_setCString(s,"a=123 b=123456789 c=456.789 d=yes e=B f=A g=Fight h=\"Hello \\\"World!\\\"\"");
+//  String_setCString(s,"a=123 b=123456789 c=456.789 e=B f=A g=Fight h=\"Hello \\\"World!\\\"\" d=yes");
+  String_setCString(s,"a=123 h=\"Hello \\\"World!\\\"\" d=yes");
   printf("String: %s\n",String_cString(s));
 
   string    = String_new();
   stringMap = StringMap_new();
-  if (StringMap_parse(stringMap,s,'"',0,NULL))
+  if (StringMap_parse(stringMap,s,"'\"",0,NULL))
   {
     StringMap_getInt(stringMap,"a",&i,0); printf("a=%d\n",i);
     StringMap_getInt64(stringMap,"b",&l,0); printf("b=%lld\n",l);
     StringMap_getDouble(stringMap,"c",&d,0.0); printf("c=%lf\n",d);
     StringMap_getBool(stringMap,"d",&b,FALSE); printf("d=%d\n",b);
-    StringMap_getEnum(stringMap,"e",&e,(StringMapToEnumFunction)toEnum,UNKNOWN); printf("e=%d\n",e);
+    StringMap_getEnum(stringMap,"e",&e,(StringMapParseFunction)parse,UNKNOWN); printf("e=%d\n",e);
     StringMap_getChar(stringMap,"f",&ch,'\0'); printf("f=%c\n",ch);
     StringMap_getCString(stringMap,"g",buffer,sizeof(buffer),NULL); printf("g=%s\n",buffer);
     StringMap_getString(stringMap,"h",string,NULL); printf("h=%s\n",String_cString(string));
+fprintf(stderr,"%s, %d: %d\n",__FILE__,__LINE__,
+    StringMap_getString(stringMap,"d",string,NULL)
+    );
   }
   StringMap_delete(stringMap);
   String_delete(string);
