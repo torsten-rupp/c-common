@@ -320,7 +320,7 @@ void __StringMap_putString(const char *__fileName__, ulong __lineNb__, StringMap
 #endif /* NDEBUG */
 
 /***********************************************************************\
-* Name   : StringMap_getText, StringMap_getTextCString  
+* Name   : StringMap_getText, StringMap_getTextCString
 * Purpose: get text value from string map
 * Input  : stringMap    - stringMap
 *          name         - value name

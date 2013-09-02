@@ -238,7 +238,7 @@ StringMap __StringMap_new(const char *__fileName__, ulong __lineNb__)
 {
   struct __StringMap *stringMap;
   uint               i;
-  
+
   stringMap = (struct __StringMap *)malloc(sizeof(struct __StringMap));
   if (stringMap == NULL)
   {
@@ -304,7 +304,7 @@ void StringMap_copy(StringMap stringMap, const StringMap fromStringMap)
     if (fromStringMap->stringMapEntries[i].name != NULL)
     {
       stringMap->stringMapEntries[i].name  = strdup(fromStringMap->stringMapEntries[i].name);
-      stringMap->stringMapEntries[i].value = fromStringMap->stringMapEntries[i].value;     
+      stringMap->stringMapEntries[i].value = fromStringMap->stringMapEntries[i].value;
     }
     else
     {
@@ -330,7 +330,7 @@ void __StringMap_delete(const char *__fileName__, ulong __lineNb__, StringMap st
   #endif /* NDEBUG */
 
   for (i = 0; i < stringMap->size; i++)
-  {    
+  {
     if (stringMap->stringMapEntries[i].name != NULL)
     {
       removeStringMapEntry(&stringMap->stringMapEntries[i]);
@@ -369,7 +369,7 @@ uint StringMap_count(const StringMap stringMap)
   for (i = 0; i < stringMap->size; i++)
   {
     if (stringMap->stringMapEntries[i].name != NULL)
-    { 
+    {
       count++;
     }
   }
@@ -388,7 +388,7 @@ const StringMapEntry *StringMap_index(const StringMap stringMap, uint index)
   for (i = 0; i < stringMap->size; i++)
   {
     if (stringMap->stringMapEntries[i].name != NULL)
-    { 
+    {
       if (index > 0)
       {
         index--;
@@ -638,7 +638,7 @@ void __StringMap_putCString(const char *__fileName__, ulong __lineNb__, StringMa
     stringMapEntry->type         = STRINGMAP_TYPE_CSTRING;
     stringMapEntry->value.text   = NULL;
     stringMapEntry->value.data.s = strdup(value);
-  }  
+  }
 }
 
 #ifdef NDEBUG
@@ -681,7 +681,7 @@ String StringMap_getText(const StringMap stringMap, const char *name, const Stri
   else
   {
     return defaultValue;
-  }  
+  }
 }
 
 const char *StringMap_getTextCString(const StringMap stringMap, const char *name, const char *defaultValue)
@@ -699,7 +699,7 @@ const char *StringMap_getTextCString(const StringMap stringMap, const char *name
   else
   {
     return defaultValue;
-  }  
+  }
 }
 
 StringMapValue StringMap_get(const StringMap stringMap, const char *name)
@@ -717,7 +717,7 @@ StringMapValue StringMap_get(const StringMap stringMap, const char *name)
   else
   {
     return STRINGMAP_VALUE_NONE;
-  }  
+  }
 }
 
 bool StringMap_getInt(const StringMap stringMap, const char *name, int *data, int defaultValue)
@@ -855,7 +855,7 @@ bool StringMap_getBool(const StringMap stringMap, const char *name, bool *data, 
     {
       if (String_equalsIgnoreCaseCString(stringMapEntry->value.text,TRUE_STRINGS[z]))
       {
-        (*data) = TRUE;       
+        (*data) = TRUE;
       }
     }
     return TRUE;
@@ -1216,7 +1216,7 @@ void StringMap_debugDumpInfo(FILE *handle, const StringMap stringMap)
   for (i = 0; i < stringMap->size; i++)
   {
     if (stringMap->stringMapEntries[i].name != NULL)
-    { 
+    {
       fprintf(handle,"DEBUG %u: %s = %lx\n",i,stringMap->stringMapEntries[i].name,(unsigned long)stringMap->stringMapEntries[i].value.data.p);
     }
   }
