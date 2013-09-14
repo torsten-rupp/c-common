@@ -67,7 +67,7 @@ LOCAL void demoCode(Semaphore *semaphore)
 }
 
 int main(int argc, char *argv[])
- {
+{
   Semaphore semaphore;
   pthread_t t1,t2;
 
@@ -118,6 +118,6 @@ int main(int argc, char *argv[])
   Semaphore_done(&semaphore);
 
   return(0);
- }
+}
 
 /* end of file */
