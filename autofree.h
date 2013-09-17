@@ -70,12 +70,12 @@ typedef struct
          http://gcc.gnu.org/onlinedocs/gcc/Statement-Exprs.html
 */
 #ifdef __GNUC__
-  #define AUTOFREE_ADD(autoFreeList,resource_,type,freeFunctionBody) \
+  #define AUTOFREE_ADD(autoFreeList,resource_,parameter,freeFunctionBody) \
     AutoFree_add(autoFreeList,\
                  (void*)(unsigned long long)resource_, \
                  (AutoFreeFunction)({ \
-                                     auto void __closure__(type); \
-                                     void __closure__(type resource)freeFunctionBody __closure__; \
+                                     auto void __closure__(parameter); \
+                                     void __closure__(parameter)freeFunctionBody __closure__; \
                                    }) \
                 )
 
@@ -113,7 +113,7 @@ void AutoFree_init(AutoFreeList *autoFreeList);
 
 /***********************************************************************\
 * Name   : AutoFree_done
-* Purpose: done auto-free list
+* Purpose: free resources and done auto-free list
 * Input  : autoFreeList - auto-free list
 * Output : -
 * Return : -
@@ -123,15 +123,15 @@ void AutoFree_init(AutoFreeList *autoFreeList);
 void AutoFree_done(AutoFreeList *autoFreeList);
 
 /***********************************************************************\
-* Name   : AutoFree_done
-* Purpose: free all resources and done auto-free list
+* Name   : AutoFree_keep
+* Purpose: keep resources and free auto-free list
 * Input  : autoFreeList - auto-free list
 * Output : -
 * Return : -
 * Notes  : -
 \***********************************************************************/
 
-void AutoFree_freeDone(AutoFreeList *autoFreeList);
+void AutoFree_keep(AutoFreeList *autoFreeList);
 
 /***********************************************************************\
 * Name   : AutoFree_add

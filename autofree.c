@@ -53,16 +53,17 @@ void AutoFree_done(AutoFreeList *autoFreeList)
 {
   assert(autoFreeList != NULL);
 
+  AutoFree_freeAll(autoFreeList);
   List_done(autoFreeList,NULL,NULL);
   pthread_mutex_destroy(&autoFreeList->lock);
 }
 
-void AutoFree_freeDone(AutoFreeList *autoFreeList)
+void AutoFree_keep(AutoFreeList *autoFreeList)
 {
   assert(autoFreeList != NULL);
 
-  AutoFree_freeAll(autoFreeList);
-  AutoFree_done(autoFreeList);
+  List_done(autoFreeList,NULL,NULL);
+  pthread_mutex_destroy(&autoFreeList->lock);
 }
 
 #ifdef NDEBUG
@@ -237,6 +238,7 @@ void AutoFree_freeAll(AutoFreeList *autoFreeList)
       // free resource
       if (autoFreeNode->autoFreeFunction != NULL)
       {
+#if 0
         #ifndef NDEBUG
           fprintf(stderr,
                   "DEBUG: call auto free %p at %s, line %lu with auto resource %p\n",
@@ -246,6 +248,7 @@ void AutoFree_freeAll(AutoFreeList *autoFreeList)
                   autoFreeNode->resource
                  );
         #endif /* not NDEBUG */
+#endif /* 0 */
         autoFreeNode->autoFreeFunction(autoFreeNode->resource);
       }
 

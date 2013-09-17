@@ -52,17 +52,17 @@ int main(int argc, char *argv[])
 
   // allocate and add some resources
   p = malloc(1000);
-  AUTOFREE_ADD(&autoFreeList,p,void*,{ free(resource); });
+  AUTOFREE_ADD(&autoFreeList,p,void *p,{ free(p); });
 
   h = open("/dev/null",O_RDONLY);
-  AUTOFREE_ADD(&autoFreeList,h,int,{ close(resource); });
+  AUTOFREE_ADD(&autoFreeList,h,int h,{ close(h); });
 
   d = opendir(".");
-  AUTOFREE_ADD(&autoFreeList,d,DIR*,{ closedir(resource); });
+  AUTOFREE_ADD(&autoFreeList,d,DIR *d,{ closedir(d); });
 
 #if 0
   // test: duplicate insert
-  AUTOFREE_ADD(&autoFreeList,p,void*,{ free(resource); });
+  AUTOFREE_ADD(&autoFreeList,p,void *p,{ free(p); });
 #endif
 
   // free all resources
