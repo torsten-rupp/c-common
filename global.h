@@ -170,6 +170,10 @@ typedef void                void32;
 
 /**************************** Variables ********************************/
 
+#ifndef NDEBUG
+  extern const char *__testCodeName__;
+#endif /* not NDEBUG */
+
 /****************************** Macros *********************************/
 #define GLOBAL extern
 #define LOCAL static
@@ -180,7 +184,7 @@ typedef void                void32;
 #else
   #define INLINE
   #define LOCAL_INLINE static
-#endif
+#endif /* NDEBUG */
 
 #ifdef __GNUC__
   #define ATTRIBUTE_PACKED             __attribute__((__packed__))
@@ -196,7 +200,7 @@ typedef void                void32;
   #define ATTRIBUTE_WARN_UNUSED_RESULT
   #define ATTRIBUTE_NO_INSTRUMENT_FUNCTION
   #define ATTRIBUTE_AUTO(functionCode)
-#endif
+#endif /* __GNUC__ */
 
 // only for better reading
 #define CALLBACK(code,argument) code,argument
@@ -741,16 +745,31 @@ typedef void                void32;
 /***********************************************************************\
 * Name   : DEBUG_TEST_CODE
 * Purpose: execute test code
-* Input  : name - environment variable name
+* Input  : name - test code name
 * Output : -
 * Return : -
-* Notes  : -
+* Notes  : test code is executed if:
+*            - environement variable TESTCODE contains name
+*          or
+*            - text file specified by environment varibale TESTCODE_LIST
+*              contains name and
+*            - text file specified by environment varibale TESTCODE_DONE
+*              does not contain name
+*          If environment variable TESTCODE_DONE is defined the name of
+*          executed testcode is added to that text file.
 \***********************************************************************/
 
 #ifndef NDEBUG
 
   #define DEBUG_TEST_CODE(name) \
-    if (getenv(name) != NULL)
+    if (debugIsTestCodeEnabled(name))
+
+  #define DEBUG_TEST_CODE2(name,codeBody) \
+    void (*__testcode__ ## __LINE__)(const char*) = ({ \
+                                          auto void __closure__(const char *); \
+                                          void __closure__(const char *__testCodeName__)codeBody __closure__; \
+                                        }); \
+    if (debugIsTestCodeEnabled(name)) { __testcode__ ## __LINE__(name); } \
 
 #else /* not NDEBUG */
 
@@ -1208,6 +1227,18 @@ void __abort(const char *__fileName__,
             );
 
 #ifndef NDEBUG
+
+/***********************************************************************\
+* Name   : debugIsTestCodeEnabled
+* Purpose: check if test code is enabled
+* Input  : name - name
+* Output : -
+* Return : TRUE iff test code is enabled
+* Notes  : -
+\***********************************************************************/
+
+bool debugIsTestCodeEnabled(const char *name);
+
 /***********************************************************************\
 * Name   : debugLocalResource
 * Purpose: mark resource as local resource (must be freed before
