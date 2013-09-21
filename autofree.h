@@ -70,12 +70,12 @@ typedef struct
          http://gcc.gnu.org/onlinedocs/gcc/Statement-Exprs.html
 */
 #ifdef __GNUC__
-  #define AUTOFREE_ADD(autoFreeList,resource_,parameter,freeFunctionBody) \
+  #define AUTOFREE_ADD(autoFreeList,resource_,freeFunctionBody) \
     AutoFree_add(autoFreeList,\
                  (void*)(unsigned long long)resource_, \
                  (AutoFreeFunction)({ \
-                                     auto void __closure__(parameter); \
-                                     void __closure__(parameter)freeFunctionBody __closure__; \
+                                     auto void __closure__(void); \
+                                     void __closure__(void)freeFunctionBody __closure__; \
                                    }) \
                 )
 
@@ -123,15 +123,15 @@ void AutoFree_init(AutoFreeList *autoFreeList);
 void AutoFree_done(AutoFreeList *autoFreeList);
 
 /***********************************************************************\
-* Name   : AutoFree_keep
-* Purpose: keep resources and free auto-free list
+* Name   : AutoFree_cleanup
+* Purpose: cleanup all resources and free auto-free list
 * Input  : autoFreeList - auto-free list
 * Output : -
 * Return : -
 * Notes  : -
 \***********************************************************************/
 
-void AutoFree_keep(AutoFreeList *autoFreeList);
+void AutoFree_cleanup(AutoFreeList *autoFreeList);
 
 /***********************************************************************\
 * Name   : AutoFree_add
@@ -151,7 +151,7 @@ bool AutoFree_add(AutoFreeList     *autoFreeList,
                  );
 #else /* not NDEBUG */
 bool __AutoFree_add(const char       *__fileName__,
-                    ulong            __lineNb__,
+                    uint             __lineNb__,
                     AutoFreeList     *autoFreeList,
                     void             *resource,
                     AutoFreeFunction autoFreeFunction
@@ -174,7 +174,7 @@ void AutoFree_remove(AutoFreeList *autoFreeList,
                     );
 #else /* not NDEBUG */
 void __AutoFree_remove(const char   *__fileName__,
-                       ulong        __lineNb__,
+                       uint         __lineNb__,
                        AutoFreeList *autoFreeList,
                        void         *resource
                       );
