@@ -109,6 +109,11 @@ typedef bool(*DictionaryIterateFunction)(const void *keyData,
 
 /****************************** Macros *********************************/
 
+#ifndef NDEBUG
+  #define Dictionary_init(...) __Dictionary_init(__FILE__,__LINE__,__VA_ARGS__)
+  #define Dictionary_done(...) __Dictionary_done(__FILE__,__LINE__,__VA_ARGS__)
+#endif /* not NDEBUG */
+
 /***************************** Forwards ********************************/
 
 /***************************** Functions *******************************/
@@ -128,10 +133,19 @@ typedef bool(*DictionaryIterateFunction)(const void *keyData,
 * Notes  : -
 \***********************************************************************/
 
-bool Dictionary_init(Dictionary                *dictionary,
-                     DictionaryCompareFunction dictionaryCompareFunction,
-                     void                      *dictionaryCompareUserData
-                    );
+#ifdef NDEBUG
+  bool Dictionary_init(Dictionary                *dictionary,
+                       DictionaryCompareFunction dictionaryCompareFunction,
+                       void                      *dictionaryCompareUserData
+                      );
+#else /* not NDEBUG */
+  bool __Dictionary_init(const char                *__fileName__,
+                         ulong                     __lineNb__,
+                         Dictionary                *dictionary,
+                         DictionaryCompareFunction dictionaryCompareFunction,
+                         void                      *dictionaryCompareUserData
+                        );
+#endif /* NDEBUG */
 
 /***********************************************************************\
 * Name   : Dictionary_done
@@ -146,10 +160,19 @@ bool Dictionary_init(Dictionary                *dictionary,
 * Notes  : -
 \***********************************************************************/
 
-void Dictionary_done(Dictionary             *dictionary,
-                     DictionaryFreeFunction dictionaryFreeFunction,
-                     void                   *dictionaryFreeUserData
-                    );
+#ifdef NDEBUG
+  void Dictionary_done(Dictionary             *dictionary,
+                       DictionaryFreeFunction dictionaryFreeFunction,
+                       void                   *dictionaryFreeUserData
+                      );
+#else /* not NDEBUG */
+  void __Dictionary_done(const char                *__fileName__,
+                         ulong                     __lineNb__,
+                         Dictionary             *dictionary,
+                         DictionaryFreeFunction dictionaryFreeFunction,
+                         void                   *dictionaryFreeUserData
+                        );
+#endif /* NDEBUG */
 
 /***********************************************************************\
 * Name   : Dictionary_clear

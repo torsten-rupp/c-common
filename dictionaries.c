@@ -523,10 +523,19 @@ LOCAL DictionaryEntry *growTable(DictionaryEntry *entries, uint oldSize, uint ne
 
 /*---------------------------------------------------------------------*/
 
-bool Dictionary_init(Dictionary                *dictionary,
-                     DictionaryCompareFunction dictionaryCompareFunction,
-                     void                      *dictionaryCompareUserData
-                    )
+#ifdef NDEBUG
+  bool Dictionary_init(Dictionary                *dictionary,
+                       DictionaryCompareFunction dictionaryCompareFunction,
+                       void                      *dictionaryCompareUserData
+                      )
+#else /* not NDEBUG */
+  bool __Dictionary_init(const char                *__fileName__,
+                         ulong                     __lineNb__,
+                         Dictionary                *dictionary,
+                         DictionaryCompareFunction dictionaryCompareFunction,
+                         void                      *dictionaryCompareUserData
+                        )
+#endif /* NDEBUG */
 {
   assert(dictionary != NULL);
 
@@ -555,15 +564,28 @@ bool Dictionary_init(Dictionary                *dictionary,
   dictionary->dictionaryCompareFunction = dictionaryCompareFunction;
   dictionary->dictionaryCompareUserData = dictionaryCompareUserData;
 
-  DEBUG_ADD_RESOURCE_TRACE("dictionary",dictionary);
+  #ifdef NDEBUG
+    DEBUG_ADD_RESOURCE_TRACEX("dictionary",dictionary);
+  #else /* not NDEBUG */
+    DEBUG_ADD_RESOURCE_TRACEX(__fileName__,__lineNb__,"dictionary",dictionary);
+  #endif /* NDEBUG */
 
   return TRUE;
 }
 
-void Dictionary_done(Dictionary             *dictionary,
-                     DictionaryFreeFunction dictionaryFreeFunction,
-                     void                   *dictionaryFreeUserData
-                    )
+#ifdef NDEBUG
+  void Dictionary_done(Dictionary             *dictionary,
+                       DictionaryFreeFunction dictionaryFreeFunction,
+                       void                   *dictionaryFreeUserData
+                      )
+#else /* not NDEBUG */
+  void __Dictionary_done(const char                *__fileName__,
+                         ulong                     __lineNb__,
+                         Dictionary             *dictionary,
+                         DictionaryFreeFunction dictionaryFreeFunction,
+                         void                   *dictionaryFreeUserData
+                        )
+#endif /* NDEBUG */
 {
   uint z;
   uint index;
@@ -571,7 +593,11 @@ void Dictionary_done(Dictionary             *dictionary,
   assert(dictionary != NULL);
   assert(dictionary->entryTables != NULL);
 
-  DEBUG_REMOVE_RESOURCE_TRACE(dictionary);
+  #ifdef NDEBUG
+    DEBUG_REMOVE_RESOURCE_TRACE(dictionary);
+  #else /* not NDEBUG */
+    DEBUG_REMOVE_RESOURCE_TRACEX(__fileName__,__lineNb__,dictionary);
+  #endif /* NDEBUG */
 
   // free resources
   for (z = 0; z < dictionary->entryTableCount; z++)
