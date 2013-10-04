@@ -53,19 +53,17 @@ int main(int argc, char *argv[])
   // allocate and add some resources
   p = malloc(1000);
   fprintf(stderr,"%s, %d: p1=%p\n",__FILE__,__LINE__,p);
-//  AUTOFREE_ADD(&autoFreeList,p,void *p,{ free(p); });
-  AUTOFREE_ADD2(&autoFreeList,p,{ fprintf(stderr,"%s, %d: p2=%p\n",__FILE__,__LINE__,p);
-free(p); });
+  AUTOFREE_ADD(&autoFreeList,p,{ free(p); });
 
   h = open("/dev/null",O_RDONLY);
-  AUTOFREE_ADD(&autoFreeList,h,int h,{ close(h); });
+  AUTOFREE_ADD(&autoFreeList,h,{ close(h); });
 
   d = opendir(".");
-  AUTOFREE_ADD(&autoFreeList,d,DIR *d,{ closedir(d); });
+  AUTOFREE_ADD(&autoFreeList,d,{ closedir(d); });
 
 #if 0
   // test: duplicate insert
-  AUTOFREE_ADD(&autoFreeList,p,void *p,{ free(p); });
+  AUTOFREE_ADD(&autoFreeList,p,{ free(p); });
 #endif
 
   // free all resources
