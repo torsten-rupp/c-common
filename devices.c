@@ -21,6 +21,9 @@
 #ifdef HAVE_SYS_IOCTL_H
   #include <sys/ioctl.h>
 #endif
+#ifdef HAVE_SYS_MOUNT_H
+  #include <sys/mount.h>
+#endif
 #include <mntent.h>
 #include <errno.h>
 #include <assert.h>
@@ -475,7 +478,7 @@ Errors Device_getDeviceInfo(DeviceInfo   *deviceInfo,
 
   if (deviceInfo->type == DEVICE_TYPE_BLOCK)
   {
-    // get block size, total size
+    // try to get block size, total size
     handle = open(String_cString(deviceName),O_RDONLY);
     if (handle != -1)
     {
@@ -486,10 +489,6 @@ Errors Device_getDeviceInfo(DeviceInfo   *deviceInfo,
         if (ioctl(handle,BLKGETSIZE,&l) == 0) deviceInfo->size      = (int64)l*512;
       #endif
       close(handle);
-    }
-    else
-    {
-      return ERRORX_(OPEN_DEVICE,errno,String_cString(deviceName));
     }
   }
 
