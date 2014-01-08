@@ -85,7 +85,7 @@ int main(int argc, char *argv[])
   String_setCString(w,"\t'Die Verwandlung'\nFranz Kafka\r!");
   printf("Format result:\n");
   String_format(s,
-                "%d %ld %lld %f %s %S %'s %'S %'S",
+                "%d %ld %lld %f %s %S %'s %'S %'S emp=#%S#",
                 123,
                 456L,
                 789LL,
@@ -94,7 +94,8 @@ int main(int argc, char *argv[])
                 s,
                 String_cString(t),
                 t,
-                w
+                w,
+                STRING_EMPTY
                );
   printf("s=%s\n",String_cString(s));
   String_delete(w);
