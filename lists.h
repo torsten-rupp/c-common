@@ -49,13 +49,40 @@ typedef struct
 // delete list node function
 typedef void(*ListNodeFreeFunction)(void *node, void *userData);
 
-// copy list node function
+/***********************************************************************\
+* Name   : ListNodeCopyFunction
+* Purpose: copy list node function
+* Input  : fromNode - copy from node
+*          userData - user data
+* Output : -
+* Return : duplicated list node
+* Notes  : -
+\***********************************************************************/
+
 typedef void*(*ListNodeCopyFunction)(const void *fromNode, void *userData);
 
-// list node equals function
-typedef int(*ListNodeEqualsFunction)(const void *node, void *userData);
+/***********************************************************************\
+* Name   : ListNodeEqualsFunction
+* Purpose: list node equals function
+* Input  : node     - node to check
+*          userData - user data
+* Output : -
+* Return : TRUE iff node equals
+* Notes  : -
+\***********************************************************************/
 
-// compare list nodes function
+typedef bool(*ListNodeEqualsFunction)(const void *node, void *userData);
+
+/***********************************************************************\
+* Name   : ListNodeCompareFunction
+* Purpose: compare list nodes function
+* Input  : node1,node2 - nodes to compare
+*          userData - user data
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
 typedef int(*ListNodeCompareFunction)(const void *node1, const void *node2, void *userData);
 
 /***************************** Variables *******************************/
@@ -63,10 +90,11 @@ typedef int(*ListNodeCompareFunction)(const void *node1, const void *node2, void
 /****************************** Macros *********************************/
 
 #ifndef NDEBUG
-  #define List_newNode(size) __List_newNode(__FILE__,__LINE__,size)
-  #define List_deleteNode(node) __List_deleteNode(__FILE__,__LINE__,node)
-  #define List_insert(list,node,nextNode) __List_insert(__FILE__,__LINE__,list,node,nextNode)
-  #define List_append(list,node) __List_append(__FILE__,__LINE__,list,node)
+  #define List_newNode(...) __List_newNode(__FILE__,__LINE__,__VA_ARGS__)
+  #define List_deleteNode(...) __List_deleteNode(__FILE__,__LINE__,__VA_ARGS__)
+  #define List_insert(...) __List_insert(__FILE__,__LINE__,__VA_ARGS__)
+  #define List_append(...) __List_append(__FILE__,__LINE__,__VA_ARGS__)
+  #define List_appendUniq(...) __List_appendUniq(__FILE__,__LINE__,__VA_ARGS__)
 #endif /* not NDEBUG */
 
 #define LIST_STATIC_INIT {NULL,NULL}
@@ -434,6 +462,34 @@ void __List_append(const char *fileName,
                    void       *node
                   );
 #endif /* NDEBUG */
+
+/***********************************************************************\
+* Name   : List_appendUniq
+* Purpose: append node to end of list if not already in list
+* Input  : list - list
+*          node - node to add
+*
+* Output : -
+* Return : TRUE iff node added
+* Notes  : -
+\***********************************************************************/
+
+#ifdef NDEBUG
+bool List_appendUniq(void                   *list,
+                     void                   *node,
+                     ListNodeEqualsFunction listNodeEqualsFunction,
+                     void                   *listNodeEqualsUserData
+                    );
+#else /* not NDEBUG */
+bool __List_appendUniq(const char             *fileName,
+                       ulong                  lineNb,
+                       void                   *list,
+                       void                   *node,
+                       ListNodeEqualsFunction listNodeEqualsFunction,
+                       void                   *listNodeEqualsUserData
+                      );
+#endif /* NDEBUG */
+
 
 /***********************************************************************\
 * Name   : List_remove
