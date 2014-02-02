@@ -56,7 +56,7 @@ int main(int argc, char *argv[])
   AUTOFREE_ADD(&autoFreeList,p,{ fprintf(stderr,"%s, %d: called auto free: %p\n",__FILE__,__LINE__,p); free(p); });
 
   h = open("/dev/null",O_RDONLY);
-  AUTOFREE_ADD(&autoFreeList,h,{ fprintf(stderr,"%s, %d: called auto free: %d\n",__FILE__,__LINE__,h); close(h); });
+  AUTOFREE_ADD(&autoFreeList,&h,{ fprintf(stderr,"%s, %d: called auto free: %d\n",__FILE__,__LINE__,h); close(h); });
 
   d = opendir(".");
   AUTOFREE_ADD(&autoFreeList,d,{ fprintf(stderr,"%s, %d: called auto free: %p\n",__FILE__,__LINE__,d); closedir(d); });
