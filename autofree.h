@@ -13,6 +13,7 @@
 
 /****************************** Includes *******************************/
 #include <stdlib.h>
+#include <stdint.h>
 #include <assert.h>
 
 #if   defined(PLATFORM_LINUX)
@@ -36,13 +37,14 @@ typedef struct AutoFreeNode
 {
   LIST_NODE_HEADER(struct AutoFreeNode);
 
-  void             *resource;
+  uint8_t          resource[16];
+  size_t           resourceSize;
   AutoFreeFunction autoFreeFunction;
   void             *autoFreeUserData;
 
   #ifndef NDEBUG
-    const char     *fileName;
-    ulong          lineNb;
+    const char   *fileName;
+    ulong        lineNb;
     #ifdef HAVE_BACKTRACE
       void const *stackTrace[16];
       int        stackTraceSize;
@@ -71,8 +73,9 @@ typedef struct
 */
 #ifdef __GNUC__
   #define AUTOFREE_ADD(autoFreeList,resource_,freeFunctionBody) \
-    AutoFree_add(autoFreeList,\
-                 (void*)(unsigned long long)resource_, \
+    AutoFree_add(autoFreeList, \
+                 (void*)&resource_, \
+                 sizeof(resource_), \
                  (AutoFreeFunction)({ \
                                      auto void __closure__(void); \
                                      void __closure__(void)freeFunctionBody __closure__; \
@@ -80,13 +83,24 @@ typedef struct
                 )
 
   #define AUTOFREE_ADDX(autoFreeList,resource_,freeFunctionSignature,freeFunctionBody) \
-    AutoFree_add(autoFreeList,\
-                 (void*)(unsigned long long)resource_, \
+    AutoFree_add(autoFreeList, \
+                 (void*)&resource_, \
+                 sizeof(resource_), \
                  (AutoFreeFunction)({ \
                                      auto void __closure__ freeFunctionSignature; \
                                      void __closure__ freeFunctionSignature freeFunctionBody __closure__; \
                                    }) \
                 )
+
+  #define AUTOFREE_REMOVE(autoFreeList,resource_) \
+    do \
+    { \
+      AutoFree_remove(autoFreeList, \
+                      (void*)&resource_, \
+                      sizeof(resource_) \
+                     ); \
+    } \
+    while (0)
 
   #define AUTOFREE_FREE(functionBody) \
   ({ \
@@ -144,7 +158,10 @@ void *AutoFree_save(AutoFreeList *autoFreeList);
 * Notes  : -
 \***********************************************************************/
 
-void AutoFree_restore(AutoFreeList *autoFreeList, void *savePoint, bool freeFlag);
+void AutoFree_restore(AutoFreeList *autoFreeList,
+                      void         *savePoint,
+                      bool         freeFlag
+                     );
 
 /***********************************************************************\
 * Name   : AutoFree_cleanup
@@ -162,6 +179,7 @@ void AutoFree_cleanup(AutoFreeList *autoFreeList);
 * Purpose: add resource to auto-free list
 * Input  : autoFreeList     - auto-free list
 *          resource         - resource
+*          resourceSize     - size of resource
 *          autoFreeFunction - free function
 * Output : -
 * Return : TRUE iff resourced added
@@ -170,14 +188,16 @@ void AutoFree_cleanup(AutoFreeList *autoFreeList);
 
 #ifdef NDEBUG
 bool AutoFree_add(AutoFreeList     *autoFreeList,
-                  void             *resource,
+                  const void       *resource,
+                  size_t           resourceSize,
                   AutoFreeFunction autoFreeFunction
                  );
 #else /* not NDEBUG */
 bool __AutoFree_add(const char       *__fileName__,
                     uint             __lineNb__,
                     AutoFreeList     *autoFreeList,
-                    void             *resource,
+                    const void       *resource,
+                    size_t           resourceSize,
                     AutoFreeFunction autoFreeFunction
                    );
 #endif /* NDEBUG */
@@ -187,6 +207,7 @@ bool __AutoFree_add(const char       *__fileName__,
 * Purpose: remove resource from auto-free list
 * Input  : autoFreeList - auto-free list
 *          resource     - resource
+*          resourceSize - size of resource
 * Output : -
 * Return : -
 * Notes  : resource is not freed!
@@ -194,13 +215,15 @@ bool __AutoFree_add(const char       *__fileName__,
 
 #ifdef NDEBUG
 void AutoFree_remove(AutoFreeList *autoFreeList,
-                     void         *resource
+                     const void   *resource,
+                     size_t       resourceSize
                     );
 #else /* not NDEBUG */
 void __AutoFree_remove(const char   *__fileName__,
                        uint         __lineNb__,
                        AutoFreeList *autoFreeList,
-                       void         *resource
+                       const void   *resource,
+                       size_t       resourceSize
                       );
 #endif /* NDEBUG */
 
@@ -214,7 +237,9 @@ void __AutoFree_remove(const char   *__fileName__,
 * Notes  : -
 \***********************************************************************/
 
-void AutoFree_free(AutoFreeList *autoFreeList, void *resource);
+void AutoFree_free(AutoFreeList *autoFreeList,
+                   const void   *resource
+                  );
 
 /***********************************************************************\
 * Name   : AutoFree_freeAll
