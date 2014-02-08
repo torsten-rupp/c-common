@@ -1458,7 +1458,7 @@ Errors File_read(FileHandle *fileHandle,
     // read as much data as possible
     n = fread(buffer,1,bufferLength,fileHandle->file);
 //fprintf(stderr,"%s, %d: much %x bufferLength=%lu n=%ld %d\n",__FILE__,__LINE__,fileHandle->file,bufferLength,n,ferror(fileHandle->file));
-    if ((n <= 0) && ferror(fileHandle->file))
+    if ((n <= 0) && (ferror(fileHandle->file) != 0))
     {
       return ERRORX_(IO_ERROR,errno,String_cString(fileHandle->name));
     }
@@ -1472,7 +1472,7 @@ Errors File_read(FileHandle *fileHandle,
     {
       n = fread(buffer,1,bufferLength,fileHandle->file);
 //fprintf(stderr,"%s, %d: all bufferLength=%lu n=%ld %d\n",__FILE__,__LINE__,bufferLength,n,ferror(fileHandle->file));
-      if ((n <= 0) && ferror(fileHandle->file))
+      if (n <= 0)
       {
         return ERRORX_(IO_ERROR,errno,String_cString(fileHandle->name));
       }
@@ -1782,9 +1782,7 @@ Errors File_tell(FileHandle *fileHandle, uint64 *offset)
   {
     return ERRORX_(IO_ERROR,errno,String_cString(fileHandle->name));
   }
-#warning TODO
-//assert(sizeof(off_t)==8);
-assert(n == (off_t)fileHandle->index);
+  assert((uint64)n == fileHandle->index);
 
   (*offset) = fileHandle->index;
 
@@ -2671,7 +2669,6 @@ Errors File_getFileInfo(FileInfo     *fileInfo,
     time_t d0;
     time_t d1;
   } cast;
-  Errors     error;
 
   assert(fileName != NULL);
   assert(fileInfo != NULL);
@@ -2711,11 +2708,7 @@ Errors File_getFileInfo(FileInfo     *fileInfo,
     fileInfo->size = fileStat.st_size;
 
     // get file attributes
-    error = getAttributes(fileName,&fileInfo->attributes);
-    if (error != ERROR_NONE)
-    {
-      return error;
-    }
+    (void)getAttributes(fileName,&fileInfo->attributes);
   }
   else if (S_ISDIR(fileStat.st_mode))
   {
@@ -2723,11 +2716,7 @@ Errors File_getFileInfo(FileInfo     *fileInfo,
     fileInfo->size = 0LL;
 
     // get file attributes
-    error = getAttributes(fileName,&fileInfo->attributes);
-    if (error != ERROR_NONE)
-    {
-      return error;
-    }
+    (void)getAttributes(fileName,&fileInfo->attributes);
   }
   #ifdef S_ISLNK
   else if (S_ISLNK(fileStat.st_mode))
@@ -2776,15 +2765,6 @@ Errors File_getFileInfo(FileInfo     *fileInfo,
     fileInfo->size        = 0LL;
     fileInfo->attributes  = 0LL;
   }
-
-#if 0
-  // get extended attributes
-  error = File_getExtendedAttributes(&fileInfo->extendedAttributeList,fileName);
-  if (error != ERROR_NONE)
-  {
-    return error;
-  }
-  #endif
 
   return ERROR_NONE;
 }
@@ -2946,7 +2926,7 @@ Errors File_getExtendedAttributes(FileExtendedAttributeList *fileExtendedAttribu
 
   // get attributes
   name = names;
-  while ((name-names) < namesLength)
+  while ((uint)(name-names) < namesLength)
   {
     // allocate buffer for data
     n = lgetxattr(String_cString(fileName),name,NULL,0);
@@ -3458,6 +3438,8 @@ Errors File_makeSpecial(const String     name,
         {
           return ERRORX_(IO_ERROR,errno,String_cString(name));
         }
+        break;
+      case FILE_SPECIAL_TYPE_OTHER:
         break;
       #ifndef NDEBUG
         default:
