@@ -4728,7 +4728,9 @@ void String_debugCheckValid(const char *__fileName__, ulong __lineNb__, const St
     checkSum = STRING_CHECKSUM(string);
     if (checkSum != string->checkSum)
     {
-      debugDumpCurrentStackTrace(stderr,"",0);
+      #ifdef HAVE_BACKTRACE
+        debugDumpCurrentStackTrace(stderr,"",0);
+      #endif /* HAVE_BACKTRACE */
       HALT_INTERNAL_ERROR_AT(__fileName__,
                              __lineNb__,
                              "Invalid checksum 0x%08x in string %p, length %ld (max. %ld) (expected 0x%08x)!",
@@ -4757,7 +4759,9 @@ void String_debugCheckValid(const char *__fileName__, ulong __lineNb__, const St
           debugStringNode = debugStringNode->next;
         }
 
-        debugDumpCurrentStackTrace(stderr,"",0);
+        #ifdef HAVE_BACKTRACE
+          debugDumpCurrentStackTrace(stderr,"",0);
+        #endif /* HAVE_BACKTRACE */
         if (debugStringNode != NULL)
         {
           HALT_INTERNAL_ERROR_AT(__fileName__,
