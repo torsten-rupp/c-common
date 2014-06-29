@@ -66,7 +66,7 @@ bool MsgQueue_init(MsgQueue *msgQueue, ulong maxMsgs);
 
 /***********************************************************************\
 * Name   : MsgQueue_done
-* Purpose: free all remaining message in queue and deinitialize 
+* Purpose: free all remaining message in queue and deinitialize
 * Input  : msgQueue                - message queue
 *          msgQueueMsgFreeFunction - message free function or NULL
 *          msgQueueMsgFreeUserData - user data for free function
@@ -141,13 +141,14 @@ void MsgQueue_unlock(MsgQueue *msgQueue);
 * Purpose: get next message in queue
 * Input  : msgQueue - message queue
 *          maxSize  - max. size of message
+*          timeout  - timeout [ms] or WAIT_FOREVER
 * Output : msg  - message
 *          size - size of message (can be NULL)
 * Return : TRUE if message received, FALSE if end-of-messages
 * Notes  : -
 \***********************************************************************/
 
-bool MsgQueue_get(MsgQueue *msgQueue, void *msg, ulong *size, ulong maxSize);
+bool MsgQueue_get(MsgQueue *msgQueue, void *msg, ulong *size, ulong maxSize, long timeout);
 
 /***********************************************************************\
 * Name   : MsgQueue_put
