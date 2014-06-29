@@ -106,6 +106,22 @@ LOCAL void debugResourceInit(void)
 
 // ----------------------------------------------------------------------
 
+#ifndef NDEBUG
+void __dprintf__(const char *__fileName__,
+                 uint       __lineNb__,
+                 const char *format,
+                 ...
+                )
+{
+  va_list arguments;
+
+  va_start(arguments,format);
+  vfprintf(stdout,format,arguments);
+  va_end(arguments);
+  fprintf(stdout,"\n");
+}
+#endif /* NDEBUG */
+
 void __halt(const char *__fileName__,
             uint       __lineNb__,
             int        exitcode,
@@ -666,7 +682,7 @@ void debugDumpCurrentStackTrace(FILE *handle, const char *title, uint indent)
 #endif /* !defined(NDEBUG) && defined(HAVE_BACKTRACE) */
 
 #ifndef NDEBUG
-void debugDumpMemory(bool printAddress, const void *address, uint length)
+void debugDumpMemory(const void *address, uint length, bool printAddress)
 {
   const byte *p;
   uint       z,i;
