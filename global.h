@@ -354,7 +354,7 @@ typedef struct
 * Notes  : -
 \***********************************************************************/
 
-#define ALIGN(n,alignment) (((alignment)>0)?(((n)+(alignment)-1) & ~((alignment)-1)):(n))
+#define ALIGN(n,alignment) (((alignment)>0) ? (((n)+(alignment)-1) & ~((alignment)-1)) : (n))
 
 /***********************************************************************\
 * Name   : SET_CLEAR, SET_VALUE, SET_ADD, SET_REM
