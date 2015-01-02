@@ -42,6 +42,7 @@ int main(int argc, char *argv[])
   int             i,j;
   long            nextIndex;
   StringTokenizer stringTokenizer;
+  StringStatic    (v,64);
 
   UNUSED_VARIABLE(argc);
   UNUSED_VARIABLE(argv);
@@ -240,6 +241,11 @@ int main(int argc, char *argv[])
   // debug function: invalid string
   printf(String_cString(s));
   String_delete(s);
+  #endif /* 0 */
+
+  #if 0
+  // debug functions: delete static string
+  String_delete(v);
   #endif /* 0 */
 
   String_debugPrintInfo();
