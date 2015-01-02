@@ -1,3 +1,6 @@
+2015-01-02 0.12
+  * added support for static strings
+
 2013-08-12 0.11
   * format strings %s,%S: escape characters \0, \007, \b, \t, \n, \v, \f, \r, \033
     if string is quoted

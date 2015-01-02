@@ -42,7 +42,7 @@ int main(int argc, char *argv[])
   int             i,j;
   long            nextIndex;
   StringTokenizer stringTokenizer;
-  StringStatic    (v,64);
+  StaticString    (v,16);
 
   UNUSED_VARIABLE(argc);
   UNUSED_VARIABLE(argv);
@@ -215,7 +215,7 @@ int main(int argc, char *argv[])
   printf("upper=#%s#\n",String_cString(s));
   String_escape(s,"'",'\\');
   printf("escaped '=#%s#\n",String_cString(s));
-  String_unescape(s,'\\');
+  String_unescape(s,'\\',NULL,NULL,0);
   printf("ununescaped '=#%s#\n",String_cString(s));
   String_quote(s,'\'');
   printf("quoted=#%s#\n",String_cString(s));
@@ -246,6 +246,12 @@ int main(int argc, char *argv[])
   #if 0
   // debug functions: delete static string
   String_delete(v);
+  #endif /* 0 */
+
+  #if 0
+  // debug functions: exceed static string
+  String_setCString(v,"Hello World: how are you?");
+  printf("static string=#%s#\n",String_cString(v));
   #endif /* 0 */
 
   String_debugPrintInfo();
