@@ -253,6 +253,9 @@ typedef struct
 // mask and shift value
 #define MASKSHIFT(n,maskShift) (((n) & maskShift.mask) >> maskShift.shift)
 
+// debugging
+#define __BP() asm(" int3");
+
 /***********************************************************************\
 * Name   : CALLBACK_INLINE
 * Purpose: define an inline call-back function
@@ -883,40 +886,65 @@ typedef struct
 * Output : -
 * Return : -
 * Notes  : test code is executed if:
-*            - environement variable TESTCODE contains name
+*            - environment variable TESTCODE contains name
 *          or
 *            - text file specified by environment varibale TESTCODE_LIST
 *              contains name and
 *            - text file specified by environment varibale TESTCODE_DONE
 *              does not contain name
+*          If environment variable TESTCODE_NAME is defined the name of
+*          executed testcode is written to that text file.
 *          If environment variable TESTCODE_DONE is defined the name of
 *          executed testcode is added to that text file.
 \***********************************************************************/
 
 #ifndef NDEBUG
-
   #define DEBUG_TESTCODE(name) \
     if (debugIsTestCodeEnabled(__FILE__,__LINE__,name))
-
 // TODO: remove
   #define DEBUG_TESTCODE2(name,codeBody) \
     void (*__testcode__ ## __LINE__)(const char*) = ({ \
                                           auto void __closure__(const char *); \
                                           void __closure__(const char *__testCodeName__)codeBody __closure__; \
                                         }); \
-    if (debugIsTestCodeEnabled(__FILE__,__LINE__,name)) { __testcode__ ## __LINE__(name); } \
-
-  #define DEBUG_TESTCODE_ERROR() \
-    ERRORX_(TESTCODE,0,__testCodeName__)
-
+    if (debugIsTestCodeEnabled(__FILE__,__LINE__,name)) { __testcode__ ## __LINE__(name); }
 #else /* not NDEBUG */
-
   #define DEBUG_TESTCODE(name) \
     if (FALSE)
+#endif /* NDEBUG */
 
+/***********************************************************************\
+* Name   : DEBUG_TESTCODE_ERROR
+* Purpose: get test code error code
+* Input  : name - test code name
+* Output : -
+* Return : test code error code
+* Notes  : -
+\***********************************************************************/
+
+#ifndef NDEBUG
+  #define DEBUG_TESTCODE_ERROR() \
+    ERRORX_(TESTCODE,0,__testCodeName__)
+#else /* not NDEBUG */
   #define DEBUG_TESTCODE_ERROR() \
     ERROR_NONE
+#endif /* NDEBUG */
 
+/***********************************************************************\
+* Name   : IS_DEBUG_TESTCODE
+* Purpose: true if test code is executed
+* Input  : -
+* Output : -
+* Return : TRUE iff test code is executed
+* Notes  : -
+\***********************************************************************/
+
+#ifndef NDEBUG
+  #define IS_DEBUG_TESTCODE() \
+    (__testCodeName__ != NULL)
+#else /* not NDEBUG */
+  #define IS_DEBUG_TESTCODE() \
+    FALSE
 #endif /* NDEBUG */
 
 /***********************************************************************\
@@ -1084,10 +1112,13 @@ void __dprintf__(const char *__fileName__,
 * Notes  : -
 \***********************************************************************/
 
+#pragma GCC push_options
+#pragma GCC diagnostic ignored "-Wfloat-equal"
 inline bool isNaN(double n)
 {
-  return(n!=n);
+  return n != n;
 }
+#pragma GCC pop_options
 
 /***********************************************************************\
 * Name   : isInf
@@ -1100,7 +1131,7 @@ inline bool isNaN(double n)
 
 inline bool isInf(double n)
 {
-  return((n < -MAX_DOUBLE) || (n > MAX_DOUBLE));
+  return (n < -MAX_DOUBLE) || (n > MAX_DOUBLE);
 }
 
 #endif
@@ -1138,7 +1169,7 @@ inline double degreeToRad(double n)
 //???  ASSERT_NaN(n);
 //  n=fmod(n,360);
 //  if (n<0) n+=360;
-  return(n*PI/180);
+  return n*PI/180;
 }
 
 #endif
@@ -1315,6 +1346,20 @@ static inline bool stringEqualsIgnoreCase(const char *s1, const char *s2)
   return strcasecmp(s1,s2) == 0;
 }
 
+/***********************************************************************\
+* Name   : stringIsEmpty
+* Purpose: check if string is NULL or empty
+* Input  : s - string
+* Output : -
+* Return : TRUE if empty
+* Notes  : -
+\***********************************************************************/
+
+static inline bool stringIsEmpty(const char *s)
+{
+  return (s == NULL) || (s[0] =='\0');
+}
+
 /*---------------------------------------------------------------------*/
 
 #ifdef __cplusplus
@@ -1330,9 +1375,8 @@ static inline bool stringEqualsIgnoreCase(const char *s1, const char *s2)
 
 inline ushort swapWORD(ushort n)
 {
-  return( ((n & 0xFF00) >> 8) |
-          ((n & 0x00FF) << 8)
-        );
+  return   ((n & 0xFF00) >> 8)
+         | ((n & 0x00FF) << 8);
 }
 
 /***********************************************************************\
@@ -1346,11 +1390,10 @@ inline ushort swapWORD(ushort n)
 
 inline ulong swapLONG(ulong n)
 {
-  return( ((n & 0xFF000000) >> 24) |
-          ((n & 0x00FF0000) >>  8) |
-          ((n & 0x0000FF00) <<  8) |
-          ((n & 0x000000FF) << 24)
-        );
+  return   ((n & 0xFF000000) >> 24)
+         | ((n & 0x00FF0000) >>  8)
+         | ((n & 0x0000FF00) <<  8)
+         | ((n & 0x000000FF) << 24);
 }
 
 #endif
