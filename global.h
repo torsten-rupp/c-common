@@ -256,7 +256,11 @@ typedef struct
 #define MASKSHIFT(n,maskShift) (((n) & maskShift.mask) >> maskShift.shift)
 
 // debugging
-#define __BP() asm(" int3");
+#if defined(__x86_64__) || defined(__i386)
+  #define __BP() do { asm(" int3"); } while (0)
+#else
+  #define __BP() do { } while (0)
+#endif
 
 /***********************************************************************\
 * Name   : CALLBACK_INLINE
