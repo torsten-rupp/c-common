@@ -338,15 +338,9 @@ LOCAL Errors getAttributes(const String fileName, FileAttributes *fileAttributes
   #endif /* FS_IOC_GETFLAGS */
 
   (*fileAttributes) = 0LL;
-  #ifdef HAVE_FS_COMPR_FL
-    if ((attributes & FILE_ATTRIBUTE_COMPRESS   ) != 0LL) (*fileAttributes) |= FILE_ATTRIBUTE_COMPRESS;
-  #endif
-  #ifdef HAVE_FS_NOCOMP_FL
-    if ((attributes & FILE_ATTRIBUTE_NO_COMPRESS) != 0LL) (*fileAttributes) |= FILE_ATTRIBUTE_NO_COMPRESS;
-  #endif
-  #ifdef HAVE_FS_NODUMP_FL
-    if ((attributes & FILE_ATTRIBUTE_NO_DUMP    ) != 0LL) (*fileAttributes) |= FILE_ATTRIBUTE_NO_DUMP;
-  #endif
+  if ((attributes & FILE_ATTRIBUTE_COMPRESS   ) != 0LL) (*fileAttributes) |= FILE_ATTRIBUTE_COMPRESS;
+  if ((attributes & FILE_ATTRIBUTE_NO_COMPRESS) != 0LL) (*fileAttributes) |= FILE_ATTRIBUTE_NO_COMPRESS;
+  if ((attributes & FILE_ATTRIBUTE_NO_DUMP    ) != 0LL) (*fileAttributes) |= FILE_ATTRIBUTE_NO_DUMP;
 
   return ERROR_NONE;
 }
@@ -399,15 +393,9 @@ LOCAL Errors setAttributes(const String fileName, FileAttributes fileAttributes)
       return error;
     }
     attributes &= ~(FILE_ATTRIBUTE_COMPRESS|FILE_ATTRIBUTE_NO_COMPRESS|FILE_ATTRIBUTE_NO_DUMP);
-    #ifdef HAVE_FS_COMPR_FL
-      if ((fileAttributes & FILE_ATTRIBUTE_COMPRESS) != 0LL) attributes |= FILE_ATTRIBUTE_COMPRESS;
-    #endif
-    #ifdef HAVE_FS_NOCOMP_FL
-      if ((fileAttributes & FILE_ATTRIBUTE_NO_COMPRESS) != 0LL) attributes |= FILE_ATTRIBUTE_NO_COMPRESS;
-    #endif
-    #ifdef HAVE_FS_NODUMP_FL
-      if ((fileAttributes & FILE_ATTRIBUTE_NO_DUMP) != 0LL) attributes |= FILE_ATTRIBUTE_NO_DUMP;
-    #endif
+    if ((fileAttributes & FILE_ATTRIBUTE_COMPRESS) != 0LL) attributes |= FILE_ATTRIBUTE_COMPRESS;
+    if ((fileAttributes & FILE_ATTRIBUTE_NO_COMPRESS) != 0LL) attributes |= FILE_ATTRIBUTE_NO_COMPRESS;
+    if ((fileAttributes & FILE_ATTRIBUTE_NO_DUMP) != 0LL) attributes |= FILE_ATTRIBUTE_NO_DUMP;
     if (ioctl(handle,FS_IOC_SETFLAGS,&attributes) != 0)
     {
       error = ERRORX_(IO_ERROR,errno,String_cString(fileName));
