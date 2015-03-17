@@ -46,18 +46,31 @@ typedef enum
   DATABASE_TYPE_DOUBLE,
   DATABASE_TYPE_DATETIME,
   DATABASE_TYPE_TEXT,
-  DATABASE_TYPE_BLOB
+  DATABASE_TYPE_BLOB,
+
+  DATABASE_TYPE_UNKNOWN
 } DatabaseTypes;
 
-// no id
-#define DATABASE_ID_NONE -1LL
+// special database ids
+#define DATABASE_ID_NONE 0LL
+#define DATABASE_ID_ANY -1LL
+
+// ordering mode
+typedef enum
+{
+  DATABASE_ORDERING_ASCENDING,
+  DATABASE_ORDERING_DESCENDING
+} DatabaseOrdering;
 
 /***************************** Datatypes *******************************/
 
 // database handle
 typedef struct
 {
-  sqlite3   *handle;
+  sqlite3    *handle;
+  #ifndef NDEBUG
+    char fileName[256];
+  #endif /* not NDEBUG */
 } DatabaseHandle;
 
 // database query handle
@@ -66,7 +79,7 @@ typedef struct
   DatabaseHandle *databaseHandle;
   sqlite3_stmt   *handle;
   #ifndef NDEBUG
-    String sqlString;
+    String     sqlString;
   #endif /* not NDEBUG */
 } DatabaseQueryHandle;
 
@@ -80,8 +93,10 @@ typedef int64 DatabaseId;
 /****************************** Macros *********************************/
 
 #ifndef NDEBUG
-  #define Database_open(...)  __Database_open(__FILE__,__LINE__,__VA_ARGS__)
-  #define Database_close(...) __Database_close(__FILE__,__LINE__,__VA_ARGS__)
+  #define Database_open(...)     __Database_open(__FILE__,__LINE__,__VA_ARGS__)
+  #define Database_close(...)    __Database_close(__FILE__,__LINE__,__VA_ARGS__)
+  #define Database_prepare(...)  __Database_prepare(__FILE__,__LINE__,__VA_ARGS__)
+  #define Database_finalize(...) __Database_finalize(__FILE__,__LINE__,__VA_ARGS__)
 #endif /* not NDEBUG */
 
 /***************************** Forwards ********************************/
@@ -133,6 +148,30 @@ typedef int64 DatabaseId;
                         DatabaseHandle *databaseHandle
                        );
 #endif /* NDEBUG */
+
+Errors Database_setEnabledSync(DatabaseHandle *databaseHandle,
+                               bool           enabled
+                              );
+
+Errors Database_setEnabledForeignKeys(DatabaseHandle *databaseHandle,
+                                      bool           enabled
+                                     );
+
+/***********************************************************************\
+* Name   : Database_copyTable
+* Purpose: copy table content
+* Input  : fromDatabaseHandle - from-database handle
+*          toDatabaseHandle   - fo-database handle
+*          tableName          - table name
+* Output : -
+* Return : ERROR_NONE or error code
+* Notes  : -
+\***********************************************************************/
+
+Errors Database_copyTable(DatabaseHandle *fromDatabaseHandle,
+                          DatabaseHandle *toDatabaseHandle,
+                          const char     *tableName
+                         );
 
 /***********************************************************************\
 * Name   : Database_addColumn
@@ -204,11 +243,21 @@ Errors Database_execute(DatabaseHandle   *databaseHandle,
 * Notes  : -
 \***********************************************************************/
 
-Errors Database_prepare(DatabaseQueryHandle *databaseQueryHandle,
-                        DatabaseHandle      *databaseHandle,
-                        const char          *command,
-                        ...
-                       );
+#ifdef NDEBUG
+  Errors Database_prepare(DatabaseQueryHandle *databaseQueryHandle,
+                          DatabaseHandle      *databaseHandle,
+                          const char          *command,
+                          ...
+                         );
+#else /* not NDEBUG */
+  Errors __Database_prepare(const char          *__fileName__,
+                            uint                __lineNb__,
+                            DatabaseQueryHandle *databaseQueryHandle,
+                            DatabaseHandle      *databaseHandle,
+                            const char          *command,
+                            ...
+                           );
+#endif /* NDEBUG */
 
 /***********************************************************************\
 * Name   : Database_getNextRow
@@ -242,7 +291,14 @@ bool Database_getNextRow(DatabaseQueryHandle *databaseQueryHandle,
 * Notes  : -
 \***********************************************************************/
 
-void Database_finalize(DatabaseQueryHandle *databaseQueryHandle);
+#ifdef NDEBUG
+  void Database_finalize(DatabaseQueryHandle *databaseQueryHandle);
+#else /* not NDEBUG */
+  void __Database_finalize(const char        *__fileName__,
+                           uint              __lineNb__,
+                           DatabaseQueryHandle *databaseQueryHandle
+                          );
+#endif /* NDEBUG */
 
 /***********************************************************************\
 * Name   : Database_getInteger64
@@ -253,13 +309,13 @@ void Database_finalize(DatabaseQueryHandle *databaseQueryHandle);
 *          additional     - additional string (e. g. WHERE...)
 *                           special functions:
 *                             REGEXP(pattern,case-flag,text)
-* Output : l - int64 value or DATABASE_ID_NONE if not found
+* Output : value - int64 value or DATABASE_ID_NONE if not found
 * Return : ERROR_NONE or error code
 * Notes  : -
 \***********************************************************************/
 
 Errors Database_getInteger64(DatabaseHandle *databaseHandle,
-                             int64          *l,
+                             int64          *value,
                              const char     *tableName,
                              const char     *columnName,
                              const char     *additional,
@@ -275,13 +331,13 @@ Errors Database_getInteger64(DatabaseHandle *databaseHandle,
 *          additional     - additional string (e. g. WHERE...)
 *                           special functions:
 *                             REGEXP(pattern,case-flag,text)
-* Output : string - string value or empty if not found
+* Output : value - string value or empty if not found
 * Return : ERROR_NONE or error code
 * Notes  : -
 \***********************************************************************/
 
 Errors Database_getString(DatabaseHandle *databaseHandle,
-                          String         string,
+                          String         value,
                           const char     *tableName,
                           const char     *columnName,
                           const char     *additional,
@@ -290,9 +346,9 @@ Errors Database_getString(DatabaseHandle *databaseHandle,
 
 /***********************************************************************\
 * Name   : Database_setInteger64
-* Purpose: get int64 value from database table
+* Purpose: isnert or update int64 value in database table
 * Input  : databaseHandle - database handle
-*          l              - int64 value
+*          value          - int64 value
 *          tableName      - table name
 *          columnName     - column name
 *          additional     - additional string (e. g. WHERE...)
@@ -304,7 +360,7 @@ Errors Database_getString(DatabaseHandle *databaseHandle,
 \***********************************************************************/
 
 Errors Database_setInteger64(DatabaseHandle *databaseHandle,
-                             int64          l,
+                             int64          value,
                              const char     *tableName,
                              const char     *columnName,
                              const char     *additional,
@@ -313,7 +369,7 @@ Errors Database_setInteger64(DatabaseHandle *databaseHandle,
 
 /***********************************************************************\
 * Name   : Database_setString
-* Purpose: set string value from database table
+* Purpose: insert or update string value in database table
 * Input  : databaseHandle - database handle
 *          string         - string value
 *          tableName      - table name
@@ -346,6 +402,17 @@ Errors Database_setString(DatabaseHandle *databaseHandle,
 int64 Database_getLastRowId(DatabaseHandle *databaseHandle);
 
 #ifndef NDEBUG
+
+/***********************************************************************\
+* Name   : Database_debugPrintQueryInfo
+* Purpose: print query info
+* Input  : databaseQueryHandle - database query handle
+* Output : -
+* Return : -
+* Notes  : For debugging only!
+\***********************************************************************/
+
+void Database_debugEnable(bool enabled);
 
 /***********************************************************************\
 * Name   : Database_debugPrintQueryInfo
