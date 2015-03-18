@@ -68,18 +68,24 @@
 #define DEBUG_MAX_CLOSED_LIST 100
 
 /***************************** Datatypes *******************************/
-#ifdef HAVE_FSEEKO
-  #define FSEEK fseeko
-#elif HAVE__FSEEKI64
+#ifdef HAVE_FOPEN64
+  #define FOPEN fopen64
+#else
+  #define FOPEN fopen
+#endif
+
+#ifdef HAVE__FSEEKI64
   #define FSEEK _fseeki64
+#elif HAVE_FSEEKO
+  #define FSEEK fseeko
 #else
   #define FSEEK fseek
 #endif
 
-#ifdef HAVE_FTELLO
-  #define FTELL ftello
-#elif HAVE__FTELLI64
+#ifdef HAVE__FTELLI64
   #define FTELL _ftelli64
+#elif HAVE_FTELLO
+  #define FTELL ftello
 #else
   #define FTELL ftell
 #endif
@@ -435,9 +441,6 @@ LOCAL void freeExtendedAttributeNode(FileExtendedAttributeNode *fileExtendedAttr
 
 /*---------------------------------------------------------------------*/
 
-
-/*---------------------------------------------------------------------*/
-
 String File_newFileName(void)
 {
   return String_new();
@@ -788,7 +791,7 @@ Errors __File_getTmpFileCString(const char   *__fileName__,
       free(s);
       return error;
     }
-    fileHandle->file = fopen(s,"w+b");
+    fileHandle->file = FOPEN(s,"w+b");
       if (fileHandle->file == NULL)
     {
       error = ERRORX_(CREATE_FILE,errno,s);
@@ -1105,7 +1108,7 @@ Errors __File_openCString(const char *__fileName__,
 // TODO: use fd?
 //      fd = open(fileName,O_RDWR|O_CREAT|O_TRUNC|O_LARGEFILE,0666);
 //      fileHandle->file = fdopen(fd,"w+b");
-      fileHandle->file = fopen(fileName,"w+b");
+      fileHandle->file = FOPEN(fileName,"w+b");
       if (fileHandle->file == NULL)
       {
         return ERRORX_(CREATE_FILE,errno,fileName);
@@ -1257,12 +1260,12 @@ Errors __File_openCString(const char *__fileName__,
 // TODO: use fd?
 //      fd = open(fileName,O_WRONLY|O_LARGEFILE,0);
 //      fileHandle->file = fdopen(fd,"r+b");
-      fileHandle->file = fopen(fileName,"r+b");
+      fileHandle->file = FOPEN(fileName,"r+b");
       if (fileHandle->file == NULL)
       {
         if (errno == ENOENT)
         {
-          fileHandle->file = fopen(fileName,"wb");
+          fileHandle->file = FOPEN(fileName,"wb");
           if (fileHandle->file == NULL)
           {
             return ERRORX_(OPEN_FILE,errno,fileName);
@@ -1303,7 +1306,7 @@ Errors __File_openCString(const char *__fileName__,
 // TODO: use fd?
 //      fd = open(fileName,O_RDWR|O_APPEND|O_LARGEFILE,0);
 //      fileHandle->file = fdopen(fd,"ab");
-      fileHandle->file = fopen(fileName,"ab");
+      fileHandle->file = FOPEN(fileName,"ab");
       if (fileHandle->file == NULL)
       {
         return ERRORX_(OPEN_FILE,errno,fileName);
@@ -2816,14 +2819,14 @@ Errors File_copyCString(const char *sourceFileName,
   }
 
   // open files
-  sourceFile = fopen(sourceFileName,"r");
+  sourceFile = FOPEN(sourceFileName,"r");
   if (sourceFile == NULL)
   {
     error = ERRORX_(OPEN_FILE,errno,sourceFileName);
     free(buffer);
     return error;
   }
-  destinationFile = fopen(destinationFileName,"w");
+  destinationFile = FOPEN(destinationFileName,"w");
   if (destinationFile == NULL)
   {
     error = ERRORX_(OPEN_FILE,errno,destinationFileName);
@@ -3135,7 +3138,44 @@ Errors File_setFileInfo(const String   fileName,
     case FILE_TYPE_FILE:
     case FILE_TYPE_DIRECTORY:
     case FILE_TYPE_HARDLINK:
+      // set last access, time modified, user/group id, permissions
+      utimeBuffer.actime  = fileInfo->timeLastAccess;
+      utimeBuffer.modtime = fileInfo->timeModified;
+      if (utime(String_cString(fileName),&utimeBuffer) != 0)
+      {
+        return ERRORX_(IO_ERROR,errno,String_cString(fileName));
+      }
+      #ifdef HAVE_CHOWN
+        if (chown(String_cString(fileName),fileInfo->userId,fileInfo->groupId) != 0)
+        {
+          return ERRORX_(IO_ERROR,errno,String_cString(fileName));
+        }
+      #endif /* HAVE_CHOWN */
+      #ifdef HAVE_CHMOD
+        if (chmod(String_cString(fileName),(mode_t)fileInfo->permission) != 0)
+        {
+          return ERRORX_(IO_ERROR,errno,String_cString(fileName));
+        }
+      #endif /* HAVE_CHMOD */
+
+      // set attributes
+      error = setAttributes(fileName,fileInfo->attributes);
+      if (error != ERROR_NONE)
+      {
+        return error;
+      }
+      break;
+    case FILE_TYPE_LINK:
+      // set user/group id
+      #ifdef HAVE_LCHMOD
+        if (lchown(String_cString(fileName),fileInfo->userId,fileInfo->groupId) != 0)
+        {
+          return ERRORX_(IO_ERROR,errno,String_cString(fileName));
+        }
+      #endif /* HAVE_LCHMOD */
+      break;
     case FILE_TYPE_SPECIAL:
+      // set last access, time modified, user/group id, permissions
       utimeBuffer.actime  = fileInfo->timeLastAccess;
       utimeBuffer.modtime = fileInfo->timeModified;
       if (utime(String_cString(fileName),&utimeBuffer) != 0)
@@ -3155,26 +3195,11 @@ Errors File_setFileInfo(const String   fileName,
         }
       #endif /* HAVE_CHMOD */
       break;
-    case FILE_TYPE_LINK:
-      #ifdef HAVE_LCHMOD
-        if (lchown(String_cString(fileName),fileInfo->userId,fileInfo->groupId) != 0)
-        {
-          return ERRORX_(IO_ERROR,errno,String_cString(fileName));
-        }
-      #endif /* HAVE_LCHMOD */
-      break;
     default:
       #ifndef NDEBUG
         HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
       #endif /* NDEBUG */
       break; /* not reached */
-  }
-
-  // set attributes
-  error = setAttributes(fileName,fileInfo->attributes);
-  if (error != ERROR_NONE)
-  {
-    return error;
   }
 
 #if 0
