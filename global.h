@@ -734,7 +734,7 @@ typedef struct
 #define HALT_INSUFFICIENT_MEMORY(args...) \
   do \
   { \
-     __abort(__FILE__,__LINE__,HALT_PREFIX_FATAL_ERROR,"insufficient memory", ## args); \
+     __abort(__FILE__,__LINE__,HALT_PREFIX_FATAL_ERROR,"Insufficient memory", ## args); \
   } \
  while (0)
 
@@ -760,25 +760,25 @@ typedef struct
 #define HALT_INTERNAL_ERROR_STILL_NOT_IMPLEMENTED() \
   do \
   { \
-     HALT_INTERNAL_ERROR("still not implemented"); \
+     HALT_INTERNAL_ERROR("Still not implemented"); \
   } \
   while (0)
 #define HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE() \
   do \
   { \
-     HALT_INTERNAL_ERROR("unhandled switch case"); \
+     HALT_INTERNAL_ERROR("Unhandled switch case"); \
   } \
   while (0)
 #define HALT_INTERNAL_ERROR_UNREACHABLE() \
   do \
   { \
-     HALT_INTERNAL_ERROR("unreachable code"); \
+     HALT_INTERNAL_ERROR("Unreachable code"); \
   } \
   while (0)
 #define HALT_INTERNAL_ERROR_LOST_RESOURCE() \
   do \
   { \
-     HALT_INTERNAL_ERROR("lost resource"); \
+     HALT_INTERNAL_ERROR("Lost resource"); \
   } \
   while (0)
 
@@ -939,17 +939,17 @@ typedef struct
 /***********************************************************************\
 * Name   : IS_DEBUG_TESTCODE
 * Purpose: true if test code is executed
-* Input  : -
+* Input  : name - test code name
 * Output : -
 * Return : TRUE iff test code is executed
 * Notes  : -
 \***********************************************************************/
 
 #ifndef NDEBUG
-  #define IS_DEBUG_TESTCODE() \
-    (__testCodeName__ != NULL)
+  #define IS_DEBUG_TESTCODE(name) \
+    ((__testCodeName__ != NULL) && (strcmp(__testCodeName__,name) == 0))
 #else /* not NDEBUG */
-  #define IS_DEBUG_TESTCODE() \
+  #define IS_DEBUG_TESTCODE(name) \
     FALSE
 #endif /* NDEBUG */
 
