@@ -222,56 +222,6 @@ LOCAL bool getInteger64Value(int64                 *value,
 }
 
 /***********************************************************************\
-* Name   : getUnescapedCString
-* Purpose: get unescaped C string value
-* Input  : value  - value variable
-*          string - string
-* Output : value - value
-* Return : -
-* Notes  : -
-\***********************************************************************/
-
-LOCAL void getUnescapedCString(char       **value,
-                               const char *string
-                              )
-{
-  String s;
-
-  s = String_newCString(string);
-  String_unescape(s,
-                  STRING_ESCAPE_CHARACTER,
-                  STRING_ESCAPE_CHARACTERS_MAP_TO,
-                  STRING_ESCAPE_CHARACTERS_MAP_FROM,
-                  STRING_ESCAPE_CHARACTER_MAP_LENGTH
-                 );
-  (*value) = strdup(String_cString(s));
-  String_delete(s);
-}
-
-/***********************************************************************\
-* Name   : getUnescapedString
-* Purpose: get unescaped C string value
-* Input  : value  - value variable
-*          string - string
-* Output : value - value
-* Return : -
-* Notes  : -
-\***********************************************************************/
-
-LOCAL void getUnescapedString(String     value,
-                              const char *string
-                             )
-{
-  String_setCString(value,string);
-  String_unescape(value,
-                  STRING_ESCAPE_CHARACTER,
-                  STRING_ESCAPE_CHARACTERS_MAP_TO,
-                  STRING_ESCAPE_CHARACTERS_MAP_FROM,
-                  STRING_ESCAPE_CHARACTER_MAP_LENGTH
-                 );
-}
-
-/***********************************************************************\
 * Name   : processValue
 * Purpose: process single config value
 * Input  : configValue       - config value
@@ -741,7 +691,7 @@ LOCAL bool processValue(const ConfigValue *configValue,
           if (variable != NULL)
           {
             configVariable.cString = (char**)((byte*)variable+configValue->offset);
-            getUnescapedCString(configVariable.cString,value);
+            (*configVariable.cString) = strdup(value);
           }
           else
           {
@@ -749,14 +699,14 @@ LOCAL bool processValue(const ConfigValue *configValue,
             if ((*configValue->variable.reference) != NULL)
             {
               configVariable.cString = (char**)((byte*)(*configValue->variable.reference)+configValue->offset);
-              getUnescapedCString(configVariable.cString,value);
+              (*configVariable.cString) = strdup(value);
             }
           }
         }
         else
         {
           assert(configValue->variable.cString != NULL);
-          getUnescapedCString(configValue->variable.cString,value);
+          (*configValue->variable.cString) = strdup(value);
         }
       }
       break;
@@ -769,7 +719,7 @@ LOCAL bool processValue(const ConfigValue *configValue,
             configVariable.string = (String*)((byte*)variable+configValue->offset);
             if ((*configVariable.string) == NULL) (*configVariable.string) = String_new();
             assert((*configVariable.string) != NULL);
-            getUnescapedString(*configVariable.string,value);
+            String_setCString(*configVariable.string,value);
           }
           else
           {
@@ -779,7 +729,7 @@ LOCAL bool processValue(const ConfigValue *configValue,
               configVariable.string = (String*)((byte*)(*configValue->variable.reference)+configValue->offset);
               if ((*configVariable.string) == NULL) (*configVariable.string) = String_new();
               assert((*configVariable.string) != NULL);
-              getUnescapedString(*configVariable.string,value);
+              String_setCString(*configVariable.string,value);
             }
           }
         }
@@ -788,7 +738,7 @@ LOCAL bool processValue(const ConfigValue *configValue,
           assert(configValue->variable.string != NULL);
           if ((*configValue->variable.string) == NULL) (*configValue->variable.string) = String_new();
           assert((*configValue->variable.string) != NULL);
-          getUnescapedString(*configValue->variable.string,value);
+          String_setCString(*configValue->variable.string,value);
         }
       }
       break;
@@ -1520,14 +1470,22 @@ bool ConfigValue_format(ConfigValueFormat *configValueFormat,
         }
 
         // format value
-        if (((*configVariable.cString) != NULL) && (strchr(*configVariable.cString,' ') != NULL))
+        s = String_escape(String_newCString(*configVariable.cString),
+                          STRING_ESCAPE_CHARACTER,
+                          NULL,
+                          STRING_ESCAPE_CHARACTERS_MAP_FROM,
+                          STRING_ESCAPE_CHARACTERS_MAP_TO,
+                          STRING_ESCAPE_CHARACTER_MAP_LENGTH
+                         );
+        if (!String_isEmpty(s) && (String_findChar(s,STRING_BEGIN,' ') >= 0))
         {
-          String_format(line,"%'s",*configVariable.cString);
+          String_format(line,"%'S",s);
         }
         else
         {
-          String_format(line,"%s",*configVariable.cString);
+          String_format(line,"%S",s);
         }
+        String_delete(s);
 
         configValueFormat->endOfDataFlag = TRUE;
         break;
@@ -1552,15 +1510,24 @@ bool ConfigValue_format(ConfigValueFormat *configValueFormat,
         }
 
         // format value
+        s = String_escape(String_duplicate(*configVariable.string),
+                          STRING_ESCAPE_CHARACTER,
+                          NULL,
+                          STRING_ESCAPE_CHARACTERS_MAP_FROM,
+                          STRING_ESCAPE_CHARACTERS_MAP_TO,
+                          STRING_ESCAPE_CHARACTER_MAP_LENGTH
+                         );
+//        if (!String_isEmpty(s) && (String_findChar(s,STRING_BEGIN,' ') >= 0))
 // always '?
 //        if (!String_empty(*configVariable.string) && (String_findChar(*configVariable.string,STRING_BEGIN,' ') >= 0))
 //        {
-          String_format(line,"%'S",*configVariable.string);
+          String_format(line,"%'S",s);
 //        }
 //        else
 //        {
 //          String_format(line,"%S",*configVariable.string);
 //        }
+        String_delete(s);
 
         configValueFormat->endOfDataFlag = TRUE;
         break;
