@@ -213,7 +213,7 @@ int main(int argc, char *argv[])
   printf("lower=#%s#\n",String_cString(s));
   String_toUpper(s);
   printf("upper=#%s#\n",String_cString(s));
-  String_escape(s,"'",'\\');
+  String_escape(s,"'",'\\',NULL,NULL,0);
   printf("escaped '=#%s#\n",String_cString(s));
   String_unescape(s,'\\',NULL,NULL,0);
   printf("ununescaped '=#%s#\n",String_cString(s));
