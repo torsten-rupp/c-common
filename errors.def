@@ -1,17 +1,17 @@
-#***********************************************************************
-#
-# $Source: /home/torsten/cvs/bar/errors.def,v $
-# $Revision$
-# $Author$
-# Contents: Backup ARchiver errors definition
-# Systems: all
-#
-#***********************************************************************
+//***********************************************************************
+//
+// $Source: /home/torsten/cvs/bar/errors.def,v $
+// $Revision$
+// $Author$
+// Contents: Backup ARchiver errors definition
+// Systems: all
+//
+//***********************************************************************
 
 NONE    "none"
 DEFAULT "unknown"
 
-# general
+// general
 ERROR INSUFFICIENT_MEMORY            "insufficient memory"
 ERROR INIT                           "init"
 ERROR INVALID_ARGUMENT               "invalid argument"
@@ -19,11 +19,12 @@ ERROR CONFIG                         "config error"
 ERROR ABORTED                        "aborted"
 ERROR FUNCTION_NOT_SUPPORTED         "function not supported"
 ERROR STILL_NOT_IMPLEMENTED          "function still not implemented"
+ERROR TESTCODE                       "test code"
 
-# patterns
+// patterns
 ERROR INVALID_PATTERN                "init pattern matching"
 
-# TLS/SSL
+// TLS/SSL
 ERROR INIT_TLS                       "init TLS (SSL)"
 ERROR NO_TLS_CA                      "no TLS (SSL) certificate authority file 'bar-ca.pem'"
 ERROR NO_TLS_CERTIFICATE             "no TLS (SSL) certificate file 'bar-server-cert.pem'"
@@ -35,18 +36,18 @@ ERROR INVALID_SSH_SPEFICIER          "invalid SSH specifier"
 ERROR SSH_SESSION_FAIL               "initialize ssh session fail"
 ERROR SSH_AUTHENTIFICATION           "invalid ssh password"
 
-# FTP
+// FTP
 ERROR FTP_SESSION_FAIL               "initialize FTP session fail"
 ERROR FTP_AUTHENTIFICATION           "invalid FTP user/password"
 
-# compress
+// compress
 ERROR INIT_COMPRESS                  "init compress"
 ERROR COMPRESS_ERROR                 "compress"
 ERROR DEFLATE_ERROR                  "deflate"
 ERROR INFLATE_ERROR                  "inflate"
 ERROR COMPRESS_EOF                   "compress end of file"
 
-# crypt
+// crypt
 ERROR UNSUPPORTED_BLOCK_SIZE         "unsupported block size"
 ERROR INIT_CRYPT                     "init crypt"
 ERROR NO_CRYPT_PASSWORD              "no password given for cipher"
@@ -55,18 +56,18 @@ ERROR INIT_CIPHER                    "init cipher"
 ERROR ENCRYPT_FAIL                   "encrypt"
 ERROR DECRYPT_FAIL                   "decrypt"
 
-# file i/o
+// file i/o
 ERROR CREATE_FILE
 ERROR OPEN_FILE
 ERROR OPEN_DIRECTORY
 ERROR IO_ERROR
-  strncpy(errorText,strerror(ERRNO),sizeof(errorText)-1); errorText[sizeof(errorText)-1] = '\0';
+  strncpy(errorText,strerror(ERROR_CODE),sizeof(errorText)-1); errorText[sizeof(errorText)-1] = '\0';
 
 ERROR PARSE_DEVICE_LIST              "error parsing device list"
 ERROR FILE_EXITS                     "file already exists"
 ERROR FILE_NOT_FOUND                 "file not found"
 
-# archive
+// archive
 ERROR END_OF_ARCHIVE                 "end of archive"
 ERROR NO_FILE_ENTRY                  "no file entry"
 ERROR NO_FILE_DATA                   "no data entry"
@@ -80,15 +81,15 @@ ERROR WRONG_FILE_TYPE                "wrong file type"
 ERROR FILES_DIFFER                   "files differ"
 ERROR CORRUPT_DATA                   "corrupt data or invalid password"
 
-# incremental files
+// incremental files
 ERROR NOT_AN_INCREMENTAL_FILE        "invalid incremental file"
 ERROR WRONG_INCREMENTAL_FILE_VERSION "wrong incremental file version"
 ERROR CORRUPT_INCREMENTAL_FILE       "corrupt incremental file"
 
-# network
+// network
 ERROR HOST_NOT_FOUND                 "host not found"
 ERROR CONNECT_FAIL
-  strncpy(errorText,strerror(ERRNO),sizeof(errorText)-1); errorText[sizeof(errorText)-1] = '\0';
+  strncpy(errorText,strerror(ERROR_CODE),sizeof(errorText)-1); errorText[sizeof(errorText)-1] = '\0';
 
 ERROR NO_LOGIN_NAME                  "no login name given"
 ERROR NO_PASSWORD                    "no password given"
@@ -96,12 +97,12 @@ ERROR NETWORK_SEND                   "sending data fail"
 ERROR NETWORK_RECEIVE                "receiving data fail"
 ERROR NETWORK_EXECUTE_FAIL           "execute command fail"
 
-# device
+// device
 ERROR INVALID_DEVICE_SPECIFIER       "invalid device specifier"
 ERROR LOAD_VOLUME_FAIL               "load volume fail"
 
-# exec
+// exec
 ERROR FORK_FAIL                      "fork for execute external program fail"
 ERROR EXEC_FAIL                      "execute external program fail"
 
-# end of file
+// end of file

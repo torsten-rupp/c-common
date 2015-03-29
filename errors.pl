@@ -17,6 +17,7 @@
 # syntax of error definition file
 #
 # INCLUDE "<file>"
+# INCLUDE <<file>>
 # ERROR <name> "<text>"
 # ERROR <name>
 #   <code>
@@ -31,24 +32,24 @@ use Getopt::Long;
 
 # ---------------------------- constants/variables ---------------------------
 
-my $FUNCTION_NAME = "getErrorText";
-my $PREFIX        = "ERROR_";
+my $ERROR_CODE_MASK           = "0x000003FF";
+my $ERROR_CODE_SHIFT          = 0;
+my $ERROR_TEXTINDEX_MASK      = "0x0000FC00";
+my $ERROR_TEXTINDEX_SHIFT     = 10;
+my $ERROR_ERRNO_MASK          = "0xFFFF0000";
+my $ERROR_ERRNO_SHIFT         = 16;
 
-my $cFileName,$hFileName;
+my $ERROR_MAX_TEXT_LENGTH     = 512;
+my $ERROR_TEXTINDEX_MAX_COUNT = 63;
+
+my $PREFIX                    = "ERROR_";
+
+my $cFileName,$hFileName,$javaFileName;
+my $errorNumber=0;
 
 # --------------------------------- includes ---------------------------------
 
 # -------------------------------- functions ---------------------------------
-
-sub writeHFile($)
-{
-  my $s=shift(@_);
-
-  if ($hFileName ne "")
-  {
-    print HFILE_HANDLE $s;
-  }
-}
 
 sub writeCFile($)
 {
@@ -60,39 +61,74 @@ sub writeCFile($)
   }
 }
 
-sub writeHPrefix()
+sub writeHFile($)
 {
-  print HFILE_HANDLE "typedef enum\n";
-  print HFILE_HANDLE "{\n";
-  print HFILE_HANDLE "  /*   0 */ ".$PREFIX."NONE,\n";
+  my $s=shift(@_);
+
+  if ($hFileName ne "")
+  {
+    print HFILE_HANDLE $s;
+  }
 }
 
-sub writeHPostfix()
+sub writeJavaFile($)
 {
-  print HFILE_HANDLE "  ".$PREFIX."UNKNOWN\n";
-  print HFILE_HANDLE "} Errors;\n";
-  print HFILE_HANDLE "\n";
-  print HFILE_HANDLE "const char *getErrorText(Errors error);\n";
-  print HFILE_HANDLE "\n";
-  print HFILE_HANDLE "#endif /* __ARCHIVE_FORMAT__ */\n";
+  my $s=shift(@_);
+
+  if ($javaFileName ne "")
+  {
+    print JAVAFILE_HANDLE $s;
+  }
 }
 
 sub writeCPrefix()
 {
-  print CFILE_HANDLE "#include \"errors.h\"\n";
-  print CFILE_HANDLE "\n";
-  print CFILE_HANDLE "#define GET_ERROR_CODE(error) (((error) & 0x0000FFFF) >>  0)\n";
-  print CFILE_HANDLE "#define GET_ERRNO(error) (((error) & 0xFFFF0000) >> 16)\n";
-  print CFILE_HANDLE "\n";
-  print CFILE_HANDLE "#define ERRNO GET_ERRNO(error)\n";
-  print CFILE_HANDLE "\n";
-  print CFILE_HANDLE "const char *$FUNCTION_NAME(Errors error)\n";
-  print CFILE_HANDLE "{\n";
-  print CFILE_HANDLE "  static char errorText[256];\n";
-  print CFILE_HANDLE "\n";
-  print CFILE_HANDLE "  strcpy(errorText,\"unknown\");\n";
-  print CFILE_HANDLE "  switch (GET_ERROR_CODE(error))\n";
-  print CFILE_HANDLE "  {\n";
+  print CFILE_HANDLE "\
+#define ERROR_GET_CODE(error)       (((error) & $ERROR_CODE_MASK) >> $ERROR_CODE_SHIFT)
+#define ERROR_GET_CODE_TEXT(error)  Error_getCodeText(error)
+#define ERROR_GET_TEXTINDEX(error)  (((error) & $ERROR_TEXTINDEX_MASK) >> $ERROR_TEXTINDEX_SHIFT)
+#define ERROR_GET_TEXT(error)       ((ERROR_GET_TEXTINDEX(error) > 0) ? errorTexts[ERROR_GET_TEXTINDEX(error)-1].text : NONE)
+#define ERROR_GET_ERRNO(error)      ((int)((error) & $ERROR_ERRNO_MASK) >> $ERROR_ERRNO_SHIFT)
+#define ERROR_GET_ERRNO_TEXT(error) Error_getErrnoText(error)
+
+#define ERROR_CODE       ERROR_GET_CODE(error)
+#define ERROR_TEXT       ERROR_GET_TEXT(error)
+#define ERROR_ERRNO      ERROR_GET_ERRNO(error)
+#define ERROR_ERRNO_TEXT ERROR_GET_ERRNO_TEXT(error)
+
+unsigned int Error_getCode(Errors error)
+{
+  return ERROR_GET_CODE(error);
+}
+
+const char *Error_getCodeText(Errors error)
+{
+  static char codeText[$ERROR_MAX_TEXT_LENGTH];
+
+  snprintf(codeText,sizeof(codeText)-1,\"0x%03x\",ERROR_GET_CODE(error));
+  codeText[sizeof(codeText)-1] = '\\0';
+
+  return codeText;
+}
+
+const char *Error_getErrnoText(Errors error)
+{
+  static char errnoText[$ERROR_MAX_TEXT_LENGTH];
+
+  snprintf(errnoText,sizeof(errnoText)-1,\"%d\",ERROR_GET_ERRNO(error));
+  errnoText[sizeof(errnoText)-1] = '\\0';
+
+  return errnoText;
+}
+
+const char *Error_getText(Errors error)
+{
+  static char errorText[$ERROR_MAX_TEXT_LENGTH];
+
+  strcpy(errorText,\"unknown\");
+  switch (ERROR_GET_CODE(error))
+  {
+";
 }
 
 sub writeCPostfix()
@@ -101,35 +137,171 @@ sub writeCPostfix()
   {
     writeCFile("    default: return \"$defaultText\";\n");
   }
-  print CFILE_HANDLE "  }\n";
-  print CFILE_HANDLE "\n";
-  print CFILE_HANDLE "  return errorText;\n";
-  print CFILE_HANDLE "}\n";
+  print CFILE_HANDLE "\
+  }
+
+  return errorText;
+}
+";
+}
+
+sub writeHPrefix()
+{
+  print HFILE_HANDLE "\
+typedef enum
+{
+  ".$PREFIX."NONE = 0,
+";
+}
+
+sub writeHPostfix()
+{
+  print HFILE_HANDLE "\
+  ".$PREFIX."UNKNOWN = ".($errorNumber+1)."
+} Errors;
+
+#ifdef __cplusplus
+  extern \"C\" {
+#endif
+
+int _Error_textToIndex(const char *text, ...);
+unsigned int Error_getCode(Errors error);
+const char *Error_getCodeText(Errors error);
+const char *Error_getErrnoText(Errors error);
+const char *Error_getText(Errors error);
+
+#ifdef __cplusplus
+  }
+#endif
+
+#endif /* __ARCHIVE_FORMAT__ */
+";
+}
+
+sub writeJavaPrefix()
+{
+  print JAVAFILE_HANDLE "class Errors\n";
+  print JAVAFILE_HANDLE "{\n";
+  print JAVAFILE_HANDLE "  static final int NONE = 0;\n";
+}
+
+sub writeJavaPostfix()
+{
+  print JAVAFILE_HANDLE "  static final int UNKNOWN = $errorNumber;\n";
+  print JAVAFILE_HANDLE "}\n";
 }
 
 # ------------------------------ main program  -------------------------------
 
 GetOptions("c=s" => \$cFileName,
            "h=s" => \$hFileName,
+           "j=s" => \$javaFileName,
           );
 
 if ($cFileName ne "")
 {
   open(CFILE_HANDLE,"> $cFileName");
-  print CFILE_HANDLE "#include <stdlib.h>\n";
-  print CFILE_HANDLE "#include <string.h>\n";
-  print CFILE_HANDLE "#include <errno.h>\n";
-  print CFILE_HANDLE "\n";
+  print CFILE_HANDLE "\
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <limits.h>
+#include <ctype.h>
+#include <stdarg.h>
+#include <errno.h>
+
+#include \"global.h\"
+#include \"errors.h\"
+
+// use NONE to avoid warning in strn*-functions which do not accept NULL (this case must be checked before calling strn*
+static const char *NONE = NULL;
+
+typedef struct
+{
+  int  id;
+  char text[$ERROR_MAX_TEXT_LENGTH];
+} ErrorText;
+
+static ErrorText errorTexts[$ERROR_TEXTINDEX_MAX_COUNT];
+static int       errorTextCount = 0;
+static int       errorTextId    = 0;
+
+int _Error_textToIndex(const char *format, ...)
+{
+  va_list arguments;
+  char    text[$ERROR_MAX_TEXT_LENGTH];
+  int     index;
+  int     minId;
+  uint    z,i;
+
+  if (format != NULL)
+  {
+    va_start(arguments,format);
+    vsnprintf(text,sizeof(text),format,arguments);
+    va_end(arguments);
+
+    errorTextId++;
+    if (errorTextCount < $ERROR_TEXTINDEX_MAX_COUNT)
+    {
+      index = errorTextCount;
+      errorTextCount++;
+    }
+    else
+    {
+      index = 0;
+      minId = INT_MAX;
+      for (z = 0; z < $ERROR_TEXTINDEX_MAX_COUNT; z++)
+      {
+        if (errorTexts[z].id < minId)
+        {
+          index = z;
+          minId = errorTexts[z].id;
+        }
+      }
+    }
+    z = 0;
+    i = 0;
+    while ((z < strlen(text)) && (i < $ERROR_MAX_TEXT_LENGTH-1))
+    {
+      if (!iscntrl(text[z])) { errorTexts[index].text[i] = text[z]; i++; }
+      z++;
+    }
+    errorTexts[index].text[i] = '\\0';
+    errorTexts[errorTextCount].id = errorTextId;
+    return index+1;
+  }
+  else
+  {
+    return 0;
+  }
+}
+
+";
 }
 if ($hFileName ne "")
 {
   open(HFILE_HANDLE,"> $hFileName");
-  print HFILE_HANDLE "#ifndef __ERRORS__\n";
-  print HFILE_HANDLE "#define __ERRORS__\n";
-  print HFILE_HANDLE "\n";
-  print HFILE_HANDLE "#define ERROR(code,errno) (((errno) << 16) | ERROR_ ## code)\n";
-  print HFILE_HANDLE "\n";
+  print HFILE_HANDLE "\
+#ifndef __ERRORS__
+#define __ERRORS__
+
+#define ERROR_(code,errno)             ((Errors)(  (((errno) << $ERROR_ERRNO_SHIFT) & $ERROR_ERRNO_MASK) \\
+                                                 | (((ERROR_ ## code) << $ERROR_CODE_SHIFT) & $ERROR_CODE_MASK) \\
+                                                ) \\
+                                       )
+#define ERRORX_(code,errno,format,...) ((Errors)(  (((errno) << $ERROR_ERRNO_SHIFT) & $ERROR_ERRNO_MASK) \\
+                                                 | ((_Error_textToIndex(format, ## __VA_ARGS__) << $ERROR_TEXTINDEX_SHIFT) & $ERROR_TEXTINDEX_MASK) \\
+                                                 | (((ERROR_ ## code) << $ERROR_CODE_SHIFT) & $ERROR_CODE_MASK) \\
+                                                ) \\
+                                       )
+
+";
   writeHPrefix();
+}
+if ($javaFileName ne "")
+{
+  open(JAVAFILE_HANDLE,"> $javaFileName");
+  writeJavaPrefix();
 }
 
 my @names;
@@ -141,7 +313,7 @@ while ($line=<STDIN>)
 {
   chop $line;
   $lineNb++;
-  if (($line =~ /^\s*$/) || ($line =~ /^\s*#/)) { next; }
+  if (($line =~ /^\s*$/) || ($line =~ /^\s*\/\//)) { next; }
 #print "$line\n";
 
   if    ($line =~ /^ERROR\s+(\w+)\s+"(.*)"\s*$/)
@@ -149,15 +321,43 @@ while ($line=<STDIN>)
     # error <name> <text>
     my $name=$1;
     my $text=$2;
-    writeHFile("  $PREFIX$name,\n");
+    $errorNumber++;
+    writeHFile("  $PREFIX$name = $errorNumber,\n");
+    writeJavaFile("  static final int $name = $errorNumber;\n");
     if (!$writeCPrefixFlag) { writeCPrefix(); $writeCPrefixFlag = 1; }
     writeCFile("    case $PREFIX$name: return \"$text\";\n");
+  }
+  elsif ($line =~ /^ERROR\s+(\w+)\s+(\S.*)\s*$/)
+  {
+    # error <name> <function>
+    my $name    =$1;
+    my $function=$2;
+    $errorNumber++;
+    writeHFile("  $PREFIX$name = $errorNumber,\n");
+    writeJavaFile("  static final int $name = $errorNumber;\n");
+    if (!$writeCPrefixFlag) { writeCPrefix(); $writeCPrefixFlag = 1; }
+    writeCFile("    case $PREFIX$name: return $function;\n");
+  }
+  elsif ($line =~ /^ERROR\s+(\w+)\s*$/)
+  {
+    # error <name>
+    my $name=$1;
+    $errorNumber++;
+    writeHFile("  $PREFIX$name = $errorNumber,\n");
+    writeJavaFile("  static final int $name = $errorNumber;\n");
+    push(@names,$name);
   }
   elsif ($line =~ /^INCLUDE\s+"(.*)"\s*$/)
   {
     # include "<file>"
     my $file=$1;
     writeCFile("#include \"$file\"\n");
+  }
+  elsif ($line =~ /^INCLUDE\s+<(.*)>\s*$/)
+  {
+    # include <<file>>
+    my $file=$1;
+    writeCFile("#include <$file>\n");
   }
   elsif ($line =~ /^NONE\s+"(.*)"\s*$/)
   {
@@ -170,19 +370,16 @@ while ($line=<STDIN>)
   {
     $defaultText=$1;
   }
-  elsif ($line =~ /^ERROR\s+(\w+)\s*$/)
+  elsif ($line =~ /^\s*#/)
   {
-    # error <name>
-    my $name=$1;
-    writeHFile("  $PREFIX$name,\n");
-    push(@names,$name);
+    writeCFile("$line\n");
   }
   else
   {
     # code
     if (scalar(@names) <= 0)
     {
-      print STDERR "Unknown data '$line' in line $lineNb\n";
+      print STDERR "ERROR: Unknown data '$line' in line $lineNb\n";
       exit 1;
     }
 
@@ -216,6 +413,11 @@ if ($hFileName ne "")
 {
   writeHPostfix();
   close(HFILE_HANDLE);
+}
+if ($javaFileName ne "")
+{
+  writeJavaPostfix();
+  close(JAVAFILE_HANDLE);
 }
 
 exit 0;
