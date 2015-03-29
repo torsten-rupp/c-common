@@ -1163,7 +1163,7 @@ LOCAL bool parseString(const char    *string,
   } value;
   char        buffer[64];
   ulong       i;
-//  uint        z;
+  uint        z;
   const char  *stringQuote;
   bool        foundFlag;
 
@@ -1726,7 +1726,7 @@ still not implemented
             {
               value.b = va_arg(arguments,bool*);
               foundFlag = FALSE;
-              uint z = 0;
+              z = 0;
               while (!foundFlag && (z < SIZE_OF_ARRAY(DEFAULT_TRUE_STRINGS)))
               {
                 if (strcmp(buffer,DEFAULT_TRUE_STRINGS[z]) == 0)
