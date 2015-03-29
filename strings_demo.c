@@ -42,6 +42,7 @@ int main(int argc, char *argv[])
   int             i,j;
   long            nextIndex;
   StringTokenizer stringTokenizer;
+  ConstString     token;
   StaticString    (v,16);
 
   UNUSED_VARIABLE(argc);
@@ -184,18 +185,18 @@ int main(int argc, char *argv[])
   String_setCString(s,"Hello world,, I'm here!");
   printf("String: %s\n",String_cString(s));
   String_initTokenizer(&stringTokenizer,s,STRING_BEGIN," ,",NULL,TRUE);
-  while (String_getNextToken(&stringTokenizer,&t,NULL))
+  while (String_getNextToken(&stringTokenizer,&token,NULL))
   {
-    printf("token=%s\n",String_cString(t));
+    printf("token=%s\n",String_cString(token));
   }
   String_doneTokenizer(&stringTokenizer);
 
   String_setCString(s,"'Die Verwandlung' by 'Franz Kafka'!");
   printf("String: %s\n",String_cString(s));
   String_initTokenizer(&stringTokenizer,s,STRING_BEGIN," ,","'",TRUE);
-  while (String_getNextToken(&stringTokenizer,&t,NULL))
+  while (String_getNextToken(&stringTokenizer,&token,NULL))
   {
-    printf("token=%s\n",String_cString(t));
+    printf("token=%s\n",String_cString(token));
   }
   String_doneTokenizer(&stringTokenizer);
   String_delete(s);
@@ -213,7 +214,7 @@ int main(int argc, char *argv[])
   printf("lower=#%s#\n",String_cString(s));
   String_toUpper(s);
   printf("upper=#%s#\n",String_cString(s));
-  String_escape(s,"'",'\\',NULL,NULL,0);
+  String_escape(s,'\\',"'",NULL,NULL,0);
   printf("escaped '=#%s#\n",String_cString(s));
   String_unescape(s,'\\',NULL,NULL,0);
   printf("ununescaped '=#%s#\n",String_cString(s));
