@@ -133,7 +133,7 @@ int main(int argc, char *argv[])
 
   string    = String_new();
   stringMap = StringMap_new();
-  if (StringMap_parse(stringMap,s,"'\"",0,NULL))
+  if (StringMap_parse(stringMap,s,STRINGMAP_ASSIGN,"'\"",NULL,0,NULL))
   {
     StringMap_getInt(stringMap,"a",&i,0); printf("a=%d\n",i);
     StringMap_getInt64(stringMap,"b",&l,0); printf("b=%lld\n",l);
