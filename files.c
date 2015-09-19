@@ -200,7 +200,7 @@ LOCAL void fileCheckValid(const char       *fileName,
     if (debugFileNode != NULL)
     {
       #ifdef HAVE_BACKTRACE
-        debugDumpCurrentStackTrace(stderr,"",0);
+        debugDumpCurrentStackTrace(stderr,0,0);
       #endif /* HAVE_BACKTRACE */
       HALT_INTERNAL_ERROR_AT(fileName,
                              lineNb,
@@ -220,7 +220,7 @@ LOCAL void fileCheckValid(const char       *fileName,
     if (debugFileNode == NULL)
     {
       #ifdef HAVE_BACKTRACE
-        debugDumpCurrentStackTrace(stderr,"",0);
+        debugDumpCurrentStackTrace(stderr,0,0);
       #endif /* HAVE_BACKTRACE */
       HALT_INTERNAL_ERROR("File 0x%08lx is not open",
                           (ulong)fileHandle
@@ -437,6 +437,46 @@ LOCAL void freeExtendedAttributeNode(FileExtendedAttributeNode *fileExtendedAttr
 
   free(fileExtendedAttributeNode->data);
   String_delete(fileExtendedAttributeNode->name);
+}
+
+LOCAL void parseRootEntry(RootListHandle *rootListHandle)
+{
+  char       *tokenizer;
+  const char *s;
+  StringNode *iteratorVariable;
+  String     variable;
+
+  rootListHandle->parseFlag = FALSE;
+
+  // parse
+  s = strtok_r(rootListHandle->line," ",&tokenizer);
+  if (s == NULL)
+  {
+    return;
+  }
+
+  // get name
+  s = strtok_r(NULL," ",&tokenizer);
+  if (s == NULL)
+  {
+    return;
+  }
+  strncpy(rootListHandle->name,s,sizeof(rootListHandle->name));
+
+  // check if known file system
+  s = strtok_r(NULL," ",&tokenizer);
+  if (s == NULL)
+  {
+    return;
+  }
+  STRINGLIST_ITERATE(&rootListHandle->fileSystemNames,iteratorVariable,variable)
+  {
+    if (String_equalsCString(variable,s))
+    {
+      rootListHandle->parseFlag = TRUE;
+      break;
+    }
+  }
 }
 
 /*---------------------------------------------------------------------*/
@@ -901,7 +941,7 @@ Errors __File_getTmpFileCString(const char  *__fileName__,
       if (debugFileNode != NULL)
       {
         #ifdef HAVE_BACKTRACE
-          debugDumpCurrentStackTrace(stderr,"",0);
+          debugDumpCurrentStackTrace(stderr,0,0);
         #endif /* HAVE_BACKTRACE */
         if (debugFileNode->fileHandle->name != NULL)
         {
@@ -1431,7 +1471,7 @@ Errors __File_openCString(const char *__fileName__,
       if (debugFileNode != NULL)
       {
         #ifdef HAVE_BACKTRACE
-          debugDumpCurrentStackTrace(stderr,"",0);
+          debugDumpCurrentStackTrace(stderr,0,0);
         #endif /* HAVE_BACKTRACE */
         if (debugFileNode->fileHandle->name != NULL)
         {
@@ -1601,7 +1641,7 @@ Errors __File_openDescriptor(const char *__fileName__,
       if (debugFileNode != NULL)
       {
         #ifdef HAVE_BACKTRACE
-          debugDumpCurrentStackTrace(stderr,"",0);
+          debugDumpCurrentStackTrace(stderr,0,0);
         #endif /* HAVE_BACKTRACE */
         if (debugFileNode->fileHandle->name != NULL)
         {
@@ -1750,7 +1790,7 @@ Errors __File_close(const char *__fileName__,
       else
       {
         #ifdef HAVE_BACKTRACE
-          debugDumpCurrentStackTrace(stderr,"",0);
+          debugDumpCurrentStackTrace(stderr,0,0);
         #endif /* HAVE_BACKTRACE */
         HALT_INTERNAL_ERROR("File '%p' not found in debug list at %s, line %u",
                             fileHandle->file,
@@ -2248,6 +2288,103 @@ Errors File_touch(ConstString fileName)
 }
 
 /*---------------------------------------------------------------------*/
+
+Errors File_openRootList(RootListHandle *rootListHandle)
+{
+  #define FILESYSMTES_FILENAME "/proc/filesystems"
+  #define MOUNTS_FILENAME      "/proc/mounts"
+
+  FILE *handle;
+  char line[1024];
+  char *s,*t;
+
+  assert(rootListHandle != NULL);
+
+  rootListHandle->parseFlag = FALSE;
+
+  // get file system names
+  handle = fopen(FILESYSMTES_FILENAME,"r");
+  if (handle == NULL)
+  {
+    return ERRORX_(OPEN_FILE,errno,FILESYSMTES_FILENAME);
+  }
+  StringList_init(&rootListHandle->fileSystemNames);
+  while (fgets(line,sizeof(line),handle) != NULL)
+  {
+    s = line;
+    if (isspace(*s))
+    {
+      while (isspace(*s))
+      {
+        s++;
+      }
+      t = s;
+      while (!isspace(*t))
+      {
+        t++;
+      }
+      (*t) = '\0';
+      StringList_appendCString(&rootListHandle->fileSystemNames,s);
+    }
+  }
+  close(handle);
+
+  // open mount list
+  rootListHandle->mounts = fopen(MOUNTS_FILENAME,"r");
+  if (rootListHandle->mounts == NULL)
+  {
+    StringList_done(&rootListHandle->fileSystemNames);
+    return ERRORX_(OPEN_FILE,errno,MOUNTS_FILENAME);
+  }
+
+  return ERROR_NONE;
+}
+
+void File_closeRootList(RootListHandle *rootListHandle)
+{
+  assert(rootListHandle != NULL);
+
+  fclose(rootListHandle->mounts);
+  StringList_done(&rootListHandle->fileSystemNames);
+}
+
+bool File_endOfRootList(RootListHandle *rootListHandle)
+{
+  assert(rootListHandle != NULL);
+
+  while (   !rootListHandle->parseFlag
+         && (fgets(rootListHandle->line,sizeof(rootListHandle->line),rootListHandle->mounts) != NULL)
+        )
+  {
+    parseRootEntry(rootListHandle);
+  }
+
+  return !rootListHandle->parseFlag;
+}
+
+Errors File_readRootList(RootListHandle *rootListHandle,
+                         String         name
+                        )
+{
+  assert(rootListHandle != NULL);
+
+  while (   !rootListHandle->parseFlag
+         && (fgets(rootListHandle->line,sizeof(rootListHandle->line),rootListHandle->mounts) != NULL)
+        )
+  {
+    parseRootEntry(rootListHandle);
+  }
+  if (!rootListHandle->parseFlag)
+  {
+    return ERROR_END_OF_FILE;
+  }
+
+  String_setCString(name,rootListHandle->name);
+
+  rootListHandle->parseFlag = FALSE;
+
+  return ERROR_NONE;
+}
 
 Errors File_openDirectoryList(DirectoryListHandle *directoryListHandle,
                               ConstString         pathName
