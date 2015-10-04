@@ -36,6 +36,7 @@
 
 /***************************** Constants *******************************/
 
+#define SOCKET_FLAG_NONE         0
 #define SOCKET_FLAG_NON_BLOCKING (1 << 0)
 
 /***************************** Datatypes *******************************/
@@ -88,9 +89,9 @@ typedef struct
   ServerSocketTypes socketType;
   int               handle;
   #ifdef HAVE_GNU_TLS
-    bool                             initTLSFlag;
-    gnutls_certificate_credentials_t gnuTLSCredentials;
-    gnutls_dh_params_t               gnuTLSDHParams;
+    const char        *caFileName;
+    const char        *certFileName;
+    const char        *keyFileName;
   #endif /* HAVE_GNU_TLS */
 } ServerSocketHandle;
 
@@ -159,6 +160,17 @@ Errors Network_initAll(void);
 void Network_doneAll(void);
 
 /***********************************************************************\
+* Name   : Network_getHostName
+* Purpose: get host name
+* Input  : hostName - host name variable
+* Output : -
+* Return : host name
+* Notes  : -
+\***********************************************************************/
+
+String Network_getHostName(String hostName);
+
+/***********************************************************************\
 * Name   : Network_exists, Network_existsCString
 * Purpose: check if host name is valid
 * Input  : hostName - host name
@@ -173,14 +185,16 @@ bool Network_hostExistsCString(const char *hostName);
 /***********************************************************************\
 * Name   : Network_connect
 * Purpose: connect to host
-* Input  : socketType            - socket type; see SOCKET_TYPE_*
-*          hostName              - host name
-*          hostPort              - host port (host byte order)
-*          flags                 - socket falgs
-*          loginName             - login user name
-*          password              - SSH password
-*          sshPublicKeyFileName  - SSH public key file for login
-*          sshPrivateKeyFileName - SSH private key file for login
+* Input  : socketType          - socket type; see SOCKET_TYPE_*
+*          hostName            - host name
+*          hostPort            - host port (host byte order)
+*          loginName           -  login user name
+*          password            - SSH password
+*          sshPublicKeyData    - SSh public key data for login or NULL
+*          sshPublicKeyLength  - SSH public key data length
+*          sshPrivateKeyData   - SSH private key data for login or NULL
+*          sshPrivateKeyLength - SSH private key data length
+*          flags               - socket flags; see SOCKET_FLAG_*
 * Output : socketHandle - socket handle
 * Return : ERROR_NONE or errorcode
 * Notes  : -
@@ -192,8 +206,10 @@ Errors Network_connect(SocketHandle *socketHandle,
                        uint         hostPort,
                        ConstString  loginName,
                        Password     *password,
-                       ConstString  sshPublicKeyFileName,
-                       ConstString  sshPrivateKeyFileName,
+                       const void   *sshPublicKeyData,
+                       uint         sshPublicKeyDataLength,
+                       const void   *sshPrivateKeyData,
+                       uint         sshPrivateKeyDataLength,
                        uint         flags
                       );
 
