@@ -327,22 +327,23 @@ LOCAL void debugDumpAllStackTraces(void)
       {
         name = debugStackTraceGetThreadName(debugStackTraceThreads[debugStackTraceThreadIndex].id);
         fprintf(stderr,
-              "Thread stack trace %02d/%02d: '%s' (0x%lx)\n",
-              debugStackTraceThreadIndex+1,
-              debugStackTraceThreadCount,
-              (name != NULL) ? name : "<none>",
-              debugStackTraceThreads[debugStackTraceThreadIndex].id
-             );
+                "Thread stack trace %02d/%02d: '%s' (0x%lx)\n",
+                debugStackTraceThreadIndex+1,
+                debugStackTraceThreadCount,
+                (name != NULL) ? name : "<none>",
+                debugStackTraceThreads[debugStackTraceThreadIndex].id
+               );
         #ifndef NDEBUG
           debugDumpCurrentStackTrace(stderr,0,1);
         #else
           fprintf(stderr,"  not available");
         #endif
-
-        pthread_cond_signal(&debugStackTraceDone);
-//fprintf(stderr,"%s, %d: signal done %p\n",__FILE__,__LINE__,pthread_self());
+        fprintf(stderr,"\n");
       }
       pthread_mutex_unlock(&debugConsoleLock);
+
+      pthread_cond_signal(&debugStackTraceDone);
+//fprintf(stderr,"%s, %d: signal done %p\n",__FILE__,__LINE__,pthread_self());
     }
     else
     {
@@ -367,12 +368,40 @@ LOCAL void debugDumpAllStackTraces(void)
                 timeout.tv_sec += 2;
                 if (pthread_cond_timedwait(&debugStackTraceDone,&debugStackTraceLock,&timeout) != 0)
                 {
-                  fprintf(stderr,"  not availble (terminate fail)\n");
+                  // wait for done fail
+                  pthread_mutex_lock(&debugConsoleLock);
+                  {
+                    name = debugStackTraceGetThreadName(debugStackTraceThreads[debugStackTraceThreadIndex].id);
+                    fprintf(stderr,
+                            "Thread stack trace %02d/%02d: '%s' (0x%lx)\n",
+                            debugStackTraceThreadIndex+1,
+                            debugStackTraceThreadCount,
+                            (name != NULL) ? name : "<none>",
+                            debugStackTraceThreads[debugStackTraceThreadIndex].id
+                           );
+                    fprintf(stderr,"  not availble (terminate fail)\n");
+                    fprintf(stderr,"\n");
+                  }
+                  pthread_mutex_unlock(&debugConsoleLock);
                 }
               }
               else
               {
-                fprintf(stderr,"  not availble (trigger fail)\n");
+                // send SIQQUIT fail
+                pthread_mutex_lock(&debugConsoleLock);
+                {
+                  name = debugStackTraceGetThreadName(debugStackTraceThreads[debugStackTraceThreadIndex].id);
+                  fprintf(stderr,
+                          "Thread stack trace %02d/%02d: '%s' (0x%lx)\n",
+                          debugStackTraceThreadIndex+1,
+                          debugStackTraceThreadCount,
+                          (name != NULL) ? name : "<none>",
+                          debugStackTraceThreads[debugStackTraceThreadIndex].id
+                         );
+                  fprintf(stderr,"  not availble (trigger fail)\n");
+                  fprintf(stderr,"\n");
+                }
+                pthread_mutex_unlock(&debugConsoleLock);
               }
             #else /* NDEBUG */
               fprintf(stderr,"  not available");
@@ -396,10 +425,10 @@ LOCAL void debugDumpAllStackTraces(void)
               #else /* NDEBUG */
                 fprintf(stderr,"  not available");
               #endif /* not NDEBUG */
+              fprintf(stderr,"\n");
             }
             pthread_mutex_unlock(&debugConsoleLock);
           }
-          fprintf(stderr,"\n");
         }
       }
       pthread_mutex_unlock(&debugStackTraceThreadLock);
