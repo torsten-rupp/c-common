@@ -65,11 +65,12 @@ typedef struct
 
 
   LOCAL struct sigaction     debugSignalSegVPrevHandler;
+  LOCAL struct sigaction     debugSignalAbortPrevHandler;
   LOCAL struct sigaction     debugSignalQuitPrevHandler;
 
   LOCAL pthread_once_t       debugThreadInitFlag          = PTHREAD_ONCE_INIT;
 
-  LOCAL pthread_mutex_t      debugSignalSegVLock          = PTHREAD_MUTEX_INITIALIZER;
+  LOCAL pthread_mutex_t      debugSignalLock              = PTHREAD_MUTEX_INITIALIZER;
 
   LOCAL pthread_mutex_t      debugStackTraceThreadLock    = PTHREAD_MUTEX_INITIALIZER;
   LOCAL StackTraceThreadInfo debugStackTraceThreads[256];
@@ -322,14 +323,26 @@ LOCAL void debugDumpAllStackTraces(void)
   {
     if (debugStackTraceRun)
     {
-      #ifndef NDEBUG
-        debugDumpCurrentStackTrace(stderr,0,1);
-      #else
-        fprintf(stderr,"  not available");
-      #endif
+      pthread_mutex_lock(&debugConsoleLock);
+      {
+        name = debugStackTraceGetThreadName(debugStackTraceThreads[debugStackTraceThreadIndex].id);
+        fprintf(stderr,
+              "Thread stack trace %02d/%02d: '%s' (0x%lx)\n",
+              debugStackTraceThreadIndex+1,
+              debugStackTraceThreadCount,
+              (name != NULL) ? name : "<none>",
+              debugStackTraceThreads[debugStackTraceThreadIndex].id
+             );
+        #ifndef NDEBUG
+          debugDumpCurrentStackTrace(stderr,0,1);
+        #else
+          fprintf(stderr,"  not available");
+        #endif
 
-      pthread_cond_signal(&debugStackTraceDone);
-//fprintf(stderr,"%s, %d: singal done %p\n",__FILE__,__LINE__,pthread_self());
+        pthread_cond_signal(&debugStackTraceDone);
+//fprintf(stderr,"%s, %d: signal done %p\n",__FILE__,__LINE__,pthread_self());
+      }
+      pthread_mutex_unlock(&debugConsoleLock);
     }
     else
     {
@@ -341,17 +354,9 @@ LOCAL void debugDumpAllStackTraces(void)
         // print stack trace of all threads
         for (debugStackTraceThreadIndex = 0; debugStackTraceThreadIndex < debugStackTraceThreadCount; debugStackTraceThreadIndex++)
         {
-          name = debugStackTraceGetThreadName(debugStackTraceThreads[debugStackTraceThreadIndex].id);
           if (pthread_equal(debugStackTraceThreads[debugStackTraceThreadIndex].id,pthread_self()) == 0)
           {
             // trigger print stack trace in thread
-            fprintf(stderr,
-                  "Thread stack trace %02d/%02d: '%s' (0x%lx)\n",
-                  debugStackTraceThreadIndex+1,
-                  debugStackTraceThreadCount,
-                  (name != NULL) ? name : "<none>",
-                  debugStackTraceThreads[debugStackTraceThreadIndex].id
-                 );
             #ifndef NDEBUG
 //fprintf(stderr,"%s, %d: send %s %p\n",__FILE__,__LINE__,debugStackTraceGetThreadName(debugStackTraceThreads[debugStackTraceThreadIndex].id),debugStackTraceThreads[debugStackTraceThreadIndex].id);
               if (pthread_kill(debugStackTraceThreads[debugStackTraceThreadIndex].id,SIGQUIT) == 0)
@@ -376,18 +381,23 @@ LOCAL void debugDumpAllStackTraces(void)
           else
           {
             // print stack trace of this thread (probably crashed thread)
-            fprintf(stderr,
-                  "Thread stack trace %02d/%02d: '%s' (0x%lx) *** CRASHED ***\n",
-                  debugStackTraceThreadIndex+1,
-                  debugStackTraceThreadCount,
-                  (name != NULL) ? name : "<none>",
-                  debugStackTraceThreads[debugStackTraceThreadIndex].id
-                 );
-            #ifndef NDEBUG
-              debugDumpCurrentStackTrace(stderr,0,1);
-            #else /* NDEBUG */
-              fprintf(stderr,"  not available");
-            #endif /* not NDEBUG */
+            pthread_mutex_lock(&debugConsoleLock);
+            {
+              name = debugStackTraceGetThreadName(debugStackTraceThreads[debugStackTraceThreadIndex].id);
+              fprintf(stderr,
+                    "Thread stack trace %02d/%02d: '%s' (0x%lx) *** CRASHED ***\n",
+                    debugStackTraceThreadIndex+1,
+                    debugStackTraceThreadCount,
+                    (name != NULL) ? name : "<none>",
+                    debugStackTraceThreads[debugStackTraceThreadIndex].id
+                   );
+              #ifndef NDEBUG
+                debugDumpCurrentStackTrace(stderr,0,1);
+              #else /* NDEBUG */
+                fprintf(stderr,"  not available");
+              #endif /* not NDEBUG */
+            }
+            pthread_mutex_unlock(&debugConsoleLock);
           }
           fprintf(stderr,"\n");
         }
@@ -417,16 +427,45 @@ LOCAL void debugSignalSegVHandler(int signalNumber, siginfo_t *siginfo, void *co
 
   if (signalNumber == SIGSEGV)
   {
-    pthread_mutex_lock(&debugSignalSegVLock);
+    pthread_mutex_lock(&debugSignalLock);
     {
       debugDumpAllStackTraces();
     }
-    pthread_mutex_unlock(&debugSignalSegVLock);
+    pthread_mutex_unlock(&debugSignalLock);
   }
 
   if (debugSignalSegVPrevHandler.sa_sigaction != NULL)
   {
     debugSignalSegVPrevHandler.sa_sigaction(signalNumber,siginfo,context);
+  }
+}
+
+/***********************************************************************\
+* Name   : debugSignalAbortHandler
+* Purpose: signal-segmantation vault handler to print stack trace
+* Input  : signalNumber - signal number
+*          siginfo      - signal info
+*          context      - context variable
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+LOCAL void debugSignalAbortHandler(int signalNumber, siginfo_t *siginfo, void *context)
+{
+
+  if (signalNumber == SIGABRT)
+  {
+    pthread_mutex_lock(&debugSignalLock);
+    {
+      debugDumpAllStackTraces();
+    }
+    pthread_mutex_unlock(&debugSignalLock);
+  }
+
+  if (debugSignalAbortPrevHandler.sa_sigaction != NULL)
+  {
+    debugSignalAbortPrevHandler.sa_sigaction(signalNumber,siginfo,context);
   }
 }
 
@@ -470,13 +509,17 @@ LOCAL void debugThreadInit(void)
   // add main thread
   debugStackTraceAddThread(pthread_self());
 
-  // install signal handler for segmentation vault (SIGSEGV) for printing stack traces
+  // install signal handlers for printing stack traces
   sigfillset(&sa.sa_mask);
   sa.sa_flags     = SA_SIGINFO;
   sa.sa_sigaction = debugSignalSegVHandler;
   sigaction(SIGSEGV,&sa,&debugSignalSegVPrevHandler);
 
-  // install signal handler for Ctrl-\ (SIGQUIT) for printing stack traces
+  sigfillset(&sa.sa_mask);
+  sa.sa_flags     = SA_SIGINFO;
+  sa.sa_sigaction = debugSignalAbortHandler;
+  sigaction(SIGABRT,&sa,&debugSignalAbortPrevHandler);
+
   sigfillset(&sa.sa_mask);
   sa.sa_flags     = SA_SIGINFO;
   sa.sa_sigaction = debugSignalQuitHandler;
