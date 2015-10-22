@@ -65,6 +65,28 @@ typedef char(*ArrayElementIterateFunction)(void *userData, void *data);
        (variable)++, Array_get(array,0,variable) \
       )
 
+/***********************************************************************\
+* Name   : ARRAY_ITERATEX
+* Purpose: iterated over array and execute block
+* Input  : array     - array
+*          variable  - iteration variable
+*          condition - additional condition
+* Output : -
+* Return : -
+* Notes  : variable will contain all elements in array
+*          usage:
+*            ARRAY_ITERATEX(array,variable,TRUE)
+*            {
+*              ... = variable->...
+*            }
+\***********************************************************************/
+
+#define ARRAY_ITERATEX(array,variable,condition) \
+  for ((variable) = 0, Array_get(array,0,variable); \
+       ((variable) < Array_length(array)) && (condition); \
+       (variable)++, Array_get(array,0,variable) \
+      )
+
 /***************************** Forwards ********************************/
 
 /***************************** Functions *******************************/
