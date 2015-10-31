@@ -744,12 +744,12 @@ void debugDumpStackTrace(FILE       *handle,
                          uint       skipFrameCount
                         )
 {
-  uint i;
   #ifdef HAVE_BFD_INIT
     StackTraceOutputInfo stackTraceOutputInfo;
   #elif HAVE_BACKTRACE_SYMBOLS
     const char **functionNames;
     uint       z;
+    uint       i;
   #else /* not HAVE_... */
   #endif /* HAVE_... */
 
