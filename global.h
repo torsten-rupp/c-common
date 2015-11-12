@@ -1733,7 +1733,7 @@ void debugResourcePrintStatistics(void);
 void debugResourceCheck(void);
 #endif /* not NDEBUG */
 
-#if !defined(NDEBUG) && defined(HAVE_BACKTRACE)
+#ifndef NDEBUG
 /***********************************************************************\
 * Name   : debugDumpStackTrace
 * Purpose: print function names of stack trace
@@ -1768,7 +1768,7 @@ void debugDumpCurrentStackTrace(FILE *handle,
                                 uint indent,
                                 uint skipFrameCount
                                );
-#endif /* !defined(NDEBUG) && defined(HAVE_BACKTRACE) */
+#endif /* not NDEBUG */
 
 #ifndef NDEBUG
 /***********************************************************************\
