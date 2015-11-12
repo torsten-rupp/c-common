@@ -65,6 +65,7 @@ int main(int argc, char *argv[])
  {
   StringList stringList;
   StringNode *stringNode;
+  StringList stringList1,stringList2;
 
   UNUSED_VARIABLE(argc);
   UNUSED_VARIABLE(argv);
@@ -140,16 +141,32 @@ int main(int argc, char *argv[])
   List_done(&stringList,(ListNodeFreeFunction)freeStringNode,NULL);
 
   /* debug checks */
+
+#if 0
+  /* duplicate insert */
   List_init(&stringList);
 
-#if 1
-  /* duplicate insert */
   stringNode = LIST_NEW_NODE(StringNode);
   strcpy(stringNode->s,"Hello");
+
   List_append(&stringList,stringNode);
   List_append(&stringList,stringNode);
 
   List_done(&stringList,(ListNodeFreeFunction)freeStringNode,NULL);
+#endif
+
+#if 1
+  List_init(&stringList1);
+  List_init(&stringList2);
+
+  stringNode = LIST_NEW_NODE(StringNode);
+  strcpy(stringNode->s,"Hello");
+
+  List_append(&stringList1,stringNode);
+  List_append(&stringList2,stringNode);
+
+  List_done(&stringList2,(ListNodeFreeFunction)freeStringNode,NULL);
+  List_done(&stringList1,(ListNodeFreeFunction)freeStringNode,NULL);
 #endif
 
   return(0);
