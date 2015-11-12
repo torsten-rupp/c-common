@@ -56,9 +56,9 @@ typedef char(*StringArrayElementIterateFunction)(void *userData, const String st
 \***********************************************************************/
 
 #ifdef NDEBUG
-Array StringArray_new(ulong length);
+Array *StringArray_new(ulong length);
 #else /* not NDEBUG */
-Array __StringArray_new(const char *fileName, ulong lineNb, ulong length);
+Array *__StringArray_new(const char *fileName, ulong lineNb, ulong length);
 #endif /* NDEBUG */
 
 /***********************************************************************\
@@ -70,7 +70,15 @@ Array __StringArray_new(const char *fileName, ulong lineNb, ulong length);
 * Notes  : -
 \***********************************************************************/
 
-void StringArray_delete(Array array);
+void StringArray_delete(Array *array);
+#if defined(NDEBUG) || defined(__STRINGARRAYS_IMPLEMENATION__)
+void StringArray_delete(Array *array)
+{
+  assert(array != NULL);
+
+  Array_delete(array);
+}
+#endif // defined(NDEBUG) || defined(__STRINGARRAYS_IMPLEMENATION__)
 
 /***********************************************************************\
 * Name   : StringArray_clear
@@ -81,7 +89,15 @@ void StringArray_delete(Array array);
 * Notes  : -
 \***********************************************************************/
 
-void StringArray_clear(Array array);
+INLINE void StringArray_clear(Array *array);
+#if defined(NDEBUG) || defined(__STRINGARRAYS_IMPLEMENATION__)
+INLINE void StringArray_clear(Array *array)
+{
+  assert(array != NULL);
+
+  Array_clear(array);
+}
+#endif // defined(NDEBUG) || defined(__STRINGARRAYS_IMPLEMENATION__)
 
 /***********************************************************************\
 * Name   : StringArray_length
@@ -92,7 +108,15 @@ void StringArray_clear(Array array);
 * Notes  : -
 \***********************************************************************/
 
-ulong StringArray_length(Array array);
+INLINE ulong StringArray_length(Array *array);
+#if defined(NDEBUG) || defined(__STRINGARRAYS_IMPLEMENATION__)
+INLINE ulong StringArray_length(Array *array)
+{
+  assert(array != NULL);
+
+  return Array_length(array);
+}
+#endif // defined(NDEBUG) || defined(__STRINGARRAYS_IMPLEMENATION__)
 
 /***********************************************************************\
 * Name   : StringArray_put
@@ -105,7 +129,7 @@ ulong StringArray_length(Array array);
 * Notes  : -
 \***********************************************************************/
 
-bool StringArray_put(Array array, ulong index, const String string);
+bool StringArray_put(Array *array, ulong index, const String string);
 
 /***********************************************************************\
 * Name   : StringArray_get
@@ -119,7 +143,7 @@ bool StringArray_put(Array array, ulong index, const String string);
 *          string is returned
 \***********************************************************************/
 
-String StringArray_get(Array array, ulong index, String string);
+String StringArray_get(Array *array, ulong index, String string);
 
 /***********************************************************************\
 * Name   : StringArray_insert
@@ -132,7 +156,7 @@ String StringArray_get(Array array, ulong index, String string);
 * Notes  : -
 \***********************************************************************/
 
-bool StringArray_insert(Array array, long nextIndex, const String string);
+bool StringArray_insert(Array *array, long nextIndex, const String string);
 
 /***********************************************************************\
 * Name   : StringArray_append
@@ -144,7 +168,7 @@ bool StringArray_insert(Array array, long nextIndex, const String string);
 * Notes  : -
 \***********************************************************************/
 
-bool StringArray_append(Array array, const String string);
+bool StringArray_append(Array *array, const String string);
 
 /***********************************************************************\
 * Name   : StringArray_remove
@@ -156,7 +180,13 @@ bool StringArray_append(Array array, const String string);
 * Notes  : -
 \***********************************************************************/
 
-void StringArray_remove(Array array, ulong index);
+INLINE void StringArray_remove(Array *array, ulong index);
+#if defined(NDEBUG) || defined(__STRINGARRAYS_IMPLEMENATION__)
+INLINE void StringArray_remove(Array *array, ulong index)
+{
+  Array_remove(array,index);
+}
+#endif // defined(NDEBUG) || defined(__STRINGARRAYS_IMPLEMENATION__)
 
 /***********************************************************************\
 * Name   : StringArray_toCArray
@@ -167,7 +197,13 @@ void StringArray_remove(Array array, ulong index);
 * Notes  : -
 \***********************************************************************/
 
-const String *StringArray_cArray(Array array);
+INLINE const String *StringArray_cArray(const Array *array);
+#if defined(NDEBUG) || defined(__STRINGARRAYS_IMPLEMENATION__)
+INLINE const String *StringArray_cArray(const Array *array)
+{
+  return (const String*)Array_cArray(array);
+}
+#endif // defined(NDEBUG) || defined(__STRINGARRAYS_IMPLEMENATION__)
 
 #ifdef __cplusplus
   }

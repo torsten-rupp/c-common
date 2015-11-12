@@ -7,6 +7,7 @@
 * Systems: all
 *
 \***********************************************************************/
+#define __STRINGARRAYS_IMPLEMENATION__
 
 /****************************** Includes *******************************/
 #include <stdlib.h>
@@ -43,34 +44,29 @@ LOCAL void freeStringArrayElement(String *string, void *dummy)
 }
 
 #ifdef NDEBUG
-Array StringArray_new(ulong length)
+Array *StringArray_new(ulong length)
 #else /* not NDEBUG */
-Array __StringArray_new(const char *fileName, ulong lineNb, ulong length)
+Array *__StringArray_new(const char *fileName, ulong lineNb, ulong length)
 #endif /* NDEBUG */
 {
   #ifdef NDEBUG
-    return Array_new(sizeof(String),length);
+    return Array_new(sizeof(String),
+                     length
+                     CALLBACK((ArrayElementFreeFunction)freeStringArrayElement,NULL),
+                     CALLBACK_NULL
+                    );
   #else /* not NDEBUG */
-    return __Array_new(fileName,lineNb,sizeof(String),length);
+    return __Array_new(fileName,
+                       lineNb,
+                       sizeof(String),
+                       length,
+                       CALLBACK((ArrayElementFreeFunction)freeStringArrayElement,NULL),
+                       CALLBACK_NULL
+                      );
   #endif /* NDEBUG */
 }
 
-void StringArray_delete(Array array)
-{
-  Array_delete(array,(ArrayElementFreeFunction)freeStringArrayElement,NULL);
-}
-
-void StringArray_clear(Array array)
-{
-  Array_clear(array,(ArrayElementFreeFunction)freeStringArrayElement,NULL);
-}
-
-ulong StringArray_length(Array array)
-{
-  return Array_length(array);
-}
-
-bool StringArray_put(Array array, ulong index, const String string)
+bool StringArray_put(Array *array, ulong index, const String string)
 {
   String newString;
 
@@ -91,7 +87,7 @@ bool StringArray_put(Array array, ulong index, const String string)
   return TRUE;
 }
 
-String StringArray_get(Array array, ulong index, String string)
+String StringArray_get(Array *array, ulong index, String string)
 {
   String arrayString;
 
@@ -112,7 +108,7 @@ String StringArray_get(Array array, ulong index, String string)
   }
 }
 
-bool StringArray_insert(Array array, long nextIndex, const String string)
+bool StringArray_insert(Array *array, long nextIndex, const String string)
 {
   String newString;
 
@@ -133,7 +129,7 @@ bool StringArray_insert(Array array, long nextIndex, const String string)
   return TRUE;
 }
 
-bool StringArray_append(Array array, const String string)
+bool StringArray_append(Array *array, const String string)
 {
   String newString;
 
@@ -152,16 +148,6 @@ bool StringArray_append(Array array, const String string)
   }
 
   return TRUE;
-}
-
-void StringArray_remove(Array array, ulong index)
-{
-  Array_remove(array,index,(ArrayElementFreeFunction)freeStringArrayElement,NULL);
-}
-
-const String* StringArray_cArray(Array array)
-{
-  return (const String*)Array_cArray(array);
 }
 
 #ifdef __cplusplus
