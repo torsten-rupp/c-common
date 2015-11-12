@@ -39,11 +39,13 @@
 int main(int argc, char *argv[])
 {
   String          s,t,w;
+  StaticString    (v,16);
   int             i,j;
   long            nextIndex;
   StringTokenizer stringTokenizer;
   ConstString     token;
-  StaticString    (v,16);
+  uint            u;
+  String          a[5000];
 
   UNUSED_VARIABLE(argc);
   UNUSED_VARIABLE(argv);
@@ -60,6 +62,7 @@ int main(int argc, char *argv[])
   String_setCString(s,"Hello world, ");
   String_appendCString(s,"I'm here!");
   String_delete(s);
+  String_setCString(v,"Hello world, ");
 
   // print string
   s = String_newCString("Hello world!\n");
@@ -224,6 +227,16 @@ int main(int argc, char *argv[])
   printf("unquoted=#%s#\n",String_cString(s));
   String_delete(s);
 
+  // many strings
+  for (u = 0; u < SIZE_OF_ARRAY(a); u++)
+  {
+    a[u] = String_newCString("Hello");
+  }
+  for (u = 0; u < SIZE_OF_ARRAY(a); u++)
+  {
+    String_delete(a[u]);
+  }
+
   // uncomment to see debug functions
 
   #if 0
@@ -255,7 +268,9 @@ int main(int argc, char *argv[])
   printf("static string=#%s#\n",String_cString(v));
   #endif /* 0 */
 
-  String_debugPrintInfo();
+  #ifndef NDEBUG
+    String_debugPrintInfo();
+  #endif
 
   return 0;
 }
