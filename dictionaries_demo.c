@@ -72,7 +72,10 @@ int main(int argc, char *argv[])
   }
   fileName = argv[1];
 
-  Dictionary_init(&dictionary,NULL,NULL);
+  Dictionary_init(&dictionary,
+                  CALLBACK_NULL,
+                  CALLBACK_NULL
+                 );
 
   file = fopen(fileName,"r");
   t0 = getTimestamp();
@@ -83,7 +86,7 @@ int main(int argc, char *argv[])
     n++;
 //    if ((n%10000) == 0) printf("Store %lu\n",n);
 
-    Dictionary_add(&dictionary,line,strlen(line)+1,NULL,0);
+    Dictionary_add(&dictionary,line,strlen(line)+1,NULL,0,DICTIONARY_BYTE_COPY);
   }
   t1 = getTimestamp();
   dt = t1-t0;
@@ -117,7 +120,7 @@ int main(int argc, char *argv[])
 
   Dictionary_printStatistic(&dictionary);
 
-  Dictionary_done(&dictionary,NULL,NULL);
+  Dictionary_done(&dictionary);
 
   return(0);
  }
