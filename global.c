@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <unistd.h>
 #ifdef HAVE_BACKTRACE
   #include <execinfo.h>
 #endif
@@ -64,6 +65,7 @@
     #endif /* HAVE_BACKTRACE */
     const char *typeName;
     const void *resource;
+    uint       size;
   } DebugResourceNode;
 
   typedef struct
@@ -410,7 +412,8 @@ void debugLocalResource(const char *__fileName__,
 void debugAddResourceTrace(const char *__fileName__,
                            uint       __lineNb__,
                            const char *typeName,
-                           const void *resource
+                           const void *resource,
+                           uint       size
                           )
 {
   DebugResourceNode *debugResourceNode;
@@ -421,7 +424,7 @@ void debugAddResourceTrace(const char *__fileName__,
   {
     // check for duplicate initialization in allocated list
     debugResourceNode = debugResourceAllocList.head;
-    while ((debugResourceNode != NULL) && (debugResourceNode->resource != resource))
+    while ((debugResourceNode != NULL) && ((debugResourceNode->resource != resource) || (debugResourceNode->size != size)))
     {
       debugResourceNode = debugResourceNode->next;
     }
@@ -473,6 +476,7 @@ void debugAddResourceTrace(const char *__fileName__,
     #endif /* HAVE_BACKTRACE */
     debugResourceNode->typeName = typeName;
     debugResourceNode->resource = resource;
+    debugResourceNode->size     = size;
 
     // add resource to allocated-list
     List_append(&debugResourceAllocList,debugResourceNode);
@@ -482,7 +486,8 @@ void debugAddResourceTrace(const char *__fileName__,
 
 void debugRemoveResourceTrace(const char *__fileName__,
                               uint       __lineNb__,
-                              const void *resource
+                              const void *resource,
+                              uint       size
                              )
 {
   DebugResourceNode *debugResourceNode;
@@ -493,7 +498,7 @@ void debugRemoveResourceTrace(const char *__fileName__,
   {
     // find in free-list to check for duplicate free
     debugResourceNode = debugResourceFreeList.head;
-    while ((debugResourceNode != NULL) && (debugResourceNode->resource != resource))
+    while ((debugResourceNode != NULL) && ((debugResourceNode->resource != resource) || (debugResourceNode->size != size)))
     {
       debugResourceNode = debugResourceNode->next;
     }
@@ -693,6 +698,9 @@ void debugResourceCheck(void)
                 debugResourceNode->allocFileName,
                 debugResourceNode->allocLineNb
                );
+        #ifdef HAVE_BACKTRACE
+          debugDumpStackTrace(stderr,0,debugResourceNode->stackTrace,debugResourceNode->stackTraceSize,0);
+        #endif /* HAVE_BACKTRACE */
       }
       fprintf(stderr,"DEBUG: %lu resource(s) lost\n",
               List_count(&debugResourceAllocList)
@@ -705,8 +713,6 @@ void debugResourceCheck(void)
 #endif /* not NDEBUG */
 
 #ifndef NDEBUG
-
-#ifdef HAVE_BFD_INIT
 typedef struct
 {
   FILE *handle;
@@ -738,7 +744,6 @@ LOCAL void debugDumpStackTraceOutputSymbol(const void *address,
   }
   stackTraceOutputInfo->count++;
 }
-#endif // HAVE_BFD_INIT
 
 void debugDumpStackTrace(FILE       *handle,
                          uint       indent,
@@ -798,12 +803,7 @@ void debugDumpStackTrace(FILE       *handle,
     }
     free(functionNames);
   #else /* not HAVE_... */
-    UNUSED_VARIABLE(indent);
-    UNUSED_VARIABLE(stackTrace);
-    UNUSED_VARIABLE(stackTraceSize);
-    UNUSED_VARIABLE(skipFrameCount);
-
-    fprintf(handle,"    <not available>\n");
+    fprintf(handle,"  not available\n");
   #endif /* HAVE_... */
 }
 
@@ -832,8 +832,6 @@ void debugDumpCurrentStackTrace(FILE *handle,
 
     free(currentStackTrace);
   #else /* not defined(HAVE_BACKTRACE) */
-    UNUSED_VARIABLE(skipFrameCount);
-
     for (i = 0; i < indent; i++) fputc(' ',handle);
     fprintf(handle,"  not available\n");
   #endif /* defined(HAVE_BACKTRACE) */
