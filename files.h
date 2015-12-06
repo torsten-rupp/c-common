@@ -162,10 +162,33 @@ typedef enum
   #define FILE_PERMISSION_OTHER_ACCESS  0
 #endif
 
+
+#ifdef HAVE_S_ISUID
+  #define FILE_PERMISSION_USER_SET_ID   S_ISUID
+#else
+  #define FILE_PERMISSION_USER_SET_ID   0
+#endif
+#ifdef HAVE_S_ISGID
+  #define FILE_PERMISSION_GROUP_SET_ID  S_ISGID
+#else
+  #define FILE_PERMISSION_GROUP_SET_ID  0
+#endif
+#ifdef HAVE_S_ISVTX
+  #define FILE_PERMISSION_STICKY_BIT    S_ISVTX
+#else
+  #define FILE_PERMISSION_STICKY_BIT    0
+#endif
+
+#define FILE_PERMISSION_NONE      0
 #define FILE_PERMISSION_READ      (FILE_PERMISSION_USER_READ|FILE_PERMISSION_GROUP_READ|FILE_PERMISSION_OTHER_READ)
 #define FILE_PERMISSION_WRITE     (FILE_PERMISSION_USER_WRITE|FILE_PERMISSION_GROUP_WRITE|FILE_PERMISSION_OTHER_WRITE)
 #define FILE_PERMISSION_EXECUTE   (FILE_PERMISSION_USER_EXECUTE|FILE_PERMISSION_GROUP_EXECUTE|FILE_PERMISSION_OTHER_EXECUTE)
 #define FILE_PERMISSION_MASK      (FILE_PERMISSION_READ|FILE_PERMISSION_WRITE|FILE_PERMISSION_EXECUTE)
+#define FILE_PERMISSION_ALL       (FILE_PERMISSION_READ|FILE_PERMISSION_WRITE|FILE_PERMISSION_EXECUTE|FILE_PERMISSION_USER_SET_ID|FILE_PERMISSION_GROUP_SET_ID|FILE_PERMISSION_STICKY_BIT)
+
+// own user, group ids, own default permission
+#define FILE_OWN_USER_ID        0
+#define FILE_OWN_GROUP_ID       0
 
 // default user, group ids, permission
 #define FILE_DEFAULT_USER_ID    0xFFFFFFFF
@@ -1029,6 +1052,30 @@ uint32 File_groupNameToGroupId(const char *name);
 \***********************************************************************/
 
 const char *File_groupIdToGroupName(char *name, uint nameSize, uint32 groupId);
+
+/***********************************************************************\
+* Name   : File_stringToPermission
+* Purpose: convert string to file permission
+* Input  : string - string
+* Output : -
+* Return : file permission
+* Notes  : -
+\***********************************************************************/
+
+FilePermission File_stringToPermission(const char *string);
+
+/***********************************************************************\
+* Name   : File_permissionToString
+* Purpose: convert file permission to string
+* Input  : string     - string variable
+*          stringSize - max. size of string
+*          permission - file permission
+* Output : -
+* Return : string
+* Notes  : -
+\***********************************************************************/
+
+const char *File_permissionToString(char *string, uint stringSize, FilePermission permission);
 
 /***********************************************************************\
 * Name   : File_getType

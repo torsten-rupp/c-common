@@ -2636,9 +2636,12 @@ Errors File_readDirectoryList(DirectoryListHandle *directoryListHandle,
 
 uint32 File_userNameToUserId(const char *name)
 {
+  #define BUFFER_DELTA_SIZE 1024
+  #define MAX_BUFFER_SIZE   (64*1024)
+
   #if defined(HAVE_SYSCONF) && defined(HAVE_GETPWNAM_R)
     long          bufferSize;
-    char          *buffer;
+    char          *buffer,*newBuffer;
     struct passwd passwordEntry;
     struct passwd *result;
   #endif /* defined(HAVE_SYSCONF) && defined(HAVE_GETPWNAM_R) */
@@ -2660,10 +2663,25 @@ uint32 File_userNameToUserId(const char *name)
     }
 
     // get user passwd entry
-    if (getpwnam_r(name,&passwordEntry,buffer,bufferSize,&result) != 0)
+    while (getpwnam_r(name,&passwordEntry,buffer,bufferSize,&result) != 0)
     {
-      free(buffer);
-      return FILE_DEFAULT_USER_ID;
+      if ((errno != ERANGE) || ((bufferSize+BUFFER_DELTA_SIZE) >= MAX_BUFFER_SIZE))
+      {
+        free(buffer);
+        return FILE_DEFAULT_USER_ID;
+      }
+      else
+      {
+        // Note: returned size may not be enough. Increase buffer size.
+        newBuffer = (char*)realloc(buffer,bufferSize+BUFFER_DELTA_SIZE);
+        if (newBuffer == NULL)
+        {
+          free(buffer);
+          return FILE_DEFAULT_USER_ID;
+        }
+        buffer     =  newBuffer;
+        bufferSize += BUFFER_DELTA_SIZE;
+      }
     }
 
     // get user id
@@ -2678,19 +2696,27 @@ uint32 File_userNameToUserId(const char *name)
   #endif /* defined(HAVE_SYSCONF) && defined(HAVE_GETPWNAM_R) */
 
   return userId;
+
+  #undef BUFFER_DELTA_SIZE
+  #undef MAX_BUFFER_SIZE
 }
 
 const char *File_userIdToUserName(char *name, uint nameSize, uint32 userId)
 {
+  #define BUFFER_DELTA_SIZE 1024
+  #define MAX_BUFFER_SIZE   (64*1024)
+
   #if defined(HAVE_SYSCONF) && defined(HAVE_GETPWUID_R)
     long          bufferSize;
-    char          *buffer;
+    char          *buffer,*newBuffer;
     struct passwd groupEntry;
     struct passwd *result;
   #endif /* defined(HAVE_SYSCONF) && defined(HAVE_GETPWUID_R) */
 
   assert(name != NULL);
   assert(nameSize > 0);
+
+  name[0] = '\0';
 
   #if defined(HAVE_SYSCONF) && defined(HAVE_GETPWUID_R)
     // allocate buffer
@@ -2706,10 +2732,25 @@ const char *File_userIdToUserName(char *name, uint nameSize, uint32 userId)
     }
 
     // get user passwd entry
-    if (getpwuid_r((uid_t)userId,&groupEntry,buffer,bufferSize,&result) != 0)
+    while (getpwuid_r((uid_t)userId,&groupEntry,buffer,bufferSize,&result) != 0)
     {
-      free(buffer);
-      return NULL;
+      if ((errno != ERANGE) || ((bufferSize+BUFFER_DELTA_SIZE) >= MAX_BUFFER_SIZE))
+      {
+        free(buffer);
+        return NULL;
+      }
+      else
+      {
+        // Note: returned size may not be enough. Increase buffer size.
+        newBuffer = (char*)realloc(buffer,bufferSize+BUFFER_DELTA_SIZE);
+        if (newBuffer == NULL)
+        {
+          free(buffer);
+          return NULL;
+        }
+        buffer     =  newBuffer;
+        bufferSize += BUFFER_DELTA_SIZE;
+      }
     }
 
     // get user name
@@ -2733,13 +2774,19 @@ const char *File_userIdToUserName(char *name, uint nameSize, uint32 userId)
   #endif /* defined(HAVE_SYSCONF) && defined(HAVE_GETPWUID_R) */
 
   return name;
+
+  #undef BUFFER_DELTA_SIZE
+  #undef MAX_BUFFER_SIZE
 }
 
 uint32 File_groupNameToGroupId(const char *name)
 {
+  #define BUFFER_DELTA_SIZE 1024
+  #define MAX_BUFFER_SIZE   (64*1024)
+
   #if defined(HAVE_SYSCONF) && defined(HAVE_GETGRNAM_R)
     long         bufferSize;
-    char         *buffer;
+    char         *buffer,*newBuffer;
     struct group groupEntry;
     struct group *result;
   #endif /* defined(HAVE_SYSCONF) && defined(HAVE_GETPWUID_R) */
@@ -2761,10 +2808,25 @@ uint32 File_groupNameToGroupId(const char *name)
     }
 
     // get user passwd entry
-    if (getgrnam_r(name,&groupEntry,buffer,bufferSize,&result) != 0)
+    while (getgrnam_r(name,&groupEntry,buffer,bufferSize,&result) != 0)
     {
-      free(buffer);
-      return FILE_DEFAULT_GROUP_ID;
+      if ((errno != ERANGE) || ((bufferSize+BUFFER_DELTA_SIZE) >= MAX_BUFFER_SIZE))
+      {
+        free(buffer);
+        return FILE_DEFAULT_GROUP_ID;
+      }
+      else
+      {
+        // Note: returned size may not be enough. Increase buffer size.
+        newBuffer = (char*)realloc(buffer,bufferSize+BUFFER_DELTA_SIZE);
+        if (newBuffer == NULL)
+        {
+          free(buffer);
+          return FILE_DEFAULT_GROUP_ID;
+        }
+        buffer     =  newBuffer;
+        bufferSize += BUFFER_DELTA_SIZE;
+      }
     }
 
     // get group id
@@ -2779,19 +2841,27 @@ uint32 File_groupNameToGroupId(const char *name)
   #endif /* defined(HAVE_SYSCONF) && defined(HAVE_GETGRNAM_R) */
 
   return groupId;
+
+  #undef BUFFER_DELTA_SIZE
+  #undef MAX_BUFFER_SIZE
 }
 
 const char *File_groupIdToGroupName(char *name, uint nameSize, uint32 groupId)
 {
+  #define BUFFER_DELTA_SIZE 1024
+  #define MAX_BUFFER_SIZE   (64*1024)
+
   #if defined(HAVE_SYSCONF) && defined(HAVE_GETPWUID_R)
     long         bufferSize;
-    char         *buffer;
+    char         *buffer,*newBuffer;
     struct group groupEntry;
     struct group *result;
   #endif /* defined(HAVE_SYSCONF) && defined(HAVE_GETGRGID_R) */
 
   assert(name != NULL);
   assert(nameSize > 0);
+
+  name[0] = '\0';
 
   #if defined(HAVE_SYSCONF) && defined(HAVE_GETGRGID_R)
     // allocate buffer
@@ -2807,10 +2877,25 @@ const char *File_groupIdToGroupName(char *name, uint nameSize, uint32 groupId)
     }
 
     // get user passwd entry
-    if (getgrgid_r((gid_t)groupId,&groupEntry,buffer,bufferSize,&result) != 0)
+    while (getgrgid_r((gid_t)groupId,&groupEntry,buffer,bufferSize,&result) != 0)
     {
-      free(buffer);
-      return NULL;
+      if ((errno != ERANGE) || ((bufferSize+BUFFER_DELTA_SIZE) >= MAX_BUFFER_SIZE))
+      {
+        free(buffer);
+        return NULL;
+      }
+      else
+      {
+        // Note: returned size may not be enough. Increase buffer size.
+        newBuffer = (char*)realloc(buffer,bufferSize+BUFFER_DELTA_SIZE);
+        if (newBuffer == NULL)
+        {
+          free(buffer);
+          return NULL;
+        }
+        buffer     =  newBuffer;
+        bufferSize += BUFFER_DELTA_SIZE;
+      }
     }
 
     // get group name
@@ -2834,6 +2919,58 @@ const char *File_groupIdToGroupName(char *name, uint nameSize, uint32 groupId)
   #endif /* defined(HAVE_SYSCONF) && defined(HAVE_GETGRGID_R) */
 
   return name;
+
+  #undef BUFFER_DELTA_SIZE
+  #undef MAX_BUFFER_SIZE
+}
+
+FilePermission File_stringToPermission(const char *string)
+{
+  FilePermission permission;
+  uint           stringLength;
+
+  assert(string != NULL);
+
+  permission = FILE_PERMISSION_NONE;
+
+  stringLength = strlen(string);
+  if ((stringLength >= 1) && (toupper(string[0]) == 'R')) permission |= FILE_PERMISSION_USER_READ;
+  if ((stringLength >= 2) && (toupper(string[1]) == 'W')) permission |= FILE_PERMISSION_USER_WRITE;
+  if ((stringLength >= 3) && (toupper(string[2]) == 'X')) permission |= FILE_PERMISSION_USER_EXECUTE;
+  if ((stringLength >= 3) && (toupper(string[2]) == 'S')) permission |= FILE_PERMISSION_USER_SET_ID;
+  if ((stringLength >= 4) && (toupper(string[3]) == 'R')) permission |= FILE_PERMISSION_GROUP_READ;
+  if ((stringLength >= 5) && (toupper(string[4]) == 'W')) permission |= FILE_PERMISSION_GROUP_WRITE;
+  if ((stringLength >= 6) && (toupper(string[5]) == 'X')) permission |= FILE_PERMISSION_GROUP_EXECUTE;
+  if ((stringLength >= 6) && (toupper(string[5]) == 'S')) permission |= FILE_PERMISSION_GROUP_SET_ID;
+  if ((stringLength >= 7) && (toupper(string[6]) == 'R')) permission |= FILE_PERMISSION_OTHER_READ;
+  if ((stringLength >= 8) && (toupper(string[7]) == 'W')) permission |= FILE_PERMISSION_OTHER_WRITE;
+  if ((stringLength >= 9) && (toupper(string[8]) == 'X')) permission |= FILE_PERMISSION_OTHER_EXECUTE;
+  if ((stringLength >= 9) && (toupper(string[8]) == 'T')) permission |= FILE_PERMISSION_STICKY_BIT;
+
+  return permission;
+}
+
+const char *File_permissionToString(char *string, uint stringSize, FilePermission permission)
+{
+  assert(string != NULL);
+  assert(stringSize > 0);
+
+  memset(string,'-',stringSize-1);
+  if ((stringSize >= 1) && ((permission & FILE_PERMISSION_USER_READ    ) != 0)) string[0] = 'r';
+  if ((stringSize >= 2) && ((permission & FILE_PERMISSION_USER_WRITE   ) != 0)) string[1] = 'w';
+  if ((stringSize >= 3) && ((permission & FILE_PERMISSION_USER_EXECUTE ) != 0)) string[2] = 'x';
+  if ((stringSize >= 3) && ((permission & FILE_PERMISSION_USER_SET_ID  ) != 0)) string[2] = 's';
+  if ((stringSize >= 4) && ((permission & FILE_PERMISSION_GROUP_READ   ) != 0)) string[3] = 'r';
+  if ((stringSize >= 5) && ((permission & FILE_PERMISSION_GROUP_WRITE  ) != 0)) string[4] = 'w';
+  if ((stringSize >= 6) && ((permission & FILE_PERMISSION_GROUP_EXECUTE) != 0)) string[5] = 'x';
+  if ((stringSize >= 6) && ((permission & FILE_PERMISSION_GROUP_SET_ID ) != 0)) string[5] = 's';
+  if ((stringSize >= 7) && ((permission & FILE_PERMISSION_OTHER_READ   ) != 0)) string[6] = 'r';
+  if ((stringSize >= 8) && ((permission & FILE_PERMISSION_OTHER_WRITE  ) != 0)) string[7] = 'w';
+  if ((stringSize >= 9) && ((permission & FILE_PERMISSION_OTHER_EXECUTE) != 0)) string[8] = 'x';
+  if ((stringSize >= 9) && ((permission & FILE_PERMISSION_STICKY_BIT   ) != 0)) string[8] = 't';
+  string[stringSize-1] = '\0';
+
+  return string;
 }
 
 FileTypes File_getType(ConstString fileName)
@@ -3775,14 +3912,22 @@ Errors File_setOwner(ConstString fileName,
                      uint32      groupId
                     )
 {
+  #ifdef HAVE_CHOWN
+    uid_t uid;
+    gid_t gid;
+  #endif /* HAVE_CHOWN */
+
   assert(fileName != NULL);
 
   #ifdef HAVE_CHOWN
-    if (chown(String_cString(fileName),
-              (userId  != FILE_DEFAULT_USER_ID ) ? (uid_t)userId  : (uid_t)(-1),
-              (groupId != FILE_DEFAULT_GROUP_ID) ? (gid_t)groupId : (gid_t)(-1)
-             ) != 0
-       )
+    if      (userId == FILE_OWN_USER_ID     ) uid = getuid();
+    else if (userId == FILE_DEFAULT_USER_ID ) uid = -1;
+    else                                      uid = (uid_t)userId;
+    if      (userId == FILE_OWN_GROUP_ID    ) gid = getgid();
+    else if (userId == FILE_DEFAULT_GROUP_ID) gid = -1;
+    else                                      gid = (uid_t)groupId;
+
+    if (chown(String_cString(fileName),uid,gid) != 0)
     {
       return ERRORX_(IO_ERROR,errno,String_cString(fileName));
     }
@@ -3869,8 +4014,13 @@ Errors File_makeDirectory(ConstString    pathName,
        )
     {
       #ifdef HAVE_CHOWN
-        uid = (userId  != FILE_DEFAULT_USER_ID ) ? (uid_t)userId  : (uid_t)(-1);
-        gid = (groupId != FILE_DEFAULT_GROUP_ID) ? (gid_t)groupId : (gid_t)(-1);
+        if      (userId == FILE_OWN_USER_ID     ) uid = getuid();
+        else if (userId == FILE_DEFAULT_USER_ID ) uid = -1;
+        else                                      uid = (uid_t)userId;
+        if      (userId == FILE_OWN_GROUP_ID    ) gid = getgid();
+        else if (userId == FILE_DEFAULT_GROUP_ID) gid = -1;
+        else                                      gid = (uid_t)groupId;
+
         if (chown(String_cString(directoryName),uid,gid) != 0)
         {
           error = ERRORX_(IO_ERROR,errno,String_cString(directoryName));
@@ -3972,8 +4122,13 @@ Errors File_makeDirectory(ConstString    pathName,
         {
           // set owner
           #ifdef HAVE_CHOWN
-            uid = (userId  != FILE_DEFAULT_USER_ID ) ? (uid_t)userId  : (uid_t)(-1);
-            gid = (groupId != FILE_DEFAULT_GROUP_ID) ? (gid_t)groupId : (gid_t)(-1);
+            if      (userId == FILE_OWN_USER_ID     ) uid = getuid();
+            else if (userId == FILE_DEFAULT_USER_ID ) uid = -1;
+            else                                      uid = (uid_t)userId;
+            if      (userId == FILE_OWN_GROUP_ID    ) gid = getgid();
+            else if (userId == FILE_DEFAULT_GROUP_ID) gid = -1;
+            else                                      gid = (uid_t)groupId;
+
             if (chown(String_cString(directoryName),uid,gid) != 0)
             {
               error = ERRORX_(IO_ERROR,errno,String_cString(directoryName));
