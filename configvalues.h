@@ -20,6 +20,7 @@
 
 #include "global.h"
 #include "strings.h"
+#include "stringlists.h"
 
 /********************** Conditional compilation ***********************/
 
@@ -44,9 +45,12 @@ typedef enum
   CONFIG_VALUE_TYPE_SPECIAL,
 
   CONFIG_VALUE_TYPE_IGNORE,
+  CONFIG_VALUE_TYPE_DEPRECATED,
 
   CONFIG_VALUE_TYPE_BEGIN_SECTION,
-  CONFIG_VALUE_TYPE_END_SECTION
+  CONFIG_VALUE_TYPE_END_SECTION,
+
+  CONFIG_VALUE_TYPE_END
 } ConfigValueTypes;
 
 // config value unit
@@ -73,26 +77,27 @@ typedef struct
 // config value variable
 typedef union
 {
-  void   *pointer;
-  void   **reference;
-  int    *i;
-  int64  *l;
-  double *d;
-  bool   *b;
-  uint   *enumeration;
-  uint   *select;
-  ulong  *set;
-  char   **cString;
-  String *string;
-  void   *special;
+  void       *pointer;
+  void       **reference;
+  int        *i;
+  int64      *l;
+  double     *d;
+  bool       *b;
+  uint       *enumeration;
+  uint       *select;
+  ulong      *set;
+  char       **cString;
+  String     *string;
+  void       *special;
+  const char *newName;
 } ConfigVariable;
 
 // config value definition
 typedef struct
 {
-  const char       *name;                         // name of config value
   ConfigValueTypes type;                          // type of config value
-  ConfigVariable   variable;                      // variable or NULL
+  const char       *name;                         // name of config value
+  ConfigVariable   variable;                      // variable, new name or NULL
   int              offset;                        // offset in struct or -1
   struct
   {
@@ -299,8 +304,8 @@ typedef struct
 { \
   __VA_ARGS__ \
   { \
+    CONFIG_VALUE_TYPE_END,\
     NULL,\
-    CONFIG_VALUE_TYPE_NONE,\
     {NULL},\
     0,\
     {0,0,NULL},\
@@ -315,6 +320,52 @@ typedef struct
     {NULL,NULL,NULL,NULL,NULL},\
   } \
 }; \
+
+/***********************************************************************\
+* Name   : CONFIG_VALUE_SECTION_ARRAY
+* Purpose: define config value section array
+* Input  : name   - name
+*          offset - offset in structure or -1
+*          ...    - config values
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+#define CONFIG_VALUE_SECTION_ARRAY(name,offset,...) \
+  { \
+    CONFIG_VALUE_TYPE_BEGIN_SECTION,\
+    name,\
+    {NULL},\
+    offset,\
+    {0,0,NULL},\
+    {0LL,0LL,NULL},\
+    {0.0,0.0,NULL},\
+    {},\
+    {0},\
+    {NULL},\
+    {NULL}, \
+    {},\
+    {},\
+    {NULL,NULL,NULL,NULL,NULL},\
+  }, \
+  __VA_ARGS__ \
+  { \
+    CONFIG_VALUE_TYPE_END_SECTION,\
+    NULL,\
+    {NULL},\
+    0,\
+    {0,0,NULL},\
+    {0LL,0LL,NULL},\
+    {0.0,0.0,NULL},\
+    {},\
+    {0},\
+    {NULL},\
+    {NULL}, \
+    {},\
+    {},\
+    {NULL,NULL,NULL,NULL,NULL},\
+  }
 
 /***********************************************************************\
 * Name   : CONFIG_VALUE_INTEGER, CONFIG_STRUCT_VALUE_INTEGER
@@ -333,8 +384,8 @@ typedef struct
 
 #define CONFIG_VALUE_INTEGER(name,variablePointer,offset,min,max,units) \
   { \
-    name,\
     CONFIG_VALUE_TYPE_INTEGER,\
+    name,\
     {variablePointer},\
     offset,\
     {min,max,units},\
@@ -368,8 +419,8 @@ typedef struct
 
 #define CONFIG_VALUE_INTEGER64(name,variablePointer,offset,min,max,units) \
   { \
-    name,\
     CONFIG_VALUE_TYPE_INTEGER64,\
+    name,\
     {variablePointer},\
     offset,\
     {0,0,NULL},\
@@ -403,8 +454,8 @@ typedef struct
 
 #define CONFIG_VALUE_DOUBLE(name,variablePointer,offset,min,max,units) \
   { \
-    name,\
     CONFIG_VALUE_TYPE_DOUBLE,\
+    name,\
     {variablePointer},\
     offset,\
     {0,0,NULL},\
@@ -436,8 +487,8 @@ typedef struct
 
 #define CONFIG_VALUE_BOOLEAN(name,variablePointer,offset) \
   { \
-    name,\
     CONFIG_VALUE_TYPE_BOOLEAN,\
+    name,\
     {variablePointer},\
     offset,\
     {0,0,NULL},\
@@ -469,8 +520,8 @@ typedef struct
 
 #define CONFIG_VALUE_BOOLEAN_YESNO(name,variablePointer,offset) \
   { \
-    name,\
     CONFIG_VALUE_TYPE_BOOLEAN,\
+    name,\
     {variablePointer},\
     offset,\
     {0,0,NULL},\
@@ -503,8 +554,8 @@ typedef struct
 
 #define CONFIG_VALUE_ENUM(name,variablePointer,offset,value) \
   { \
-    name,\
     CONFIG_VALUE_TYPE_ENUM,\
+    name,\
     {variablePointer},\
     offset,\
     {0,0,NULL},\
@@ -537,8 +588,8 @@ typedef struct
 
 #define CONFIG_VALUE_SELECT(name,variablePointer,offset,selects) \
   { \
-    name,\
     CONFIG_VALUE_TYPE_SELECT,\
+    name,\
     {variablePointer},\
     offset,\
     {0,0,NULL},\
@@ -571,8 +622,8 @@ typedef struct
 
 #define CONFIG_VALUE_SET(name,variablePointer,offset,set) \
   { \
-    name,\
     CONFIG_VALUE_TYPE_SET,\
+    name,\
     {variablePointer},\
     offset,\
     {0,0,NULL},\
@@ -604,8 +655,8 @@ typedef struct
 
 #define CONFIG_VALUE_CSTRING(name,variablePointer,offset) \
   { \
-    name,\
     CONFIG_VALUE_TYPE_CSTRING,\
+    name,\
     {variablePointer},\
     offset,\
     {0,0,NULL},\
@@ -637,8 +688,8 @@ typedef struct
 
 #define CONFIG_VALUE_STRING(name,variablePointer,offset) \
   { \
-    name,\
     CONFIG_VALUE_TYPE_STRING,\
+    name,\
     {variablePointer},\
     offset,\
     {0,0,NULL},\
@@ -676,8 +727,8 @@ typedef struct
 
 #define CONFIG_VALUE_SPECIAL(name,variablePointer,offset,parse,formatInit,formatDone,format,userData) \
   { \
-    name,\
     CONFIG_VALUE_TYPE_SPECIAL,\
+    name,\
     {variablePointer},\
     offset,\
     {0,0,NULL},\
@@ -705,8 +756,8 @@ typedef struct
 
 #define CONFIG_VALUE_IGNORE(name) \
   { \
-    name,\
     CONFIG_VALUE_TYPE_IGNORE,\
+    name,\
     {},\
     0,\
     {0,0,NULL},\
@@ -724,11 +775,39 @@ typedef struct
   CONFIG_VALUE_IGNORE(name)
 
 /***********************************************************************\
+* Name   : CONFIG_VALUE_DEPRECATED, CONFIG_STRUCT_VALUE_DEPRECATED
+* Purpose: define an string-value
+* Input  : name - name
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+#define CONFIG_VALUE_DEPRECATED(name,newName) \
+  { \
+    CONFIG_VALUE_TYPE_DEPRECATED,\
+    name,\
+    {},\
+    0,\
+    {0,0,NULL},\
+    {0LL,0LL,NULL},\
+    {0.0,0.0,NULL},\
+    {},\
+    {0},\
+    {NULL},\
+    {NULL}, \
+    {},\
+    {},\
+    {NULL,NULL,NULL,NULL,NULL},\
+  }
+#define CONFIG_STRUCT_VALUE_DEPRECATED(name,newName) \
+  CONFIG_VALUE_DEPRECATED(name,newName)
+
+/***********************************************************************\
 * Name   : CONFIG_VALUE_BEGIN_SECTION, CONFIG_VALUE_END_SECTION
 * Purpose: begin/end value section [<name>...]
-* Input  : name            - name
-*          variablePointer - pointer to variable or NULL
-*          offset          - offset in structure or -1
+* Input  : name   - name
+*          offset - offset in structure or -1
 * Output : -
 * Return : -
 * Notes  : -
@@ -736,8 +815,8 @@ typedef struct
 
 #define CONFIG_VALUE_BEGIN_SECTION(name,offset) \
   { \
-    name,\
     CONFIG_VALUE_TYPE_BEGIN_SECTION,\
+    name,\
     {NULL},\
     offset,\
     {0,0,NULL},\
@@ -754,8 +833,8 @@ typedef struct
 
 #define CONFIG_VALUE_END_SECTION() \
   { \
-    NULL,\
     CONFIG_VALUE_TYPE_END_SECTION,\
+    NULL,\
     {NULL},\
     0,\
     {0,0,NULL},\
@@ -929,6 +1008,18 @@ static inline bool ConfigValue_isSection(const ConfigValue configValue)
   return    (configValue.type == CONFIG_VALUE_TYPE_BEGIN_SECTION)
          || (configValue.type == CONFIG_VALUE_TYPE_END_SECTION);
 }
+
+/***********************************************************************\
+* Name   : ConfigValue_valueIndex
+* Purpose: get value index
+* Input  : configValues - config values array
+*          name         - name
+* Output : -
+* Return : index or -1
+* Notes  : -
+\***********************************************************************/
+
+int ConfigValue_valueIndex(const ConfigValue configValues[], const char *name);
 
 /***********************************************************************\
 * Name   : ConfigValue_firstValueIndex
@@ -1111,6 +1202,60 @@ bool ConfigValue_format(ConfigValueFormat *configValueFormat,
 const char *ConfigValue_selectToString(const ConfigValueSelect selects[],
                                        uint                    value,
                                        const char              *defaultString
+                                      );
+
+/***********************************************************************\
+* Name   : ConfigValue_readConfigFileLines
+* Purpose: read config file lines
+* Input  : configFileName  - config file name
+*          configLinesList - line list variable
+* Output : configLinesList - line list
+* Return : ERROR_NONE or error code
+* Notes  : -
+\***********************************************************************/
+
+Errors ConfigValue_readConfigFileLines(ConstString configFileName, StringList *configLinesList);
+
+/***********************************************************************\
+* Name   : ConfigValue_writeConfigFileLines
+* Purpose: write config file lines
+* Input  : configFileName  - config file name
+*          configLinesList - line list
+* Output : -
+* Return : ERROR_NONE or error code
+* Notes  : -
+\***********************************************************************/
+
+Errors ConfigValue_writeConfigFileLines(ConstString configFileName, const StringList *configLinesList);
+
+/***********************************************************************\
+* Name   : ConfigValue_deleteEntries
+* Purpose: delete all entries with given name in config line list
+* Input  : stringList - file string list to modify
+*          section    - name of section or NULL
+*          name       - name of value
+* Output : -
+* Return : next entry in string list or NULL
+* Notes  : -
+\***********************************************************************/
+
+StringNode *ConfigValue_deleteEntries(StringList *stringList,
+                                      const char *section,
+                                      const char *name
+                                     );
+
+/***********************************************************************\
+* Name   : ConfigValue_deleteSections
+* Purpose: delete all sections with given name in config line list
+* Input  : stringList - file string list to modify
+*          section    - name of section
+* Output : -
+* Return : next entry in string list or NULL
+* Notes  : -
+\***********************************************************************/
+
+StringNode *ConfigValue_deleteSections(StringList *stringList,
+                                       const char *section
                                       );
 
 #ifdef __GNUG__
