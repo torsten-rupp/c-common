@@ -58,8 +58,8 @@ typedef struct
 typedef void(*ListNodeFreeFunction)(void *node, void *userData);
 
 /***********************************************************************\
-* Name   : ListNodeCopyFunction
-* Purpose: copy list node function
+* Name   : ListNodeDuplicateFunction
+* Purpose: duplicate list node function
 * Input  : fromNode - copy from node
 *          userData - user data
 * Output : -
@@ -67,7 +67,7 @@ typedef void(*ListNodeFreeFunction)(void *node, void *userData);
 * Notes  : -
 \***********************************************************************/
 
-typedef void*(*ListNodeCopyFunction)(const void *fromNode, void *userData);
+typedef void*(*ListNodeDuplicateFunction)(const void *fromNode, void *userData);
 
 /***********************************************************************\
 * Name   : ListNodeEqualsFunction
@@ -191,6 +191,60 @@ typedef int(*ListNodeCompareFunction)(const void *node1, const void *node2, void
        (variable) = (variable)->next \
       )
 
+/***********************************************************************\
+* Name   : LIST_FIND
+* Purpose: find in list
+* Input  : list      - list
+*          variable  - variable name
+*          condition - condition code
+* Output : -
+* Return : node or NULL if not found
+* Notes  : usage:
+*          LIST_FIND(list,node,node->... == ...)
+\***********************************************************************/
+
+#define LIST_FIND(list,variable,condition) \
+  List_findFirst(list,\
+                 (ListNodeEqualsFunction)CALLBACK_INLINE(bool,\
+                                                         (const typeof(* (list)->head) *variable, void *userData)\
+                                                         { \
+                                                           return condition; \
+                                                         },\
+                                                         NULL \
+                                                        ) \
+                )
+
+/***********************************************************************\
+* Name   : LIST_REMOVE
+* Purpose: find and remove entry in list
+* Input  : list      - list
+*          variable  - iteration variable
+*          condition - additional condition
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+#define LIST_REMOVE(list,condition) \
+  do \
+  { \
+    ListNode *__listNode; \
+    \
+    __listNode = list->head; \
+    while (__listNode != NULL) \
+    { \
+      if (condition) \
+      { \
+        __listNode = List_remove(list,__listNode); \
+      } \
+      else \
+      { \
+        __listNode = __listNode->next; \
+      } \
+    } \
+  } \
+  while (0)
+
 /***************************** Forwards ********************************/
 
 /***************************** Functions *******************************/
@@ -247,19 +301,19 @@ void List_init(void *list);
 *          fromList                        - from list
 *          fromListFromNode,fromListToNode - from/to node (could be
 *                                            NULL)
-*          listNodeCopyFunction            - node copy function
-*          listNodeCopyUserData            - node copy user data
+*          listNodeDuplicateFunction       - node duplicate function
+*          listNodeDuplicateUserData       - node duplicate user data
 * Output : -
 * Return : -
 * Notes  : -
 \***********************************************************************/
 
-void List_initDuplicate(void                 *list,
-                        const void           *fromList,
-                        const void           *fromListFromNode,
-                        const void           *fromListToNode,
-                        ListNodeCopyFunction listNodeCopyFunction,
-                        void                 *listNodeCopyUserData
+void List_initDuplicate(void                      *list,
+                        const void                *fromList,
+                        const void                *fromListFromNode,
+                        const void                *fromListToNode,
+                        ListNodeDuplicateFunction listNodeDuplicateFunction,
+                        void                      *listNodeDuplicateUserData
                        );
 
 /***********************************************************************\
@@ -310,18 +364,18 @@ void __List_new(const char *fileName,
 * Input  : fromList                        - from list
 *          fromListFromNode,fromListToNode - from/to node (could be
 *                                            NULL)
-*          listNodeCopyFunction            - node copy function
-*          listNodeCopyUserData            - node copy user data
+*          listNodeDuplicateFunction       - node duplicate function
+*          listNodeDuplicateUserData       - node duplicate user data
 * Output : -
 * Return : -
 * Notes  : -
 \***********************************************************************/
 
-List *List_duplicate(const void           *fromList,
-                     const void           *fromListFromNode,
-                     const void           *fromListToNode,
-                     ListNodeCopyFunction listNodeCopyFunction,
-                     void                 *listNodeCopyUserData
+List *List_duplicate(const void                *fromList,
+                     const void                *fromListFromNode,
+                     const void                *fromListToNode,
+                     ListNodeDuplicateFunction listNodeDuplicateFunction,
+                     void                      *listNodeDuplicateUserData
                     );
 
 /***********************************************************************\
@@ -365,20 +419,20 @@ void *List_clear(void                 *list,
 *                                            NULL)
 *          toListNextNode                  - insert node before nextNode
 *                                            (could be NULL)
-*          listNodeCopyFunction            - node copy function
-*          listNodeCopyUserData            - node copy user data
+*          listNodeDuplicateFunction       - node duplicate function
+*          listNodeDuplicateUserData       - node duplicate user data
 * Output : -
 * Return : -
 * Notes  : -
 \***********************************************************************/
 
-void List_copy(const void           *fromList,
-               void                 *toList,
-               const void           *fromListFromNode,
-               const void           *fromListToNode,
-               void                 *toListNextNode,
-               ListNodeCopyFunction listNodeCopyFunction,
-               void                 *listNodeCopyUserData
+void List_copy(const void                *fromList,
+               void                      *toList,
+               const void                *fromListFromNode,
+               const void                *fromListToNode,
+               void                      *toListNextNode,
+               ListNodeDuplicateFunction listNodeDuplicateFunction,
+               void                      *listNodeDuplicateUserData
               );
 
 /***********************************************************************\
