@@ -85,8 +85,9 @@ typedef enum
 } FileModes;
 
 // additional file open flags
-#define FILE_OPEN_NO_CACHE (1 << 16)
-#define FILE_OPEN_NO_ATIME (1 << 17)
+#define FILE_STREAM        (1 << 16)
+#define FILE_OPEN_NO_CACHE (1 << 17)
+#define FILE_OPEN_NO_ATIME (1 << 18)
 
 // special file types
 typedef enum
@@ -292,8 +293,8 @@ typedef struct
   FileTypes        type;              // file type; see FileTypes
   uint64           size;              // size of file [bytes]
   uint64           timeLastAccess;    // timestamp of last access
-  uint64           timeModified;      // timestamp of last modification
-  uint64           timeLastChanged;   // timestamp of last changed
+  uint64           timeModified;      // timestamp of last modification (changed content)
+  uint64           timeLastChanged;   // timestamp of last changed (changed meta-data)
   uint32           userId;            // user id
   uint32           groupId;           // group id
   FilePermission   permission;        // permission flags
