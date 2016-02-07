@@ -77,6 +77,38 @@ typedef union
 /****************************** Macros *********************************/
 
 #ifndef NDEBUG
+  #define DATABASE_LOCK(databaseHandle) \
+    do \
+    { \
+      sqlite3_mutex_enter(sqlite3_db_mutex(databaseHandle->handle)); \
+      databaseHandle->lockedLineNb = __LINE__; \
+    } \
+    while (0)
+
+  #define DATABASE_UNLOCK(databaseHandle) \
+    do \
+    { \
+      databaseHandle->lockedLineNb = 0; \
+      sqlite3_mutex_leave(sqlite3_db_mutex(databaseHandle->handle)); \
+    } \
+    while (0)
+#else /* NDEBUG */
+  #define DATABASE_LOCK(databaseHandle) \
+    do \
+    { \
+      sqlite3_mutex_enter(sqlite3_db_mutex(databaseHandle->handle)); \
+    } \
+    while (0)
+
+  #define DATABASE_UNLOCK(databaseHandle) \
+    do \
+    { \
+      sqlite3_mutex_leave(sqlite3_db_mutex(databaseHandle->handle)); \
+    } \
+    while (0)
+#endif /* not NDEBUG */
+
+#ifndef NDEBUG
   #define DATABASE_DEBUG_SQL(databaseHandle,sqlString) \
     do \
     { \
@@ -525,6 +557,29 @@ LOCAL void freeColumnNode(DatabaseColumnNode *columnNode, void *userData)
 
   UNUSED_VARIABLE(userData);
 
+  switch (columnNode->type)
+  {
+    case DATABASE_TYPE_PRIMARY_KEY:
+      break;
+    case DATABASE_TYPE_INT64:
+      break;
+    case DATABASE_TYPE_DOUBLE:
+      break;
+    case DATABASE_TYPE_DATETIME:
+      break;
+    case DATABASE_TYPE_TEXT:
+      String_delete(columnNode->value.text);
+      break;
+    case DATABASE_TYPE_BLOB:
+//TODO: blob
+      HALT_INTERNAL_ERROR_STILL_NOT_IMPLEMENTED();
+      break;
+    #ifndef NDEBUG
+      default:
+        HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
+        break; // not reached
+    #endif /* NDEBUG */
+  }
   free(columnNode->name);
 }
 
@@ -546,7 +601,7 @@ LOCAL Errors getTableColumnList(DatabaseColumnList *columnList,
 {
   Errors              error;
   DatabaseQueryHandle databaseQueryHandle1,databaseQueryHandle2;
-  const char          *name,*type1,*type2;
+  const char          *name,*type;
   bool                primaryKey;
   DatabaseColumnNode  *columnNode;
 
@@ -568,39 +623,13 @@ LOCAL Errors getTableColumnList(DatabaseColumnList *columnList,
                              "%d %p %p %d %d %b",
                              NULL,  // id
                              &name,
-                             &type1,
+                             &type,
                              NULL,  // canBeNULL
                              NULL,  // defaultValue
                              &primaryKey
                             )
         )
   {
-    error = Database_prepare(&databaseQueryHandle2,
-                             databaseHandle,
-                             "SELECT TYPEOF(%s) FROM %s \
-                              LIMIT 0,1 \
-                             ",
-                             name,
-                             tableName
-                            );
-    if (error != ERROR_NONE)
-    {
-      Database_finalize(&databaseQueryHandle1);
-      List_done(columnList,CALLBACK((ListNodeFreeFunction)freeColumnNode,NULL));
-      return error;
-    }
-    if (Database_getNextRow(&databaseQueryHandle2,"%p",&type2))
-    {
-      if (stringEqualsIgnoreCase(type2,"NULL"))
-      {
-        type2 = NULL;
-      }
-    }
-    else
-    {
-      type2 = NULL;
-    }
-
     columnNode = LIST_NEW_NODE(DatabaseColumnNode);
     if (columnNode == NULL)
     {
@@ -609,69 +638,40 @@ LOCAL Errors getTableColumnList(DatabaseColumnList *columnList,
     }
 
     columnNode->name = strdup(name);
-    if      (type2 != NULL)
+    if (   stringEqualsIgnoreCase(type,"INTEGER")
+        || stringEqualsIgnoreCase(type,"NUMERIC")
+       )
     {
-      if (   stringEqualsIgnoreCase(type2,"INTEGER")
-          || stringEqualsIgnoreCase(type2,"NUMERIC")
-         )
+      if (primaryKey)
       {
-        if (primaryKey)
-        {
-          columnNode->type = DATABASE_TYPE_PRIMARY_KEY;
-        }
-        else
-        {
-          columnNode->type = DATABASE_TYPE_INT64;
-        }
-      }
-      else if (stringEqualsIgnoreCase(type2,"REAL"))
-      {
-        columnNode->type = DATABASE_TYPE_DOUBLE;
-      }
-      else if (stringEqualsIgnoreCase(type2,"TEXT"))
-      {
-        columnNode->type = DATABASE_TYPE_TEXT;
-      }
-      else if (stringEqualsIgnoreCase(type2,"BLOB"))
-      {
-        columnNode->type = DATABASE_TYPE_BLOB;
+        columnNode->type     = DATABASE_TYPE_PRIMARY_KEY;
+        columnNode->value.id = 0LL;
       }
       else
       {
-        HALT_INTERNAL_ERROR("Unknown database data type '%s' for '%s'",type2,name);
+        columnNode->type    = DATABASE_TYPE_INT64;
+        columnNode->value.d = String_new();
       }
+    }
+    else if (stringEqualsIgnoreCase(type,"REAL"))
+    {
+      columnNode->type    = DATABASE_TYPE_DOUBLE;
+      columnNode->value.d = String_new();
+    }
+    else if (stringEqualsIgnoreCase(type,"TEXT"))
+    {
+      columnNode->type       = DATABASE_TYPE_TEXT;
+      columnNode->value.text = String_new();
+    }
+    else if (stringEqualsIgnoreCase(type,"BLOB"))
+    {
+      columnNode->type              = DATABASE_TYPE_BLOB;
+      columnNode->value.blob.data   = NULL;
+      columnNode->value.blob.length = 0;
     }
     else
     {
-      if (   stringEqualsIgnoreCase(type1,"INTEGER")
-          || stringEqualsIgnoreCase(type1,"NUMERIC")
-         )
-      {
-        if (primaryKey)
-        {
-          columnNode->type = DATABASE_TYPE_PRIMARY_KEY;
-        }
-        else
-        {
-          columnNode->type = DATABASE_TYPE_INT64;
-        }
-      }
-      else if (stringEqualsIgnoreCase(type1,"REAL"))
-      {
-        columnNode->type = DATABASE_TYPE_DOUBLE;
-      }
-      else if (stringEqualsIgnoreCase(type1,"TEXT"))
-      {
-        columnNode->type = DATABASE_TYPE_TEXT;
-      }
-      else if (stringEqualsIgnoreCase(type1,"BLOB"))
-      {
-        columnNode->type = DATABASE_TYPE_BLOB;
-      }
-      else
-      {
-        HALT_INTERNAL_ERROR("Unknown database data type '%s' for '%s'",type1,name);
-      }
+      HALT_INTERNAL_ERROR("Unknown database data type '%s' for '%s'",type,name);
     }
 
     List_append(columnList,columnNode);
@@ -726,9 +726,11 @@ LOCAL const char *getDatabaseTypeString(DatabaseTypes type)
     case DATABASE_TYPE_BLOB:
       string = "BLOB";
       break;
-    default:
-      HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
-      break; // not reached
+    #ifndef NDEBUG
+      default:
+        HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
+        break; // not reached
+    #endif /* NDEBUG */
   }
 
   return string;
@@ -799,7 +801,7 @@ LOCAL const char *getDatabaseTypeString(DatabaseTypes type)
   sqliteResult = sqlite3_open_v2(fileName,&databaseHandle->handle,sqliteMode,NULL);
   if (sqliteResult != SQLITE_OK)
   {
-    error = ERRORX_(DATABASE,sqlite3_errcode(databaseHandle->handle),sqlite3_errmsg(databaseHandle->handle));
+    error = ERRORX_(DATABASE,sqlite3_errcode(databaseHandle->handle),"%s",sqlite3_errmsg(databaseHandle->handle));
     return error;
   }
   #ifndef NDEBUG
@@ -924,6 +926,7 @@ Errors Database_copyTable(DatabaseHandle            *fromDatabaseHandle,
   sqlite3_stmt       *fromHandle,*toHandle;
   int                sqliteResult;
   uint               n;
+  DatabaseColumnNode *toColumnNode;
   DatabaseId         lastRowId;
 
   assert(fromDatabaseHandle != NULL);
@@ -945,17 +948,14 @@ Errors Database_copyTable(DatabaseHandle            *fromDatabaseHandle,
     return error;
   }
 
-  // create SQL statements
+  // create SQL select statement string
   sqlSelectString = formatSQLString(String_new(),"SELECT ");
   n = 0;
   LIST_ITERATE(&fromColumnList,columnNode)
   {
-    if (findTableColumnNode(&toColumnList,columnNode->name) != NULL)
-    {
-      if (n > 0) String_appendChar(sqlSelectString,',');
-      String_appendCString(sqlSelectString,columnNode->name);
-      n++;
-    }
+    if (n > 0) String_appendChar(sqlSelectString,',');
+    String_appendCString(sqlSelectString,columnNode->name);
+    n++;
   }
   formatSQLString(sqlSelectString," FROM %s",tableName);
   if (fromAdditional != NULL)
@@ -969,7 +969,9 @@ Errors Database_copyTable(DatabaseHandle            *fromDatabaseHandle,
     va_end(arguments);
   }
   String_appendCString(sqlSelectString,";");
+//fprintf(stderr,"%s, %d: sqlSelectString=%s\n",__FILE__,__LINE__,String_cString(sqlSelectString));
 
+  // create SQL insert statement string
   sqlInsertString = formatSQLString(String_new(),"INSERT INTO %s (",tableName);
   n = 0;
   LIST_ITERATE(&toColumnList,columnNode)
@@ -993,14 +995,15 @@ Errors Database_copyTable(DatabaseHandle            *fromDatabaseHandle,
     }
   }
   String_appendCString(sqlInsertString,");");
+//fprintf(stderr,"%s, %d: sqlInsertString=%s\n",__FILE__,__LINE__,String_cString(sqlInsertString));
 
   // select rows in from-table
   BLOCK_DOX(error,
-            { sqlite3_mutex_enter(sqlite3_db_mutex(fromDatabaseHandle->handle));
-              sqlite3_mutex_enter(sqlite3_db_mutex(toDatabaseHandle->handle));
+            { DATABASE_LOCK(fromDatabaseHandle);
+              DATABASE_LOCK(toDatabaseHandle);
             },
-            { sqlite3_mutex_leave(sqlite3_db_mutex(fromDatabaseHandle->handle));
-              sqlite3_mutex_enter(sqlite3_db_mutex(toDatabaseHandle->handle));
+            { DATABASE_UNLOCK(fromDatabaseHandle);
+              DATABASE_UNLOCK(toDatabaseHandle);
             },
   {
     // create select statement
@@ -1013,7 +1016,7 @@ Errors Database_copyTable(DatabaseHandle            *fromDatabaseHandle,
                                      );
     if (sqliteResult != SQLITE_OK)
     {
-      return ERRORX_(DATABASE,sqlite3_errcode(fromDatabaseHandle->handle),sqlite3_errmsg(fromDatabaseHandle->handle));
+      return ERRORX_(DATABASE,sqlite3_errcode(fromDatabaseHandle->handle),"%s",sqlite3_errmsg(fromDatabaseHandle->handle));
     }
 
     // create insert statement
@@ -1027,7 +1030,7 @@ Errors Database_copyTable(DatabaseHandle            *fromDatabaseHandle,
     if (sqliteResult != SQLITE_OK)
     {
       sqlite3_finalize(fromHandle);
-      return ERRORX_(DATABASE,sqlite3_errcode(toDatabaseHandle->handle),sqlite3_errmsg(toDatabaseHandle->handle));
+      return ERRORX_(DATABASE,sqlite3_errcode(toDatabaseHandle->handle),"%s",sqlite3_errmsg(toDatabaseHandle->handle));
     }
 
     // copy rows
@@ -1035,38 +1038,60 @@ Errors Database_copyTable(DatabaseHandle            *fromDatabaseHandle,
     {
       sqlite3_reset(toHandle);
 
-      // get from values
+      // get from values, set in toColumnList
       n = 0;
       LIST_ITERATE(&fromColumnList,columnNode)
       {
         switch (columnNode->type)
         {
           case DATABASE_TYPE_PRIMARY_KEY:
-            columnNode->value.i        = sqlite3_column_int64(fromHandle,n);
-            Database_setTableColumnListInt64(&toColumnList,columnNode->name,columnNode->value.i);
+            columnNode->value.id = sqlite3_column_int64(fromHandle,n);
+//fprintf(stderr,"%s, %d: DATABASE_TYPE_PRIMARY_KEY %d %s: %lld\n",__FILE__,__LINE__,n,columnNode->name,columnNode->value.id);
             break;
           case DATABASE_TYPE_INT64:
-            columnNode->value.i        = sqlite3_column_int64(fromHandle,n);
-            Database_setTableColumnListInt64(&toColumnList,columnNode->name,columnNode->value.i);
+            String_setCString(columnNode->value.i,(const char*)sqlite3_column_text(fromHandle,n));
+//fprintf(stderr,"%s, %d: DATABASE_TYPE_INT64 %d %s: %s\n",__FILE__,__LINE__,n,columnNode->name,String_cString(columnNode->value.text));
+            toColumnNode = findTableColumnNode(&toColumnList,columnNode->name);
+            if (toColumnNode != NULL)
+            {
+              String_set(toColumnNode->value.i,columnNode->value.i);
+            }
             break;
           case DATABASE_TYPE_DOUBLE:
-            columnNode->value.d        = sqlite3_column_double(fromHandle,n);
-            Database_setTableColumnListDouble(&toColumnList,columnNode->name,columnNode->value.d);
+            String_setCString(columnNode->value.d,(const char*)sqlite3_column_text(fromHandle,n));
+//fprintf(stderr,"%s, %d: DATABASE_TYPE_DOUBLE %d %s: %s\n",__FILE__,__LINE__,n,columnNode->name,String_cString(columnNode->value.text));
+            toColumnNode = findTableColumnNode(&toColumnList,columnNode->name);
+            if (toColumnNode != NULL)
+            {
+              String_set(toColumnNode->value.d,columnNode->value.d);
+            }
             break;
           case DATABASE_TYPE_DATETIME:
-            columnNode->value.dateTime = (uint64)sqlite3_column_int64(fromHandle,n);
-            Database_setTableColumnListInt64(&toColumnList,columnNode->name,columnNode->value.dateTime);
+            String_setCString(columnNode->value.i,(const char*)sqlite3_column_text(fromHandle,n));
+//fprintf(stderr,"%s, %d: DATABASE_TYPE_DATETIME %d %s: %s\n",__FILE__,__LINE__,n,columnNode->name,String_cString(columnNode->value.text));
+            toColumnNode = findTableColumnNode(&toColumnList,columnNode->name);
+            if (toColumnNode != NULL)
+            {
+              String_set(toColumnNode->value.i,columnNode->value.i);
+            }
             break;
           case DATABASE_TYPE_TEXT:
-            columnNode->value.text     = (const char*)sqlite3_column_text(fromHandle,n);
-            Database_setTableColumnListText(&toColumnList,columnNode->name,columnNode->value.text);
+            String_setCString(columnNode->value.text,(const char*)sqlite3_column_text(fromHandle,n));
+//fprintf(stderr,"%s, %d: DATABASE_TYPE_TEXT %d %s: %s\n",__FILE__,__LINE__,n,columnNode->name,String_cString(columnNode->value.text));
+            toColumnNode = findTableColumnNode(&toColumnList,columnNode->name);
+            if (toColumnNode != NULL)
+            {
+              String_set(toColumnNode->value.text,columnNode->value.text);
+            }
             break;
           case DATABASE_TYPE_BLOB:
             HALT_INTERNAL_ERROR_STILL_NOT_IMPLEMENTED();
             break;
-          default:
-            HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
-            break; // not reached
+          #ifndef NDEBUG
+            default:
+              HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
+              break; // not reached
+          #endif /* NDEBUG */
         }
         n++;
       }
@@ -1093,23 +1118,27 @@ Errors Database_copyTable(DatabaseHandle            *fromDatabaseHandle,
             // can not be set
             break;
           case DATABASE_TYPE_INT64:
-            sqlite3_bind_int64(toHandle,n,columnNode->value.i);
+//fprintf(stderr,"%s, %d: DATABASE_TYPE_INT64 %d %s: %s %d\n",__FILE__,__LINE__,n,columnNode->name,String_cString(columnNode->value.i),sqlite3_column_type(fromHandle,n));
+            sqlite3_bind_text(toHandle,n,String_cString(columnNode->value.i),-1,NULL);
             break;
           case DATABASE_TYPE_DOUBLE:
-            sqlite3_bind_double(toHandle,n,columnNode->value.d);
+            sqlite3_bind_text(toHandle,n,String_cString(columnNode->value.d),-1,NULL);
             break;
           case DATABASE_TYPE_DATETIME:
-            sqlite3_bind_int64(toHandle,n,columnNode->value.dateTime);
+            sqlite3_bind_text(toHandle,n,String_cString(columnNode->value.d),-1,NULL);
             break;
           case DATABASE_TYPE_TEXT:
-            sqlite3_bind_text(toHandle,n,columnNode->value.text,-1,NULL);
+//fprintf(stderr,"%s, %d: DATABASE_TYPE_TEXT %d %s: %s\n",__FILE__,__LINE__,n,columnNode->name,String_cString(columnNode->value.text));
+            sqlite3_bind_text(toHandle,n,String_cString(columnNode->value.text),-1,NULL);
             break;
           case DATABASE_TYPE_BLOB:
             HALT_INTERNAL_ERROR_STILL_NOT_IMPLEMENTED();
             break;
-          default:
-            HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
-            break; // not reached
+          #ifndef NDEBUG
+            default:
+              HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
+              break; // not reached
+          #endif /* NDEBUG */
         }
         n++;
       }
@@ -1119,7 +1148,7 @@ Errors Database_copyTable(DatabaseHandle            *fromDatabaseHandle,
       {
         sqlite3_finalize(toHandle);
         sqlite3_finalize(fromHandle);
-        return ERRORX_(DATABASE,sqlite3_errcode(toDatabaseHandle->handle),sqlite3_errmsg(toDatabaseHandle->handle));
+        return ERRORX_(DATABASE,sqlite3_errcode(toDatabaseHandle->handle),"%s",sqlite3_errmsg(toDatabaseHandle->handle));
       }
       lastRowId = (uint64)sqlite3_last_insert_rowid(toDatabaseHandle->handle);
       LIST_ITERATE(&toColumnList,columnNode)
@@ -1127,7 +1156,7 @@ Errors Database_copyTable(DatabaseHandle            *fromDatabaseHandle,
         switch (columnNode->type)
         {
           case DATABASE_TYPE_PRIMARY_KEY:
-            columnNode->value.i = lastRowId;
+            columnNode->value.id = lastRowId;
             break;
           case DATABASE_TYPE_INT64:
           case DATABASE_TYPE_DOUBLE:
@@ -1135,9 +1164,11 @@ Errors Database_copyTable(DatabaseHandle            *fromDatabaseHandle,
           case DATABASE_TYPE_TEXT:
           case DATABASE_TYPE_BLOB:
             break;
-          default:
-            HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
-            break; // not reached
+          #ifndef NDEBUG
+            default:
+              HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
+              break; // not reached
+          #endif /* NDEBUG */
         }
       }
 
@@ -1177,7 +1208,15 @@ int64 Database_getTableColumnListInt64(const DatabaseColumnList *columnList, con
   columnNode = findTableColumnNode(columnList,columnName);
   if (columnNode != NULL)
   {
-    return columnNode->value.i;
+    assert((columnNode->type == DATABASE_TYPE_PRIMARY_KEY) || (columnNode->type == DATABASE_TYPE_INT64));
+    if (columnNode->type == DATABASE_TYPE_PRIMARY_KEY)
+    {
+      return columnNode->value.id;
+    }
+    else
+    {
+      return String_toInteger64(columnNode->value.d,STRING_BEGIN,NULL,NULL,0);
+    }
   }
   else
   {
@@ -1192,7 +1231,8 @@ double Database_getTableColumnListDouble(const DatabaseColumnList *columnList, c
   columnNode = findTableColumnNode(columnList,columnName);
   if (columnNode != NULL)
   {
-    return columnNode->value.d;
+    assert(columnNode->type == DATABASE_TYPE_DOUBLE);
+    return String_toDouble(columnNode->value.d,STRING_BEGIN,NULL,NULL,0);
   }
   else
   {
@@ -1207,7 +1247,8 @@ uint64 Database_getTableColumnListDateTime(const DatabaseColumnList *columnList,
   columnNode = findTableColumnNode(columnList,columnName);
   if (columnNode != NULL)
   {
-    return columnNode->value.dateTime;
+    assert(columnNode->type == DATABASE_TYPE_DATETIME);
+    return String_toInteger64(columnNode->value.d,STRING_BEGIN,NULL,NULL,0);
   }
   else
   {
@@ -1222,7 +1263,8 @@ const char *Database_getTableColumnListText(const DatabaseColumnList *columnList
   columnNode = findTableColumnNode(columnList,columnName);
   if (columnNode != NULL)
   {
-    return columnNode->value.text;
+    assert(columnNode->type == DATABASE_TYPE_TEXT);
+    return String_cString(columnNode->value.text);
   }
   else
   {
@@ -1240,6 +1282,7 @@ HALT_INTERNAL_ERROR_STILL_NOT_IMPLEMENTED();
   columnNode = findTableColumnNode(columnList,columnName);
   if (columnNode != NULL)
   {
+    assert(columnNode->type == DATABASE_TYPE_BLOB);
 //    return columnNode->value.blob.data;
   }
   else
@@ -1255,7 +1298,8 @@ bool Database_setTableColumnListInt64(const DatabaseColumnList *columnList, cons
   columnNode = findTableColumnNode(columnList,columnName);
   if (columnNode != NULL)
   {
-    columnNode->value.i = value;
+    assert(columnNode->type == DATABASE_TYPE_INT64);
+    String_format(String_clear(columnNode->value.i),"%lld",value);
     return TRUE;
   }
   else
@@ -1271,7 +1315,8 @@ bool Database_setTableColumnListDouble(const DatabaseColumnList *columnList, con
   columnNode = findTableColumnNode(columnList,columnName);
   if (columnNode != NULL)
   {
-    columnNode->value.d = value;
+    assert(columnNode->type == DATABASE_TYPE_DOUBLE);
+    String_format(String_clear(columnNode->value.d),"%f",value);
     return TRUE;
   }
   else
@@ -1287,7 +1332,8 @@ bool Database_setTableColumnListDateTime(const DatabaseColumnList *columnList, c
   columnNode = findTableColumnNode(columnList,columnName);
   if (columnNode != NULL)
   {
-    columnNode->value.dateTime = value;
+    assert(columnNode->type == DATABASE_TYPE_DATETIME);
+    String_format(String_clear(columnNode->value.i),"%lld",value);
     return TRUE;
   }
   else
@@ -1296,14 +1342,20 @@ bool Database_setTableColumnListDateTime(const DatabaseColumnList *columnList, c
   }
 }
 
-bool Database_setTableColumnListText(const DatabaseColumnList *columnList, const char *columnName, const char *value)
+bool Database_setTableColumnListText(const DatabaseColumnList *columnList, const char *columnName, ConstString value)
+{
+  return Database_setTableColumnListTextCString(columnList,columnName,String_cString(value));
+}
+
+bool Database_setTableColumnListTextCString(const DatabaseColumnList *columnList, const char *columnName, const char *value)
 {
   DatabaseColumnNode *columnNode;
 
   columnNode = findTableColumnNode(columnList,columnName);
   if (columnNode != NULL)
   {
-    columnNode->value.text = value;
+    assert(columnNode->type == DATABASE_TYPE_TEXT);
+    String_setCString(columnNode->value.text,value);
     return TRUE;
   }
   else
@@ -1319,6 +1371,7 @@ bool Database_setTableColumnListBlob(const DatabaseColumnList *columnList, const
   columnNode = findTableColumnNode(columnList,columnName);
   if (columnNode != NULL)
   {
+    assert(columnNode->type == DATABASE_TYPE_BLOB);
 HALT_INTERNAL_ERROR_STILL_NOT_IMPLEMENTED();
     columnNode->value.blob.data   = data;
     columnNode->value.blob.length = length;
@@ -1328,281 +1381,6 @@ HALT_INTERNAL_ERROR_STILL_NOT_IMPLEMENTED();
   {
     return FALSE;
   }
-}
-
-LOCAL Value getTransferValue(va_list arguments, DatabaseTypes databaseType)
-{
-  Value value;
-
-  switch (databaseType)
-  {
-    case DATABASE_TYPE_INT64      : (void)va_arg(arguments,uint64     ); break;
-    case DATABASE_TYPE_DOUBLE     : (void)va_arg(arguments,double     ); break;
-    case DATABASE_TYPE_DATETIME   : (void)va_arg(arguments,uint64     ); break;
-    case DATABASE_TYPE_TEXT       : (void)va_arg(arguments,const char*); break;
-    default                       : break;
-  }
-
-  return value;
-}
-
-Errors Database_transferData(DatabaseHandle *fromDatabaseHandle,
-                             DatabaseHandle *toDatabaseHandle,
-                             const char     *fromTableName,
-                             const char     *toTableName,
-                             ...
-                            )
-{
-  String                     sqlString;
-  va_list                    arguments,tmpArguments;
-  Errors                     error;
-  sqlite3_stmt               *selectHandle,*insertHandle;
-  int                        sqliteResult;
-  uint                       n;
-  DatabaseTransferOperations databaseTransferOperation;
-  const char                 *fromName,*toName;
-  DatabaseTypes              databaseType;
-  Value                      value;
-
-  // init variables
-  sqlString = String_new();
-
-  va_start(arguments,toTableName);
-  {
-    // create select SQL statement
-    String_format(String_clear(sqlString),"SELECT ");
-    va_copy(tmpArguments,arguments);
-    {
-      n = 0;
-      do
-      {
-        databaseTransferOperation = va_arg(tmpArguments,DatabaseTransferOperations);
-        fromName                  = va_arg(tmpArguments,const char*);
-        toName                    = va_arg(tmpArguments,const char*);
-        databaseType              = va_arg(tmpArguments,DatabaseTypes);
-        value                     = getTransferValue(tmpArguments,databaseType);
-
-        if (databaseTransferOperation != DATABASE_TRANSFER_OPERATION_NONE)
-        {
-          if (n > 0) String_appendChar(sqlString,',');
-          String_appendCString(sqlString,fromName);
-        }
-
-        n++;
-      }
-      while (databaseTransferOperation != DATABASE_TRANSFER_OPERATION_NONE);
-    }
-    va_end(tmpArguments);
-    String_format(sqlString," FROM %s",fromTableName);
-
-    error = ERROR_NONE;
-    BLOCK_DO(sqlite3_mutex_enter(sqlite3_db_mutex(fromDatabaseHandle->handle)),
-             sqlite3_mutex_leave(sqlite3_db_mutex(fromDatabaseHandle->handle)),
-    {
-      DATABASE_DEBUG_SQL(fromDatabaseHandle,sqlString);
-      sqliteResult = sqlite3_prepare_v2(fromDatabaseHandle->handle,
-                                        String_cString(sqlString),
-                                        -1,
-                                        &selectHandle,
-                                        NULL
-                                       );
-      if (sqliteResult == SQLITE_OK)
-      {
-        error = ERROR_NONE;
-      }
-      else
-      {
-        error = ERRORX_(DATABASE,sqlite3_errcode(fromDatabaseHandle->handle),sqlite3_errmsg(fromDatabaseHandle->handle));
-      }
-    });
-    if (error != ERROR_NONE)
-    {
-      va_end(arguments);
-      String_delete(sqlString);
-      return error;
-    }
-
-    // create insert SQL statement
-    String_format(String_clear(sqlString),"INSERT INTO %s (",toTableName);
-    va_copy(tmpArguments,arguments);
-    {
-      n = 0;
-      do
-      {
-        databaseTransferOperation = va_arg(tmpArguments,DatabaseTransferOperations);
-        fromName                  = va_arg(tmpArguments,const char*);
-        toName                    = va_arg(tmpArguments,const char*);
-        databaseType              = va_arg(tmpArguments,DatabaseTypes);
-        value                     = getTransferValue(tmpArguments,databaseType);
-
-        if (databaseTransferOperation != DATABASE_TRANSFER_OPERATION_NONE)
-        {
-          if (n > 0) String_appendChar(sqlString,',');
-          String_appendCString(sqlString,toName);
-        }
-
-        n++;
-      }
-      while (databaseTransferOperation != DATABASE_TRANSFER_OPERATION_NONE);
-    }
-    va_end(tmpArguments);
-    String_format(sqlString,") VALUES (");
-    va_copy(tmpArguments,arguments);
-    {
-      n = 0;
-      do
-      {
-        databaseTransferOperation = va_arg(tmpArguments,DatabaseTransferOperations);
-        fromName                  = va_arg(tmpArguments,const char*);
-        toName                    = va_arg(tmpArguments,const char*);
-        databaseType              = va_arg(tmpArguments,DatabaseTypes);
-        value                     = getTransferValue(tmpArguments,databaseType);
-
-        if (databaseTransferOperation != DATABASE_TRANSFER_OPERATION_NONE)
-        {
-          if (n > 0) String_appendChar(sqlString,',');
-          String_appendChar(sqlString,'?');
-        }
-
-        n++;
-      }
-      while (databaseTransferOperation != DATABASE_TRANSFER_OPERATION_NONE);
-    }
-    va_end(tmpArguments);
-
-    error = ERROR_NONE;
-    BLOCK_DO(sqlite3_mutex_enter(sqlite3_db_mutex(toDatabaseHandle->handle)),
-             sqlite3_mutex_leave(sqlite3_db_mutex(toDatabaseHandle->handle)),
-    {
-      DATABASE_DEBUG_SQL(toDatabaseHandle,sqlString);
-      sqliteResult = sqlite3_prepare_v2(toDatabaseHandle->handle,
-                                        String_cString(sqlString),
-                                        -1,
-                                        &insertHandle,
-                                        NULL
-                                       );
-      if (sqliteResult == SQLITE_OK)
-      {
-        error = ERROR_NONE;
-      }
-      else
-      {
-        error = ERRORX_(DATABASE,sqlite3_errcode(toDatabaseHandle->handle),sqlite3_errmsg(toDatabaseHandle->handle));
-      }
-    });
-    if (error != ERROR_NONE)
-    {
-      sqlite3_finalize(selectHandle);
-      va_end(arguments);
-      String_delete(sqlString);
-      return error;
-    }
-
-    // transfer rows
-    error = ERROR_NONE;
-    BLOCK_DOX(error,
-              sqlite3_mutex_enter(sqlite3_db_mutex(fromDatabaseHandle->handle)),
-              sqlite3_mutex_leave(sqlite3_db_mutex(fromDatabaseHandle->handle)),
-    {
-      if (sqlite3_step(selectHandle) == SQLITE_ROW)
-      {
-        BLOCK_DOX(error,
-                  sqlite3_mutex_enter(sqlite3_db_mutex(toDatabaseHandle->handle)),
-                  sqlite3_mutex_leave(sqlite3_db_mutex(toDatabaseHandle->handle)),
-        {
-          sqlite3_reset(insertHandle);
-
-          va_copy(tmpArguments,arguments);
-          {
-            n = 0;
-            do
-            {
-              databaseTransferOperation = va_arg(tmpArguments,DatabaseTransferOperations);
-              fromName                  = va_arg(tmpArguments,const char*);
-              toName                    = va_arg(tmpArguments,const char*);
-              databaseType              = va_arg(tmpArguments,DatabaseTypes);
-              value                     = getTransferValue(tmpArguments,databaseType);
-
-              switch (databaseTransferOperation)
-              {
-                case DATABASE_TRANSFER_OPERATION_NONE:
-                  break;
-                case DATABASE_TRANSFER_OPERATION_COPY:
-                  switch (databaseType)
-                  {
-                    case DATABASE_TYPE_INT64:
-                      sqlite3_bind_int64(insertHandle,1+n,sqlite3_column_int64(selectHandle,n));
-                      break;
-                    case DATABASE_TYPE_DOUBLE:
-                      sqlite3_bind_double(insertHandle,1+n,sqlite3_column_double(selectHandle,n));
-                      break;
-                    case DATABASE_TYPE_DATETIME:
-                      sqlite3_bind_int64(insertHandle,1+n,sqlite3_column_int64(selectHandle,n));
-                      break;
-                    case DATABASE_TYPE_TEXT:
-                      sqlite3_bind_text(insertHandle,1+n,(const char*)sqlite3_column_text(selectHandle,n),-1,NULL);
-                      break;
-                    default:
-                      break;
-                  }
-                  break;
-                case DATABASE_TRANSFER_OPERATION_SET:
-                  switch (databaseType)
-                  {
-                    case DATABASE_TYPE_INT64:
-                      sqlite3_bind_int64(insertHandle,1+n,value.ull);
-                      break;
-                    case DATABASE_TYPE_DOUBLE:
-                      sqlite3_bind_double(insertHandle,1+n,value.d);
-                      break;
-                    case DATABASE_TYPE_DATETIME:
-                      sqlite3_bind_int64(insertHandle,1+n,value.dateTime);
-                      break;
-                    case DATABASE_TYPE_TEXT:
-                      sqlite3_bind_text(insertHandle,1+n,value.s,-1,NULL);
-                      break;
-                    default:
-                      break;
-                  }
-                  break;
-              }
-
-              n++;
-            }
-            while ((databaseTransferOperation != DATABASE_TRANSFER_OPERATION_NONE) && (error == ERROR_NONE));
-          }
-          va_end(tmpArguments);
-
-          if (sqlite3_step(insertHandle) != SQLITE_DONE)
-          {
-            error = ERRORX_(DATABASE,sqlite3_errcode(toDatabaseHandle->handle),sqlite3_errmsg(toDatabaseHandle->handle));
-          }
-
-          return error;
-        });
-      }
-
-      return error;
-    });
-    if (error != ERROR_NONE)
-    {
-      sqlite3_finalize(insertHandle);
-      sqlite3_finalize(selectHandle);
-      va_end(arguments);
-      String_delete(sqlString);
-      return error;
-    }
-
-    // done statements
-    sqlite3_finalize(insertHandle);
-    sqlite3_finalize(selectHandle);
-  }
-  va_end(arguments);
-
-  // free resources
-  String_delete(sqlString);
-
-  return ERROR_NONE;
 }
 
 Errors Database_addColumn(DatabaseHandle *databaseHandle,
@@ -1638,9 +1416,11 @@ Errors Database_addColumn(DatabaseHandle *databaseHandle,
     case DATABASE_TYPE_BLOB:
       columnTypeString = "BLOB";
       break;
-    default:
-      HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
-      break; // not reached
+    #ifndef NDEBUG
+      default:
+        HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
+        break; // not reached
+    #endif /* NDEBUG */
   }
 
   // execute SQL command
@@ -1690,8 +1470,8 @@ Errors Database_removeColumn(DatabaseHandle *databaseHandle,
   sqlString = String_new();
   value     = String_new();
   BLOCK_DOX(error,
-            sqlite3_mutex_enter(sqlite3_db_mutex(databaseHandle->handle)),
-            sqlite3_mutex_leave(sqlite3_db_mutex(databaseHandle->handle)),
+            DATABASE_LOCK(databaseHandle),
+            DATABASE_UNLOCK(databaseHandle),
   {
     // create new table
     formatSQLString(String_clear(sqlString),"CREATE TABLE IF NOT EXISTS __new__(");
@@ -1717,7 +1497,7 @@ Errors Database_removeColumn(DatabaseHandle *databaseHandle,
                                );
     if (sqliteResult != SQLITE_OK)
     {
-      return ERRORX_(DATABASE,sqlite3_errcode(databaseHandle->handle),sqlite3_errmsg(databaseHandle->handle));
+      return ERRORX_(DATABASE,sqlite3_errcode(databaseHandle->handle),"%s",sqlite3_errmsg(databaseHandle->handle));
     }
 
     // copy old table -> new table
@@ -1730,7 +1510,7 @@ Errors Database_removeColumn(DatabaseHandle *databaseHandle,
                                      );
     if (sqliteResult != SQLITE_OK)
     {
-      return ERRORX_(DATABASE,sqlite3_errcode(databaseHandle->handle),sqlite3_errmsg(databaseHandle->handle));
+      return ERRORX_(DATABASE,sqlite3_errcode(databaseHandle->handle),"%s",sqlite3_errmsg(databaseHandle->handle));
     }
 
     // copy table rows
@@ -1772,9 +1552,11 @@ Errors Database_removeColumn(DatabaseHandle *databaseHandle,
             case DATABASE_TYPE_BLOB:
               HALT_INTERNAL_ERROR_STILL_NOT_IMPLEMENTED();
               break;
-            default:
-              HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
-              break; // not reached
+            #ifndef NDEBUG
+              default:
+                HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
+                break; // not reached
+            #endif /* NDEBUG */
           }
           n++;
         }
@@ -1793,7 +1575,7 @@ Errors Database_removeColumn(DatabaseHandle *databaseHandle,
                                  );
       if (sqliteResult != SQLITE_OK)
       {
-        return ERRORX_(DATABASE,sqlite3_errcode(databaseHandle->handle),sqlite3_errmsg(databaseHandle->handle));
+        return ERRORX_(DATABASE,sqlite3_errcode(databaseHandle->handle),"%s",sqlite3_errmsg(databaseHandle->handle));
       }
     }
 
@@ -1885,8 +1667,8 @@ Errors Database_execute(DatabaseHandle      *databaseHandle,
 
   // execute SQL command
   BLOCK_DOX(error,
-            sqlite3_mutex_enter(sqlite3_db_mutex(databaseHandle->handle)),
-            sqlite3_mutex_leave(sqlite3_db_mutex(databaseHandle->handle)),
+            DATABASE_LOCK(databaseHandle),
+            DATABASE_UNLOCK(databaseHandle),
   {
     DATABASE_DEBUG_SQL(databaseHandle,sqlString);
     databaseRowCallback.function = databaseRowFunction;
@@ -1907,7 +1689,7 @@ Errors Database_execute(DatabaseHandle      *databaseHandle,
     }
     else
     {
-      error = ERRORX_(DATABASE,sqlite3_errcode(databaseHandle->handle),sqlite3_errmsg(databaseHandle->handle));
+      error = ERRORX_(DATABASE,sqlite3_errcode(databaseHandle->handle),"%s",sqlite3_errmsg(databaseHandle->handle));
     }
 
     return error;
@@ -1980,8 +1762,8 @@ return 0;
 
   // prepare SQL command execution
   error = ERROR_NONE;
-  BLOCK_DO(sqlite3_mutex_enter(sqlite3_db_mutex(databaseHandle->handle)),
-           sqlite3_mutex_leave(sqlite3_db_mutex(databaseHandle->handle)),
+  BLOCK_DO(DATABASE_LOCK(databaseHandle),
+           DATABASE_UNLOCK(databaseHandle),
   {
     DATABASE_DEBUG_SQL(databaseHandle,sqlString);
 #if 0
@@ -2011,7 +1793,7 @@ String_delete(s);
     }
     else
     {
-      error = ERRORX_(DATABASE,sqlite3_errcode(databaseHandle->handle),sqlite3_errmsg(databaseHandle->handle));
+      error = ERRORX_(DATABASE,sqlite3_errcode(databaseHandle->handle),"%s",sqlite3_errmsg(databaseHandle->handle));
     }
   });
   if (error != ERROR_NONE)
@@ -2069,8 +1851,8 @@ bool Database_getNextRow(DatabaseQueryHandle *databaseQueryHandle,
 
   va_start(arguments,format);
   BLOCK_DOX(result,
-            sqlite3_mutex_enter(sqlite3_db_mutex(databaseQueryHandle->databaseHandle->handle)),
-            sqlite3_mutex_leave(sqlite3_db_mutex(databaseQueryHandle->databaseHandle->handle)),
+            DATABASE_LOCK(databaseQueryHandle->databaseHandle),
+            DATABASE_UNLOCK(databaseQueryHandle->databaseHandle),
   {
     if (sqlite3_step(databaseQueryHandle->handle) == SQLITE_ROW)
     {
@@ -2311,8 +2093,8 @@ bool Database_getNextRow(DatabaseQueryHandle *databaseQueryHandle,
     DEBUG_REMOVE_RESOURCE_TRACEX(__fileName__,__lineNb__,databaseQueryHandle,sizeof(DatabaseQueryHandle));
   #endif /* NDEBUG */
 
-  BLOCK_DO(sqlite3_mutex_enter(sqlite3_db_mutex(databaseQueryHandle->databaseHandle->handle)),
-           sqlite3_mutex_leave(sqlite3_db_mutex(databaseQueryHandle->databaseHandle->handle)),
+  BLOCK_DO(DATABASE_LOCK(databaseQueryHandle->databaseHandle),
+           DATABASE_UNLOCK(databaseQueryHandle->databaseHandle),
   {
     sqlite3_finalize(databaseQueryHandle->handle);
   });
@@ -2363,8 +2145,8 @@ bool Database_exists(DatabaseHandle *databaseHandle,
 
   // execute SQL command
   BLOCK_DOX(existsFlag,
-            sqlite3_mutex_enter(sqlite3_db_mutex(databaseHandle->handle)),
-            sqlite3_mutex_leave(sqlite3_db_mutex(databaseHandle->handle)),
+            DATABASE_LOCK(databaseHandle),
+            DATABASE_UNLOCK(databaseHandle),
   {
     bool existsFlag = FALSE;
 
@@ -2436,8 +2218,8 @@ Errors Database_getInteger64(DatabaseHandle *databaseHandle,
 
   // execute SQL command
   BLOCK_DOX(error,
-            sqlite3_mutex_enter(sqlite3_db_mutex(databaseHandle->handle)),
-            sqlite3_mutex_leave(sqlite3_db_mutex(databaseHandle->handle)),
+            DATABASE_LOCK(databaseHandle),
+            DATABASE_UNLOCK(databaseHandle),
   {
     DATABASE_DEBUG_SQLX(databaseHandle,"get int64",sqlString);
     sqliteResult = sqlite3_prepare_v2(databaseHandle->handle,
@@ -2452,7 +2234,7 @@ Errors Database_getInteger64(DatabaseHandle *databaseHandle,
     }
     else
     {
-      error = ERRORX_(DATABASE,sqlite3_errcode(databaseHandle->handle),sqlite3_errmsg(databaseHandle->handle));
+      error = ERRORX_(DATABASE,sqlite3_errcode(databaseHandle->handle),"%s",sqlite3_errmsg(databaseHandle->handle));
     }
 
     if (sqlite3_step(handle) == SQLITE_ROW)
@@ -2517,8 +2299,8 @@ Errors Database_setInteger64(DatabaseHandle *databaseHandle,
     va_end(arguments);
   }
   BLOCK_DOX(error,
-            sqlite3_mutex_enter(sqlite3_db_mutex(databaseHandle->handle)),
-            sqlite3_mutex_leave(sqlite3_db_mutex(databaseHandle->handle)),
+            DATABASE_LOCK(databaseHandle),
+            DATABASE_UNLOCK(databaseHandle),
   {
     DATABASE_DEBUG_SQLX(databaseHandle,"set int64",sqlString);
     sqliteResult = sqlite3_exec(databaseHandle->handle,
@@ -2537,7 +2319,7 @@ Errors Database_setInteger64(DatabaseHandle *databaseHandle,
     }
     else
     {
-      error = ERRORX_(DATABASE,sqlite3_errcode(databaseHandle->handle),sqlite3_errmsg(databaseHandle->handle));
+      error = ERRORX_(DATABASE,sqlite3_errcode(databaseHandle->handle),"%s",sqlite3_errmsg(databaseHandle->handle));
     }
 
     return error;
@@ -2555,8 +2337,8 @@ Errors Database_setInteger64(DatabaseHandle *databaseHandle,
                     value
                    );
     BLOCK_DOX(error,
-              sqlite3_mutex_enter(sqlite3_db_mutex(databaseHandle->handle)),
-              sqlite3_mutex_leave(sqlite3_db_mutex(databaseHandle->handle)),
+              DATABASE_LOCK(databaseHandle),
+              DATABASE_UNLOCK(databaseHandle),
     {
       DATABASE_DEBUG_SQLX(databaseHandle,"set int64",sqlString);
       sqliteResult = sqlite3_exec(databaseHandle->handle,
@@ -2575,7 +2357,7 @@ Errors Database_setInteger64(DatabaseHandle *databaseHandle,
       }
       else
       {
-        error = ERRORX_(DATABASE,sqlite3_errcode(databaseHandle->handle),sqlite3_errmsg(databaseHandle->handle));
+        error = ERRORX_(DATABASE,sqlite3_errcode(databaseHandle->handle),"%s",sqlite3_errmsg(databaseHandle->handle));
       }
 
       return error;
@@ -2634,8 +2416,8 @@ Errors Database_getString(DatabaseHandle *databaseHandle,
 
   // execute SQL command
   BLOCK_DOX(error,
-            sqlite3_mutex_enter(sqlite3_db_mutex(databaseHandle->handle)),
-            sqlite3_mutex_leave(sqlite3_db_mutex(databaseHandle->handle)),
+            DATABASE_LOCK(databaseHandle),
+            DATABASE_UNLOCK(databaseHandle),
   {
     DATABASE_DEBUG_SQLX(databaseHandle,"get string",sqlString);
     sqliteResult = sqlite3_prepare_v2(databaseHandle->handle,
@@ -2650,7 +2432,7 @@ Errors Database_getString(DatabaseHandle *databaseHandle,
     }
     else
     {
-      error = ERRORX_(DATABASE,sqlite3_errcode(databaseHandle->handle),sqlite3_errmsg(databaseHandle->handle));
+      error = ERRORX_(DATABASE,sqlite3_errcode(databaseHandle->handle),"%s",sqlite3_errmsg(databaseHandle->handle));
     }
 
     if (sqlite3_step(handle) == SQLITE_ROW)
@@ -2714,8 +2496,8 @@ Errors Database_setString(DatabaseHandle *databaseHandle,
 
   // execute SQL command
   BLOCK_DOX(error,
-            sqlite3_mutex_enter(sqlite3_db_mutex(databaseHandle->handle)),
-            sqlite3_mutex_leave(sqlite3_db_mutex(databaseHandle->handle)),
+            DATABASE_LOCK(databaseHandle),
+            DATABASE_UNLOCK(databaseHandle),
   {
     DATABASE_DEBUG_SQLX(databaseHandle,"set string",sqlString);
     sqliteResult = sqlite3_exec(databaseHandle->handle,
@@ -2734,7 +2516,7 @@ Errors Database_setString(DatabaseHandle *databaseHandle,
     }
     else
     {
-      error = ERRORX_(DATABASE,sqlite3_errcode(databaseHandle->handle),sqlite3_errmsg(databaseHandle->handle));
+      error = ERRORX_(DATABASE,sqlite3_errcode(databaseHandle->handle),"%s",sqlite3_errmsg(databaseHandle->handle));
     }
 
     return error;
@@ -2759,8 +2541,8 @@ int64 Database_getLastRowId(DatabaseHandle *databaseHandle)
   assert(databaseHandle->handle != NULL);
 
   databaseId = DATABASE_ID_NONE;
-  BLOCK_DO(sqlite3_mutex_enter(sqlite3_db_mutex(databaseHandle->handle)),
-           sqlite3_mutex_leave(sqlite3_db_mutex(databaseHandle->handle)),
+  BLOCK_DO(DATABASE_LOCK(databaseHandle),
+           DATABASE_UNLOCK(databaseHandle),
   {
     databaseId = (uint64)sqlite3_last_insert_rowid(databaseHandle->handle);
   });
