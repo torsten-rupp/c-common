@@ -29,10 +29,19 @@
   type *prev; \
   type *next
 
-#define LIST_HEADER(type) \
-  type          *head; \
-  type          *tail; \
-  unsigned long count
+#ifndef NDEBUG
+  #define LIST_HEADER(type) \
+    type          *head; \
+    type          *tail; \
+    unsigned long count; \
+    const char    *fileName; \
+    ulong         lineNb
+#else /* NDEBUG */
+  #define LIST_HEADER(type) \
+    type          *head; \
+    type          *tail; \
+    unsigned long count
+#endif /* not NDEBUG */
 
 // list node
 typedef struct Node
@@ -55,6 +64,7 @@ typedef struct
 * Return : duplicated list node
 * Notes  : -
 \***********************************************************************/
+
 typedef void(*ListNodeFreeFunction)(void *node, void *userData);
 
 /***********************************************************************\
@@ -93,11 +103,21 @@ typedef bool(*ListNodeEqualsFunction)(const void *node, void *userData);
 
 typedef int(*ListNodeCompareFunction)(const void *node1, const void *node2, void *userData);
 
+// list find modes
+typedef enum
+{
+  LIST_FIND_FORWARD,
+  LIST_FIND_BACKWARD
+} ListFindModes;
+
 /***************************** Variables *******************************/
 
 /****************************** Macros *********************************/
 
 #ifndef NDEBUG
+  #define List_init(...) __List_init(__FILE__,__LINE__,__VA_ARGS__)
+  #define List_initDuplicate(...) __List_initDuplicate(__FILE__,__LINE__,__VA_ARGS__)
+  #define List_duplicate(...) __List_duplicate(__FILE__,__LINE__,__VA_ARGS__)
   #define List_newNode(...) __List_newNode(__FILE__,__LINE__,__VA_ARGS__)
   #define List_deleteNode(...) __List_deleteNode(__FILE__,__LINE__,__VA_ARGS__)
   #define List_insert(...) __List_insert(__FILE__,__LINE__,__VA_ARGS__)
@@ -192,21 +212,24 @@ typedef int(*ListNodeCompareFunction)(const void *node1, const void *node2, void
       )
 
 /***********************************************************************\
-* Name   : LIST_FIND
-* Purpose: find in list
+* Name   : LIST_FIND_FIRST, LIST_FIND_LAST, LIST_FIND
+* Purpose: find first/last entry in list
 * Input  : list      - list
 *          variable  - variable name
 *          condition - condition code
 * Output : -
 * Return : node or NULL if not found
 * Notes  : usage:
-*          LIST_FIND(list,node,node->... == ...)
+*          LIST_FIND_FIRST(list,variable,variable->... == ...)
+*          LIST_FIND_LAST(list,variable,variable->... == ...)
+*          LIST_FIND(list,variable,variable->... == ...)
 \***********************************************************************/
 
-#define LIST_FIND(list,variable,condition) \
+#define LIST_FIND_FIRST(list,variable,condition) \
   List_findFirst(list,\
+                 LIST_FIND_FORWARD,\
                  (ListNodeEqualsFunction)CALLBACK_INLINE(bool,\
-                                                         (const typeof(* (list)->head) *variable, void *userData)\
+                                                         (const typeof(* (list)->head) *variable, void *userData), \
                                                          { \
                                                            UNUSED_VARIABLE(userData); \
                                                            \
@@ -215,19 +238,20 @@ typedef int(*ListNodeCompareFunction)(const void *node1, const void *node2, void
                                                          NULL \
                                                         ) \
                 )
-
-#define LIST_FIND2(list,variable,condition) \
-  { \
-    assert(list != NULL); \
-    \
-    typeof(* (list)->head) *variable = list->head; \
-    \
-    while ((variable != NULL) && !condition) \
-    { \
-      variable = variable->next; \
-    } \
-  },\
-  variable
+#define LIST_FIND_LAST(list,variable,condition) \
+  List_findFirst(list,\
+                 LIST_FIND_BACKWARD,\
+                 (ListNodeEqualsFunction)CALLBACK_INLINE(bool,\
+                                                         (const typeof(* (list)->tail) *variable, void *userData), \
+                                                         { \
+                                                           UNUSED_VARIABLE(userData); \
+                                                           \
+                                                           return condition; \
+                                                         },\
+                                                         NULL \
+                                                        ) \
+                )
+#define LIST_FIND(list,variable,condition) LIST_FIND_FIRST(list,variable,condition)
 
 /***********************************************************************\
 * Name   : LIST_REMOVE
@@ -307,7 +331,11 @@ Node *__List_deleteNode(const char *__fileName__, ulong __lineNb__, Node *node);
 * Notes  : -
 \***********************************************************************/
 
+#ifdef NDEBUG
 void List_init(void *list);
+#else /* not NDEBUG */
+void __List_init(const char *__fileName__, ulong __lineNb__, void *list);
+#endif /* NDEBUG */
 
 /***********************************************************************\
 * Name   : List_initDuplicate
@@ -323,6 +351,7 @@ void List_init(void *list);
 * Notes  : -
 \***********************************************************************/
 
+#ifdef NDEBUG
 void List_initDuplicate(void                      *list,
                         const void                *fromList,
                         const void                *fromListFromNode,
@@ -330,6 +359,17 @@ void List_initDuplicate(void                      *list,
                         ListNodeDuplicateFunction listNodeDuplicateFunction,
                         void                      *listNodeDuplicateUserData
                        );
+#else /* not NDEBUG */
+void __List_initDuplicate(const char                *__fileName__,
+                          ulong                     __lineNb__,
+                          void                      *list,
+                          const void                *fromList,
+                          const void                *fromListFromNode,
+                          const void                *fromListToNode,
+                          ListNodeDuplicateFunction listNodeDuplicateFunction,
+                          void                      *listNodeDuplicateUserData
+                         );
+#endif /* NDEBUG */
 
 /***********************************************************************\
 * Name   : List_done
@@ -386,12 +426,23 @@ void __List_new(const char *fileName,
 * Notes  : -
 \***********************************************************************/
 
+#ifdef NDEBUG
 List *List_duplicate(const void                *fromList,
                      const void                *fromListFromNode,
                      const void                *fromListToNode,
                      ListNodeDuplicateFunction listNodeDuplicateFunction,
                      void                      *listNodeDuplicateUserData
                     );
+#else /* not NDEBUG */
+List *__List_duplicate(const char                *__fileName__,
+                       ulong                     __lineNb__,
+                       const void                *fromList,
+                       const void                *fromListFromNode,
+                       const void                *fromListToNode,
+                       ListNodeDuplicateFunction listNodeDuplicateFunction,
+                       void                      *listNodeDuplicateUserData
+                      );
+#endif /* NDEBUG */
 
 /***********************************************************************\
 * Name   : List_delete
@@ -723,6 +774,7 @@ bool List_contains(const void             *list,
 * Name   : List_findFirst
 * Purpose: find node in list
 * Input  : list                   - list
+*          listFindMode           - list find mode
 *          listNodeEqualsFunction - equals function
 *          listNodeEqualsUserData - user data for equals function
 * Output : -
@@ -730,35 +782,17 @@ bool List_contains(const void             *list,
 * Notes  : -
 \***********************************************************************/
 
-INLINE const Node *List_findFirst(const void             *list,
-                                  ListNodeEqualsFunction listNodeEqualsFunction,
-                                  void                   *listNodeEqualsUserData
-                                 );
-#if defined(NDEBUG) || defined(__LISTS_IMPLEMENATION__)
-INLINE const Node *List_findFirst(const void             *list,
-                                  ListNodeEqualsFunction listNodeEqualsFunction,
-                                  void                   *listNodeEqualsUserData
-                                 )
-{
-  Node *node;
-
-  assert(list != NULL);
-  assert(listNodeEqualsFunction != NULL);
-
-  node = ((List*)list)->head;
-  while ((node != NULL) && !listNodeEqualsFunction(node,listNodeEqualsUserData))
-  {
-    node = node->next;
-  }
-
-  return node;
-}
-#endif /* NDEBUG || __LISTS_IMPLEMENATION__ */
+void *List_findFirst(const void             *list,
+                     ListFindModes          listFindMode,
+                     ListNodeEqualsFunction listNodeEqualsFunction,
+                     void                   *listNodeEqualsUserData
+                    );
 
 /***********************************************************************\
 * Name   : List_findNext
 * Purpose: find next node in list
 * Input  : list                    - list
+*          listFindMode           - list find mode
 *          node                    - previous found node
 *          listNodeEqualsFunction - equals function
 *          listNodeEqualsUserData - user data for equals function
@@ -767,35 +801,12 @@ INLINE const Node *List_findFirst(const void             *list,
 * Notes  : -
 \***********************************************************************/
 
-INLINE const Node *List_findNext(const void             *list,
-                                 const void             *node,
-                                 ListNodeEqualsFunction listNodeEqualsFunction,
-                                 void                   *listNodeEqualsUserData
-                                );
-#if defined(NDEBUG) || defined(__LISTS_IMPLEMENATION__)
-INLINE const Node *List_findNext(const void             *list,
-                                 const void             *node,
-                                 ListNodeEqualsFunction listNodeEqualsFunction,
-                                 void                   *listNodeEqualsUserData
-                                )
-{
-  assert(list != NULL);
-  assert(listNodeEqualsFunction != NULL);
-
-  UNUSED_VARIABLE(list);
-
-  if (node != NULL)
-  {
-    node = (((Node*)node))->next;
-    while ((node != NULL) && !listNodeEqualsFunction(node,listNodeEqualsUserData))
-    {
-      node = (((Node*)node))->next;
-    }
-  }
-
-  return node;
-}
-#endif /* NDEBUG || __LISTS_IMPLEMENATION__ */
+void *List_findNext(const void             *list,
+                    ListFindModes          listFindMode,
+                    void                   *node,
+                    ListNodeEqualsFunction listNodeEqualsFunction,
+                    void                   *listNodeEqualsUserData
+                   );
 
 /***********************************************************************\
 * Name   : List_sort
