@@ -39,6 +39,7 @@
 int main(int argc, char *argv[])
 {
   String          s,t,w;
+  char            b[100];
   StaticString    (v,16);
   int             i,j;
   long            nextIndex;
@@ -72,10 +73,15 @@ int main(int argc, char *argv[])
 
   // string length, sub-string, find string
   s = String_new();
+  t = String_new();
   String_setCString(s,"Hello world, I'm here!");
   printf("string length '%s': %lu characters\n",String_cString(s),String_length(s));
-  t = String_sub(String_new(),s,0,5);
-  printf("sub-string %s",String_cString(t));
+  String_sub(t,s,0,5);
+  String_subCString(b,s,0,5);
+  printf("sub-string start: '%s'/'%s'\n",String_cString(t),b);
+  String_sub(t,s,STRING_END,5);
+  String_subCString(b,s,STRING_END,5);
+  printf("sub-string end: '%s'/'%s'\n",String_cString(t),b);
   printf("find string 'world': index %ld\n",String_findCString(s,STRING_BEGIN,"world"));
   String_delete(t);
   String_delete(s);
