@@ -2020,6 +2020,71 @@ LOCAL ulong getUnitFactor(const StringUnit stringUnits[],
 /***********************************************************************\
 * Name   : matchString
 * Purpose: match string
+* Input  : string    - string to patch
+*          index     - start index in string
+*          pattern   - regualar expression pattern
+*          nextIndex - variable for index of next not matched
+*                      character (can be NULL)
+* Output : nextIndex - index of next not matched character
+* Return : TRUE if string matched, FALSE otherwise
+* Notes  : -
+\***********************************************************************/
+
+LOCAL bool matchString(ConstString  string,
+                       ulong        index,
+                       const char   *pattern,
+                       long         *nextIndex
+                      )
+{
+  regex_t    regex;
+  regmatch_t subMatches[1];
+  bool       matchFlag;
+
+  assert(string != NULL);
+  assert(string->data != NULL);
+  assert(pattern != NULL);
+
+  if (index < string->length)
+  {
+    // compile pattern
+    if (regcomp(&regex,pattern,REG_ICASE|REG_EXTENDED) != 0)
+    {
+      return FALSE;
+    }
+
+    // match
+    matchFlag = (regexec(&regex,
+                         &string->data[index],
+                         1,  // subMatchCount
+                         subMatches,
+                         0  // eflags
+                        ) == 0
+                );
+
+    // get next index
+    if (matchFlag)
+    {
+      if (nextIndex != NULL)
+      {
+        assert(subMatches[0].rm_eo >= subMatches[0].rm_so);
+        (*nextIndex) = index+subMatches[0].rm_eo-subMatches[0].rm_so;
+      }
+    }
+
+    // free resources
+    regfree(&regex);
+  }
+  else
+  {
+    matchFlag = FALSE;
+  }
+
+  return matchFlag;
+}
+
+/***********************************************************************\
+* Name   : vmatchString
+* Purpose: match string with arguments
 * Input  : string            - string to patch
 *          index             - start index in string
 *          pattern           - regualar expression pattern
@@ -2034,13 +2099,13 @@ LOCAL ulong getUnitFactor(const StringUnit stringUnits[],
 * Notes  : -
 \***********************************************************************/
 
-LOCAL bool matchString(ConstString  string,
-                       ulong        index,
-                       const char   *pattern,
-                       long         *nextIndex,
-                       String       matchedString,
-                       va_list      matchedSubStrings
-                      )
+LOCAL bool vmatchString(ConstString  string,
+                        ulong        index,
+                        const char   *pattern,
+                        long         *nextIndex,
+                        String       matchedString,
+                        va_list      matchedSubStrings
+                       )
 {
   regex_t    regex;
   va_list    arguments;
@@ -2086,16 +2151,17 @@ LOCAL bool matchString(ConstString  string,
                          &string->data[index],
                          subMatchCount,
                          subMatches,
-                         0
+                         0  // eflags
                         ) == 0
                 );
 
-    // get sub-matches
+    // get next index, sub-matches
     if (matchFlag)
     {
       if (nextIndex != NULL)
       {
-        (*nextIndex) = subMatches[0].rm_eo-subMatches[0].rm_so;
+        assert(subMatches[0].rm_eo >= subMatches[0].rm_so);
+        (*nextIndex) = index+subMatches[0].rm_eo-subMatches[0].rm_so;
       }
 
       if (matchedString != NULL)
@@ -2112,6 +2178,7 @@ LOCAL bool matchString(ConstString  string,
         {
           if (subMatches[z].rm_so != -1)
           {
+            assert(subMatches[0].rm_eo >= subMatches[0].rm_so);
             String_setBuffer(matchedSubString,&string->data[subMatches[z].rm_so],subMatches[z].rm_eo-subMatches[z].rm_so);
           }
         }
@@ -4774,9 +4841,16 @@ bool String_match(ConstString string, ulong index, ConstString pattern, long *ne
   va_list arguments;
   bool    matchFlag;
 
-  va_start(arguments,matchedString);
-  matchFlag = matchString(string,index,String_cString(pattern),nextIndex,matchedString,arguments);
-  va_end(arguments);
+  if (matchedString != NULL)
+  {
+    va_start(arguments,matchedString);
+    matchFlag = vmatchString(string,index,String_cString(pattern),nextIndex,matchedString,arguments);
+    va_end(arguments);
+  }
+  else
+  {
+    matchFlag = matchString(string,index,String_cString(pattern),nextIndex);
+  }
 
   return matchFlag;
 }
@@ -4786,9 +4860,16 @@ bool String_matchCString(ConstString string, ulong index, const char *pattern, l
   va_list arguments;
   bool    matchFlag;
 
-  va_start(arguments,matchedString);
-  matchFlag = matchString(string,index,pattern,nextIndex,matchedString,arguments);
-  va_end(arguments);
+  if (matchedString != NULL)
+  {
+    va_start(arguments,matchedString);
+    matchFlag = vmatchString(string,index,pattern,nextIndex,matchedString,arguments);
+    va_end(arguments);
+  }
+  else
+  {
+    matchFlag = matchString(string,index,pattern,nextIndex);
+  }
 
   return matchFlag;
 }
