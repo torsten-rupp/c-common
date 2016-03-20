@@ -18,6 +18,7 @@
 /****************************** Includes *******************************/
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdarg.h>
 #include <stdint.h>
 #ifdef HAVE_STDBOOL_H
   #include <stdbool.h>
@@ -273,15 +274,21 @@ typedef struct
 * Name   : LAMBDA
 * Purpose: define a lambda-function
 * Input  : functionReturnType - call-back function return type
+*          functionSignature  - call-back function signature
 *          functionBody       - call-back function body
 * Output : -
 * Return : -
-* Notes  : -
+* Notes  : example
+*          List_removeAndFree(list,
+*                             node,
+*                             CALLBACK_INLINE(ListNodeFreeFunction,(...),{ ... },NULL)
+*                            );
 \***********************************************************************/
 
-#define LAMBDA(functionReturnType,functionBody) \
+#define LAMBDA(functionReturnType,functionSignature,functionBody) \
   ({ \
-    functionReturnType __closure__ functionBody \
+    auto functionReturnType __closure__ functionSignature; \
+    functionReturnType __closure__ functionSignature functionBody \
     __closure__; \
   })
 
@@ -289,6 +296,7 @@ typedef struct
 * Name   : CALLBACK_INLINE
 * Purpose: define an inline call-back function (lambda-function)
 * Input  : functionReturnType - call-back function signature
+*          functionSignature  - call-back function signature
 *          functionBody       - call-back function body
 *          functionUserData   - call-back function user data
 * Output : -
@@ -296,13 +304,14 @@ typedef struct
 * Notes  : example
 *          List_removeAndFree(list,
 *                             node,
-*                             CALLBACK_INLINE(ListNodeFreeFunction,{ ... },NULL)
+*                             CALLBACK_INLINE(ListNodeFreeFunction,(...),{ ... },NULL)
 *                            );
 \***********************************************************************/
 
-#define CALLBACK_INLINE(functionReturnType,functionBody,functionUserData) \
+#define CALLBACK_INLINE(functionReturnType,functionSignature,functionBody,functionUserData) \
   ({ \
-    functionReturnType __closure__ functionBody \
+    auto functionReturnType __closure__ functionSignature; \
+    functionReturnType __closure__ functionSignature functionBody \
     __closure__; \
   }), \
   functionUserData
@@ -399,7 +408,7 @@ typedef struct
 #define ALIGN(n,alignment) (((alignment)>0) ? (((n)+(alignment)-1) & ~((alignment)-1)) : (n))
 
 /***********************************************************************\
-* Name   : SET_CLEAR, SET_VALUE, SET_ADD, SET_REM
+* Name   : SET_CLEAR, SET_VALUE, SET_ADD, SET_REM, IN_SET
 * Purpose: set macros
 * Input  : set     - set (integer)
 *          element - element
@@ -1115,7 +1124,7 @@ typedef struct
     } \
     while (0)
 
-  #define DEBUG_REMOVE_RESOURCE_TRACE(resource) \
+  #define DEBUG_REMOVE_RESOURCE_TRACE(resource,size) \
     do \
     { \
     } \
@@ -1127,7 +1136,7 @@ typedef struct
     } \
     while (0)
 
-  #define DEBUG_REMOVE_RESOURCE_TRACEX(fileName,lineNb,resource) \
+  #define DEBUG_REMOVE_RESOURCE_TRACEX(fileName,lineNb,resource,size) \
     do \
     { \
     } \
@@ -1476,6 +1485,63 @@ static inline bool stringStartsWithIgnoreCase(const char *s, const char *prefix)
 static inline bool stringIsEmpty(const char *s)
 {
   return (s == NULL) || (s[0] =='\0');
+}
+
+/***********************************************************************\
+* Name   : stringCopy
+* Purpose: copy string
+* Input  : destination - destination string
+*          source      - source string
+*          n           - size of destination string
+* Output : -
+* Return : destination string
+* Notes  : -
+\***********************************************************************/
+
+static inline char* stringCopy(char *destination, const char *source, size_t n)
+{
+  assert(n > 0);
+
+  if (destination != NULL)
+  {
+    if (source != NULL)
+    {
+      strncpy(destination,source,n); destination[n-1] = '\0';
+    }
+    else
+    {
+      destination[0] = '\0';
+    }
+  }
+
+  return destination;
+}
+
+/***********************************************************************\
+* Name   : stringFormat
+* Purpose: format string
+* Input  : string - string
+*          n      - size of string
+*          format - format string
+*          ...    - optional arguments
+* Output : -
+* Return : destination string
+* Notes  : -
+\***********************************************************************/
+
+static inline char* stringFormat(char *string, size_t n, const char *format, ...)
+{
+  va_list arguments;
+
+  assert(string != NULL);
+  assert(n > 0);
+  assert(format != NULL);
+
+  va_start(arguments,format);
+  vsnprintf(string,n,format,arguments); string[n-1] = '\0';
+  va_end(arguments);
+
+  return string;
 }
 
 /*---------------------------------------------------------------------*/
