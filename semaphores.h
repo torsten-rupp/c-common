@@ -32,8 +32,6 @@
 /****************** Conditional compilation switches *******************/
 
 /***************************** Constants *******************************/
-#define SEMAPHORE_NO_WAIT      0L
-#define SEMAPHORE_WAIT_FOREVER -1L
 
 /***************************** Datatypes *******************************/
 
@@ -121,7 +119,7 @@ typedef bool SemaphoreLock;
 \***********************************************************************/
 
 #define SEMAPHORE_LOCKED_DO(semaphoreLock,semaphore,semaphoreLockType) \
-  for (semaphoreLock = Semaphore_lock(semaphore,semaphoreLockType,SEMAPHORE_WAIT_FOREVER); \
+  for (semaphoreLock = Semaphore_lock(semaphore,semaphoreLockType,WAIT_FOREVER); \
        semaphoreLock; \
        Semaphore_unlock(semaphore), semaphoreLock = FALSE \
       )
@@ -133,10 +131,10 @@ typedef bool SemaphoreLock;
 
   #define Semaphore_init(semaphore)   __Semaphore_init(__FILE__,__LINE__,_SEMAPHORE_NAME(semaphore),semaphore)
   #define Semaphore_new(semaphore)    __Semaphore_new(__FILE__,__LINE__,_SEMAPHORE_NAME(semaphore),semaphore)
-  #define Semaphore_lock(...)         __Semaphore_lock(__FILE__,__LINE__,__VA_ARGS__)
-  #define Semaphore_forceLock(...)    __Semaphore_forceLock(__FILE__,__LINE__,__VA_ARGS__)
-  #define Semaphore_unlock(...)       __Semaphore_unlock(__FILE__,__LINE__,__VA_ARGS__)
-  #define Semaphore_waitModified(...) __Semaphore_waitModified(__FILE__,__LINE__,__VA_ARGS__)
+  #define Semaphore_lock(...)         __Semaphore_lock(__FILE__,__LINE__, ## __VA_ARGS__)
+  #define Semaphore_forceLock(...)    __Semaphore_forceLock(__FILE__,__LINE__, ## __VA_ARGS__)
+  #define Semaphore_unlock(...)       __Semaphore_unlock(__FILE__,__LINE__, ## __VA_ARGS__)
+  #define Semaphore_waitModified(...) __Semaphore_waitModified(__FILE__,__LINE__, ## __VA_ARGS__)
 #endif /* not NDEBUG */
 
 /***************************** Forwards ********************************/
@@ -210,7 +208,7 @@ void Semaphore_delete(Semaphore *semaphore);
 * Purpose: lock semaphore
 * Input  : semaphore         - semaphore
 *          semaphoreLockType - lock type: READ, READ/WRITE
-*          timeout           - timeout [ms] or SEMAPHORE_WAIT_FOREVER
+*          timeout           - timeout [ms] or WAIT_FOREVER
 * Output : -
 * Return : TRUE if locked, FALSE on timeout
 * Notes  : -
@@ -252,7 +250,7 @@ INLINE void Semaphore_forceLock(Semaphore          *semaphore,
 {
   assert(semaphore != NULL);
 
-  if (!Semaphore_lock(semaphore,semaphoreLockType,SEMAPHORE_WAIT_FOREVER))
+  if (!Semaphore_lock(semaphore,semaphoreLockType,WAIT_FOREVER))
   {
     HALT_INTERNAL_ERROR("Cannot lock semaphore at %s, %u",__FILE__,__LINE__);
   }
@@ -273,7 +271,7 @@ INLINE void __Semaphore_forceLock(const char         *fileName,
 {
   assert(semaphore != NULL);
 
-  if (!__Semaphore_lock(fileName,lineNb,semaphore,semaphoreLockType,SEMAPHORE_WAIT_FOREVER))
+  if (!__Semaphore_lock(fileName,lineNb,semaphore,semaphoreLockType,WAIT_FOREVER))
   {
     HALT_INTERNAL_ERROR("Cannot lock semaphore at %s, %lu",fileName,lineNb);
   }
@@ -341,7 +339,7 @@ INLINE bool Semaphore_isOwned(const Semaphore *semaphore)
 * Name   : Semaphore_waitModified
 * Purpose: wait until semaphore is modified
 * Input  : semaphore - semaphore
-*          timeout   - timeout [ms] or SEMAPHORE_WAIT_FOREVER
+*          timeout   - timeout [ms] or WAIT_FOREVER
 * Output : -
 * Return : TRUE if modified, FALSE on timeout
 * Notes  : -
