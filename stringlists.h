@@ -42,22 +42,34 @@ typedef struct
   LIST_HEADER(StringNode);
 } StringList;
 
+/***********************************************************************\
+* Name   : StringListNodeEqualsFunction
+* Purpose: string list node equals function
+* Input  : node     - node to check
+*          userData - user data
+* Output : -
+* Return : TRUE iff node equals
+* Notes  : -
+\***********************************************************************/
+
+typedef bool(*StringListNodeEqualsFunction)(const StringNode *stringNode, void *userData);
+
 /***************************** Variables *******************************/
 
 /****************************** Macros *********************************/
 
 #ifndef NDEBUG
-  #define StringList_insert(...)        __StringList_insert(__FILE__,__LINE__,__VA_ARGS__)
-  #define StringList_insertCString(...) __StringList_insertCString(__FILE__,__LINE__,__VA_ARGS__)
-  #define StringList_insertChar(...)    __StringList_insertChar(__FILE__,__LINE__,__VA_ARGS__)
-  #define StringList_insertBuffer(...)  __StringList_insertBuffer(__FILE__,__LINE__,__VA_ARGS__)
-  #define StringList_append(...)        __StringList_append(__FILE__,__LINE__,__VA_ARGS__)
-  #define StringList_appendCString(...) __StringList_appendCString(__FILE__,__LINE__,__VA_ARGS__)
-  #define StringList_appendChar(...)    __StringList_appendChar(__FILE__,__LINE__,__VA_ARGS__)
-  #define StringList_appendBuffer(...)  __StringList_appendBuffer(__FILE__,__LINE__,__VA_ARGS__)
-  #define StringList_remove(...)        __StringList_remove(__FILE__,__LINE__,__VA_ARGS__)
-  #define StringList_getFirst(...)      __StringList_getFirst(__FILE__,__LINE__,__VA_ARGS__)
-  #define StringList_getLast(...)       __StringList_getLast(__FILE__,__LINE__,__VA_ARGS__)
+  #define StringList_insert(...)        __StringList_insert(__FILE__,__LINE__, ## __VA_ARGS__)
+  #define StringList_insertCString(...) __StringList_insertCString(__FILE__,__LINE__, ## __VA_ARGS__)
+  #define StringList_insertChar(...)    __StringList_insertChar(__FILE__,__LINE__, ## __VA_ARGS__)
+  #define StringList_insertBuffer(...)  __StringList_insertBuffer(__FILE__,__LINE__, ## __VA_ARGS__)
+  #define StringList_append(...)        __StringList_append(__FILE__,__LINE__, ## __VA_ARGS__)
+  #define StringList_appendCString(...) __StringList_appendCString(__FILE__,__LINE__, ## __VA_ARGS__)
+  #define StringList_appendChar(...)    __StringList_appendChar(__FILE__,__LINE__, ## __VA_ARGS__)
+  #define StringList_appendBuffer(...)  __StringList_appendBuffer(__FILE__,__LINE__, ## __VA_ARGS__)
+  #define StringList_remove(...)        __StringList_remove(__FILE__,__LINE__, ## __VA_ARGS__)
+  #define StringList_getFirst(...)      __StringList_getFirst(__FILE__,__LINE__, ## __VA_ARGS__)
+  #define StringList_getLast(...)       __StringList_getLast(__FILE__,__LINE__, ## __VA_ARGS__)
 #endif /* not NDEBUG */
 
 /***********************************************************************\
@@ -110,6 +122,52 @@ typedef struct
        ((iteratorVariable) != NULL) && (condition); \
        (iteratorVariable) = (iteratorVariable)->next, variable = ((iteratorVariable) != NULL) ? (iteratorVariable)->string : NULL \
       )
+
+/***********************************************************************\
+* Name   : LIST_FIND_FIRST, LIST_FIND_LAST, LIST_FIND
+* Purpose: find first/last entry in list
+* Input  : list      - list
+*          variable  - string variable name
+*          condition - condition code
+* Output : -
+* Return : node or NULL if not found
+* Notes  : usage:
+*          STRINGLIST_FIND_FIRST(list,variable,variable == ...)
+*          STRINGLIST_FIND_LAST(list,variable,variable == ...)
+*          STRINGLIST_FIND_LAST(list,variable,variable == ...)
+\***********************************************************************/
+
+#define STRINGLIST_FIND_FIRST(list,variable,condition) \
+  List_findFirst(list,\
+                 LIST_FIND_FORWARD,\
+                 (ListNodeEqualsFunction)CALLBACK_INLINE(bool,\
+                                                         (const StringNode *stringNode, void *userData), \
+                                                         { \
+                                                           String variable = stringNode->string; \
+                                                           \
+                                                           UNUSED_VARIABLE(userData); \
+                                                           \
+                                                           return condition; \
+                                                         },\
+                                                         NULL \
+                                                        ) \
+                )
+#define STRINGLIST_FIND_LAST(list,variable,condition) \
+  List_findFirst(list,\
+                 LIST_FIND_BACKWARD,\
+                 (ListNodeEqualsFunction)CALLBACK_INLINE(bool,\
+                                                         (const StringNode *stringNode, void *userData), \
+                                                         { \
+                                                           String variable = stringNode->string; \
+                                                           \
+                                                           UNUSED_VARIABLE(userData); \
+                                                           \
+                                                           return condition; \
+                                                         },\
+                                                         NULL \
+                                                        ) \
+                )
+#define STRINGLIST_FIND(list,variable,condition) STRINGLIST_FIND_FIRST(list,variable,condition)
 
 /***************************** Forwards ********************************/
 
