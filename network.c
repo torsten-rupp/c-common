@@ -257,7 +257,7 @@ NYI: how to do certificate verification?
     gnutls_deinit(socketHandle->gnuTLS.session);
     gnutls_dh_params_deinit(socketHandle->gnuTLS.dhParams);
     gnutls_certificate_free_credentials(socketHandle->gnuTLS.credentials);
-    return ERRORX_(TLS_HANDSHAKE,result,gnutls_strerror(result));
+    return ERRORX_(TLS_HANDSHAKE,result,"%s",gnutls_strerror(result));
   }
 
 #if 0
@@ -268,7 +268,7 @@ NYI: how to enable client authentication?
     gnutls_deinit(socketHandle->gnuTLS.session);
     gnutls_dh_params_deinit(socketHandle->gnuTLS.dhParams);
     gnutls_certificate_free_credentials(socketHandle->gnuTLS.credentials);
-    return ERRORX_(TLS_HANDSHAKE,result,gnutls_strerror(result));
+    return ERRORX_(TLS_HANDSHAKE,result,"%s",gnutls_strerror(result));
   }
 #endif /* 0 */
 
@@ -477,7 +477,7 @@ Errors Network_connect(SocketHandle *socketHandle,
         }
         if (ipAddress == INADDR_NONE)
         {
-          return ERRORX_(HOST_NOT_FOUND,0,String_cString(hostName));
+          return ERRORX_(HOST_NOT_FOUND,0,"%s",String_cString(hostName));
         }
 
         // connect
@@ -564,7 +564,7 @@ Errors Network_connect(SocketHandle *socketHandle,
         }
         if (ipAddress == INADDR_NONE)
         {
-          return ERRORX_(HOST_NOT_FOUND,0,String_cString(hostName));
+          return ERRORX_(HOST_NOT_FOUND,0,"%s",String_cString(hostName));
         }
 
         // check login name
@@ -588,7 +588,7 @@ Errors Network_connect(SocketHandle *socketHandle,
                    ) != 0
            )
         {
-          error = ERRORX_(CONNECT_FAIL,errno,strerror(errno));
+          error = ERRORX_(CONNECT_FAIL,errno,"%s",strerror(errno));
           close(socketHandle->handle);
           return error;
         }
@@ -656,7 +656,7 @@ Errors Network_connect(SocketHandle *socketHandle,
           }
           else
           {
-            error = ERRORX_(SSH_AUTHENTICATION,ssh2Error,ssh2ErrorText);
+            error = ERRORX_(SSH_AUTHENTICATION,ssh2Error,"%s",ssh2ErrorText);
           }
           Password_undeploy(password);
           libssh2_session_disconnect(socketHandle->ssh2.session,"");
@@ -681,7 +681,7 @@ Errors Network_connect(SocketHandle *socketHandle,
           }
           else
           {
-            error = ERRORX_(SSH_AUTHENTICATION,ssh2Error,ssh2ErrorText);
+            error = ERRORX_(SSH_AUTHENTICATION,ssh2Error,"%s",ssh2ErrorText);
           }
           libssh2_session_disconnect(socketHandle->ssh2.session,"");
           libssh2_session_free(socketHandle->ssh2.session);
@@ -1209,7 +1209,7 @@ Errors Network_initServer(ServerSocketHandle *serverSocketHandle,
             gnutls_x509_crt_deinit(cert);
             free(certData);
             close(serverSocketHandle->handle);
-            return ERRORX_(TLS_CERTIFICATE_NOT_ACTIVE,0,Misc_formatDateTimeCString(buffer,sizeof(buffer),(uint64)certActivationTime,DATE_TIME_FORMAT_LOCALE));
+            return ERRORX_(TLS_CERTIFICATE_NOT_ACTIVE,0,"%s",Misc_formatDateTimeCString(buffer,sizeof(buffer),(uint64)certActivationTime,DATE_TIME_FORMAT_LOCALE));
           }
         }
         certExpireTime = gnutls_x509_crt_get_expiration_time(cert);
@@ -1220,7 +1220,7 @@ Errors Network_initServer(ServerSocketHandle *serverSocketHandle,
             gnutls_x509_crt_deinit(cert);
             free(certData);
             close(serverSocketHandle->handle);
-            return ERRORX_(TLS_CERTIFICATE_EXPIRED,0,Misc_formatDateTimeCString(buffer,sizeof(buffer),(uint64)certExpireTime,DATE_TIME_FORMAT_LOCALE));
+            return ERRORX_(TLS_CERTIFICATE_EXPIRED,0,"%s",Misc_formatDateTimeCString(buffer,sizeof(buffer),(uint64)certExpireTime,DATE_TIME_FORMAT_LOCALE));
           }
         }
 #if 0
