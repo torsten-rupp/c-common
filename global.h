@@ -148,7 +148,7 @@
 #define GB (1024L*1024L*1024L)
 
 // special constants
-#define NO_WAIT      0
+#define NO_WAIT      0L
 #define WAIT_FOREVER -1L
 
 // exit codes
@@ -220,7 +220,7 @@ typedef struct
 
 #ifndef NDEBUG
   extern pthread_mutex_t debugConsoleLock;    // lock console
-  extern const char      *__testCodeName__;   // name of test code to execute
+  extern const char      *__testCodeName__;   // name of testcode to execute
 #endif /* not NDEBUG */
 
 /****************************** Macros *********************************/
@@ -425,7 +425,7 @@ typedef struct
   while (0)
 
 #define SET_VALUE(element) \
-  (1 << (element))
+  (1U << (element))
 
 #define SET_ADD(set,element) \
   do \
@@ -763,8 +763,8 @@ typedef struct
 #define HALT_PREFIX_INTERNAL_ERROR "INTERNAL ERROR: "
 
 // 2 macros necessary, because of "string"-construction
-#define _HALT_STRING1(z) _HALT_STRING2(z)
-#define _HALT_STRING2(z) #z
+#define __HALT_STRING1(s) __HALT_STRING2(s)
+#define __HALT_STRING2(s) #s
 #undef HALT
 #ifdef NDEBUG
 #define HALT(errorLevel, format, args...) \
@@ -866,12 +866,12 @@ typedef struct
 \***********************************************************************/
 
 /* 2 macros necessary, because of "string"-construction */
-#define _FAIL_STRING1(z) _FAIL_STRING2(z)
-#define _FAIL_STRING2(z) #z
+#define __FAIL_STRING1(s) __FAIL_STRING2(s)
+#define __FAIL_STRING2(s) #s
 #define FAIL(errorLevel, format, args...) \
   do \
   { \
-   fprintf(stderr, format " - fail in file " __FILE__ ", line " _FAIL_STRING1(__LINE__) "\n" , ## args); \
+   fprintf(stderr, format " - fail in file " __FILE__ ", line " __FAIL_STRING1(__LINE__) "\n" , ## args); \
    exit(errorLevel);\
   } \
   while (0)
@@ -960,16 +960,18 @@ typedef struct
 /***********************************************************************\
 * Name   : DEBUG_TEST_CODE
 * Purpose: execute test code
-* Input  : name - test code name
+* Input  : -
 * Output : -
 * Return : -
 * Notes  : test code is executed if:
-*            - environment variable TESTCODE contains name
+*            - environment variable TESTCODE contains testcode name
 *          or
 *            - text file specified by environment varibale TESTCODE_LIST
-*              contains name and
+*              contains testcode name and
+*            - text file specified by environment varibale TESTCODE_SKIP
+*              does not testcode contain name
 *            - text file specified by environment varibale TESTCODE_DONE
-*              does not contain name
+*              does not testcode contain name
 *          If environment variable TESTCODE_NAME is defined the name of
 *          executed testcode is written to that text file.
 *          If environment variable TESTCODE_DONE is defined the name of
@@ -977,15 +979,15 @@ typedef struct
 \***********************************************************************/
 
 #ifndef NDEBUG
-  #define DEBUG_TESTCODE(name) \
-    if (debugIsTestCodeEnabled(__FILE__,__LINE__,name))
+  #define DEBUG_TESTCODE() \
+    if (debugIsTestCodeEnabled(__FILE__,__LINE__,__FUNCTION__,__COUNTER__))
 // TODO: remove
   #define DEBUG_TESTCODE2(name,codeBody) \
     void (*__testcode__ ## __LINE__)(const char*) = ({ \
                                           auto void __closure__(const char *); \
                                           void __closure__(const char *__testCodeName__)codeBody __closure__; \
                                         }); \
-    if (debugIsTestCodeEnabled(__FILE__,__LINE__,name)) { __testcode__ ## __LINE__(name); }
+    if (debugIsTestCodeEnabled(__FILE__,__LINE__,__FUNCTION__,__COUNTER__)) { __testcode__ ## __LINE__(name); }
 #else /* not NDEBUG */
   #define DEBUG_TESTCODE(name) \
     if (FALSE)
@@ -994,7 +996,7 @@ typedef struct
 /***********************************************************************\
 * Name   : DEBUG_TESTCODE_ERROR
 * Purpose: get test code error code
-* Input  : name - test code name
+* Input  : -
 * Output : -
 * Return : test code error code
 * Notes  : -
@@ -1002,7 +1004,7 @@ typedef struct
 
 #ifndef NDEBUG
   #define DEBUG_TESTCODE_ERROR() \
-    debugTestCodeError()
+    debugTestCodeError(__FILE__,__LINE__)
 #else /* not NDEBUG */
   #define DEBUG_TESTCODE_ERROR() \
     ERROR_NONE
@@ -1019,7 +1021,7 @@ typedef struct
 
 #ifndef NDEBUG
   #define IS_DEBUG_TESTCODE(name) \
-    ((__testCodeName__ != NULL) && (strcmp(__testCodeName__,name) == 0))
+    ((__testCodeName__ != NULL) && stringEquals(__testCodeName__,name))
 #else /* not NDEBUG */
   #define IS_DEBUG_TESTCODE(name) \
     FALSE
@@ -1071,8 +1073,8 @@ typedef struct
 
 #ifndef NDEBUG
   // 2 macros necessary, because of "string"-construction
-  #define __DEBUG_ADD_RESOURCE_TRACE__STRING1(z) __DEBUG_ADD_RESOURCE_TRACE__STRING2(z)
-  #define __DEBUG_ADD_RESOURCE_TRACE__STRING2(z) #z
+  #define __DEBUG_ADD_RESOURCE_TRACE__STRING1(s) __DEBUG_ADD_RESOURCE_TRACE__STRING2(s)
+  #define __DEBUG_ADD_RESOURCE_TRACE__STRING2(s) #s
 
   #define DEBUG_ADD_RESOURCE_TRACE(resource,size) \
     do \
@@ -1518,6 +1520,25 @@ static inline char* stringCopy(char *destination, const char *source, size_t n)
 }
 
 /***********************************************************************\
+* Name   : stringTrim
+* Purpose: trim spaces at beginning of string
+* Input  : string - string
+* Output : -
+* Return : string
+* Notes  : -
+\***********************************************************************/
+
+static inline const char* stringTrim(const char *string)
+{
+  while (isspace(*string))
+  {
+    string++;
+  }
+
+  return string;
+}
+
+/***********************************************************************\
 * Name   : stringFormat
 * Purpose: format string
 * Input  : string - string
@@ -1655,7 +1676,8 @@ void __abortAt(const char *fileName,
 * Purpose: check if test code is enabled
 * Input  : __fileName__ - file name
 *          __lineNb__   - line number
-*          name         - name
+*          functionName - function name
+*          counter      - counter
 * Output : -
 * Return : TRUE iff test code is enabled
 * Notes  : -
@@ -1663,7 +1685,8 @@ void __abortAt(const char *fileName,
 
 bool debugIsTestCodeEnabled(const char *__fileName__,
                             uint       __lineNb__,
-                            const char *name
+                            const char *functionName,
+                            uint       counter
                            );
 
 /***********************************************************************\
@@ -1675,7 +1698,9 @@ bool debugIsTestCodeEnabled(const char *__fileName__,
 * Notes  : stop when environment variable TESTCODE_STOP is set
 \***********************************************************************/
 
-Errors debugTestCodeError(void);
+Errors debugTestCodeError(const char *__fileName__,
+                          uint       __lineNb__
+                         );
 
 /***********************************************************************\
 * Name   : debugLocalResource
@@ -1812,7 +1837,7 @@ void debugResourceCheck(void);
 *          indent         - indention of output
 *          stackTrace     - stack trace
 *          stackTraceSize - size of stack trace
-*          skipFrameCount - number of frames to skip
+*          skipFrameCount - number of stack frames to skip
 * Output : -
 * Return : -
 * Notes  : -
@@ -1828,8 +1853,9 @@ void debugDumpStackTrace(FILE       *handle,
 /***********************************************************************\
 * Name   : debugDumpStackTrace, debugDumpCurrentStackTrace
 * Purpose: print function names of stack trace of current thread
-* Input  : handle - output stream
-*          indent - indention of output
+* Input  : handle         - output stream
+*          indent         - indention of output
+*          skipFrameCount - number of stack frames to skip
 * Output : -
 * Return : -
 * Notes  : -
