@@ -1,7 +1,7 @@
 /***********************************************************************\
 *
-* $Source: /home/torsten/cvs/bar/bar/semaphores.h,v $
 * $Revision$
+* $Date$
 * $Author$
 * Contents: functions for inter-process mutex semaphores
 * Systems: all POSIX
@@ -25,6 +25,7 @@
 #endif /* PLATFORM_... */
 
 #include "global.h"
+#include "threads.h"
 #ifndef NDEBUG
   #include "lists.h"
 #endif /* not NDEBUG */
@@ -32,6 +33,9 @@
 /****************** Conditional compilation switches *******************/
 
 /***************************** Constants *******************************/
+#ifndef NDEBUG
+  #define __SEMAPHORE_MAX_THREAD_INFO 16
+#endif /* not NDEBUG */
 
 /***************************** Datatypes *******************************/
 
@@ -43,12 +47,20 @@ typedef enum
   SEMAPHORE_LOCK_TYPE_READ_WRITE,
 } SemaphoreLockTypes;
 
+#ifndef NDEBUG
+  typedef struct
+  {
+    ThreadId   threadId;                   // id of thread who locked semaphore
+    const char *fileName;                  // file+line number of lock call
+    ulong      lineNb;
+  } __SemaphoreThreadInfo;
+#endif /* not NDEBUG */
+
 typedef struct Semaphore
 {
   #ifndef NDEBUG
     LIST_NODE_HEADER(struct Semaphore);
   #endif /* not NDEBUG */
-
 
   #if   defined(PLATFORM_LINUX)
     pthread_mutex_t     requestLock;         // lock to update request counters
@@ -80,16 +92,13 @@ typedef struct Semaphore
 
 
   #ifndef NDEBUG
-    const char *fileName;                    // file+line number of creation
-    ulong      lineNb;
-    const char *name;                        // semaphore name (variable)
-    struct
-    {
-      pthread_t  thread;                     // id of thread who locked semaphore
-      const char *fileName;                  // file+line number of lock
-      ulong      lineNb;
-    } lockedBy[16];
-    uint       lockedByCount;                // number of threads who locked semaphore
+    const char            *fileName;         // file+line number of creation
+    ulong                 lineNb;
+    const char            *name;             // semaphore name (variable)
+    __SemaphoreThreadInfo pendingBy[__SEMAPHORE_MAX_THREAD_INFO];  // threads who wait for semaphore
+    uint                  pendingByCount;    // number of threads who wait for semaphore
+    __SemaphoreThreadInfo lockedBy[__SEMAPHORE_MAX_THREAD_INFO];  // threads who locked semaphore
+    uint                  lockedByCount;     // number of threads who locked semaphore
   #endif /* not NDEBUG */
 } Semaphore;
 
@@ -330,7 +339,7 @@ INLINE bool Semaphore_isOwned(const Semaphore *semaphore)
 {
   assert(semaphore != NULL);
 
-  return (semaphore->lockedByCount > 0) && (pthread_equal(semaphore->lockedBy[semaphore->lockedByCount-1].thread,pthread_self()) != 0);
+  return (semaphore->lockedByCount > 0) && (Thread_equalThreads(semaphore->lockedBy[semaphore->lockedByCount-1].threadId,Thread_getCurrentId()) != 0);
 }
 #endif /* NDEBUG || __SEMAPHORES_IMPLEMENATION__ */
 #endif /* not NDEBUG */
