@@ -76,6 +76,7 @@ int main(int argc, char *argv[])
   StringMap      stringMap;
   uint           z;
   const char     *name;
+  StringMapTypes type;
   StringMapValue value;
   String         s;
   int            i;
@@ -102,7 +103,7 @@ int main(int argc, char *argv[])
   StringMap_putCString(stringMap,"c","Hello World!");
   StringMap_putData(stringMap,"d",&data,(StringMapFormatFunction)formatData,NULL);
 
-  STRINGMAP_ITERATE(stringMap,z,name,value)
+  STRINGMAP_ITERATE(stringMap,z,name,type,value)
   {
     printf("%s: %s/%p\n",name,String_cString(value.text),value.data.p);
   }
@@ -114,7 +115,7 @@ int main(int argc, char *argv[])
 
   StringMap_remove(stringMap,"b");
 
-  STRINGMAP_ITERATE(stringMap,z,name,value)
+  STRINGMAP_ITERATE(stringMap,z,name,type,value)
   {
     printf("%s: %p\n",name,value.data.p);
   }
