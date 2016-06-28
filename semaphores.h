@@ -50,9 +50,10 @@ typedef enum
 #ifndef NDEBUG
   typedef struct
   {
-    ThreadId   threadId;                   // id of thread who locked semaphore
-    const char *fileName;                  // file+line number of lock call
-    ulong      lineNb;
+    ThreadId           threadId;             // id of thread who locked semaphore
+    SemaphoreLockTypes lockType;
+    const char         *fileName;            // file+line number of lock call
+    ulong              lineNb;
   } __SemaphoreThreadInfo;
 #endif /* not NDEBUG */
 
@@ -62,16 +63,15 @@ typedef struct Semaphore
     LIST_NODE_HEADER(struct Semaphore);
   #endif /* not NDEBUG */
 
-  #if   defined(PLATFORM_LINUX)
-    pthread_mutex_t     requestLock;         // lock to update request counters
+  #if   defined(PLATFORM_LINUX)              // lock to update request counters, thread info
+    pthread_mutex_t     requestLock;
   #elif defined(PLATFORM_WINDOWS)
     HANDLE              requestLock;
   #endif /* PLATFORM_... */
   uint                readRequestCount;      // number of pending read locks
   uint                readWriteRequestCount; // number of pending read/write locks
 
-  // lock (thread who own lock is allowed to change the following semaphore variables)
-  #if   defined(PLATFORM_LINUX)
+  #if   defined(PLATFORM_LINUX)              // lock (thread who own lock is allowed to change the following semaphore variables)
     pthread_mutex_t     lock;
   #elif defined(PLATFORM_WINDOWS)
     HANDLE              lock;
@@ -81,15 +81,15 @@ typedef struct Semaphore
   SemaphoreLockTypes  lockType;              // current lock type
   uint                readLockCount;         // number of read locks
   uint                readWriteLockCount;    // number of read/write locks
+//TODO
   #if   defined(PLATFORM_LINUX)
     pthread_cond_t      readLockZero;        // signal read-lock became 0
     pthread_cond_t      modified;            // signal values are modified
   #elif defined(PLATFORM_WINDOWS)
-    pthread_cond_t      readLockZero;        // signal read-lock beaome 0
+    pthread_cond_t      readLockZero;        // signal read-lock became 0
     pthread_cond_t      modified;            // signal values are modified
   #endif /* PLATFORM_... */
   bool                endFlag;
-
 
   #ifndef NDEBUG
     const char            *fileName;         // file+line number of creation
