@@ -183,11 +183,11 @@ LOCAL void debugThreadStackTraceSetThreadName(ThreadId threadId, const char *nam
 }
 
 /***********************************************************************\
-* Name   : debugStackTraceGetThreadName
+* Name   : debugThreadStackTraceGetThreadName
 * Purpose: get thread name
 * Input  : threadId - thread id
 * Output : -
-* Return : thread name or NULL
+* Return : thread name or "unknown"
 * Notes  : -
 \***********************************************************************/
 
@@ -195,8 +195,6 @@ LOCAL const char *debugThreadStackTraceGetThreadName(ThreadId threadId)
 {
   uint       i;
   const char *name;
-
-  assert(debugThreadStackTraceThreadCount > 0);
 
   i = 0;
   while ((i < debugThreadStackTraceThreadCount) && pthread_equal(debugThreadStackTraceThreads[i].id,threadId) == 0)
@@ -209,7 +207,7 @@ LOCAL const char *debugThreadStackTraceGetThreadName(ThreadId threadId)
   }
   else
   {
-    name = NULL;
+    name = "unknown";
   }
 
   return name;
@@ -323,11 +321,10 @@ LOCAL void debugThreadDumpStackTrace(ThreadId threadId, const char *reason)
 
   pthread_mutex_lock(&debugConsoleLock);
   {
-    name = debugThreadStackTraceGetThreadName(threadId);
     fprintf(stderr,
-            "Thread stack trace: '%s' (%p)%s\n",
+            "Thread stack trace: '%s' (%s)%s\n",
             (name != NULL) ? name : "<none>",
-            (void*)threadId,
+            Thread_getIdString(threadId),
             (reason != NULL) ? reason : ""
            );
     #ifndef NDEBUG
@@ -363,11 +360,11 @@ LOCAL void debugThreadDumpAllStackTraces(const char *reason)
       pthread_mutex_lock(&debugConsoleLock);
       {
         fprintf(stderr,
-                "Thread stack trace %02d/%02d: '%s' (%p)\n",
+                "Thread stack trace %02d/%02d: '%s' (%s)\n",
                 debugThreadStackTraceThreadIndex+1,
                 debugThreadStackTraceThreadCount,
                 (name != NULL) ? name : "<none>",
-                (void*)debugThreadStackTraceThreads[debugThreadStackTraceThreadIndex].id
+                Thread_getIdString(debugThreadStackTraceThreads[debugThreadStackTraceThreadIndex].id)
                );
         #ifndef NDEBUG
           debugDumpCurrentStackTrace(stderr,0,1);
@@ -410,11 +407,11 @@ LOCAL void debugThreadDumpAllStackTraces(const char *reason)
                   pthread_mutex_lock(&debugConsoleLock);
                   {
                     fprintf(stderr,
-                            "Thread stack trace %02d/%02d: '%s' (%p)\n",
+                            "Thread stack trace %02d/%02d: '%s' (%s)\n",
                             debugThreadStackTraceThreadIndex+1,
                             debugThreadStackTraceThreadCount,
                             (name != NULL) ? name : "<none>",
-                            (void*)debugThreadStackTraceThreads[debugThreadStackTraceThreadIndex].id
+                            Thread_getIdString(debugThreadStackTraceThreads[debugThreadStackTraceThreadIndex].id)
                            );
                     fprintf(stderr,"  not availble (terminate fail)\n");
                     fprintf(stderr,"\n");
@@ -430,11 +427,11 @@ LOCAL void debugThreadDumpAllStackTraces(const char *reason)
                 pthread_mutex_lock(&debugConsoleLock);
                 {
                   fprintf(stderr,
-                          "Thread stack trace %02d/%02d: '%s' (%p)\n",
+                          "Thread stack trace %02d/%02d: '%s' (%s)\n",
                           debugThreadStackTraceThreadIndex+1,
                           debugThreadStackTraceThreadCount,
                           (name != NULL) ? name : "<none>",
-                          (void*)debugThreadStackTraceThreads[debugThreadStackTraceThreadIndex].id
+                          Thread_getIdString(debugThreadStackTraceThreads[debugThreadStackTraceThreadIndex].id)
                          );
                   fprintf(stderr,"  not availble (trigger fail)\n");
                   fprintf(stderr,"\n");
@@ -453,11 +450,11 @@ LOCAL void debugThreadDumpAllStackTraces(const char *reason)
             pthread_mutex_lock(&debugConsoleLock);
             {
               fprintf(stderr,
-                    "Thread stack trace %02d/%02d: '%s' (%p)%s\n",
+                    "Thread stack trace %02d/%02d: '%s' (%s)%s\n",
                     debugThreadStackTraceThreadIndex+1,
                     debugThreadStackTraceThreadCount,
                     (name != NULL) ? name : "<none>",
-                    (void*)debugThreadStackTraceThreads[debugThreadStackTraceThreadIndex].id,
+                    Thread_getIdString(debugThreadStackTraceThreads[debugThreadStackTraceThreadIndex].id),
                     (reason != NULL) ? reason : ""
                    );
               #ifndef NDEBUG
@@ -503,6 +500,7 @@ LOCAL void debugThreadSignalSegVHandler(int signalNumber, siginfo_t *siginfo, vo
     pthread_mutex_unlock(&debugThreadSignalLock);
   }
 
+  // call previous handler
   if (debugThreadSignalSegVPrevHandler.sa_sigaction != NULL)
   {
     debugThreadSignalSegVPrevHandler.sa_sigaction(signalNumber,siginfo,context);
@@ -511,7 +509,7 @@ LOCAL void debugThreadSignalSegVHandler(int signalNumber, siginfo_t *siginfo, vo
 
 /***********************************************************************\
 * Name   : debugThreadSignalAbortHandler
-* Purpose: signal-segmantation vault handler to print stack trace
+* Purpose: signal-abort handler to print stack trace
 * Input  : signalNumber - signal number
 *          siginfo      - signal info
 *          context      - context variable
@@ -526,16 +524,17 @@ LOCAL void debugThreadSignalAbortHandler(int signalNumber, siginfo_t *siginfo, v
   {
     pthread_mutex_lock(&debugThreadSignalLock);
     {
-#ifndef NDEBUG
-      // Note: in debug mode only dump current stack trace
-      debugThreadDumpStackTrace(pthread_self()," *** ABORTED ***");
-#else /* not NDEBUG */
-      debugThreadDumpAllStackTraces(" *** ABORTED ***");
-#endif /* NDEBUG */
+      #ifndef NDEBUG
+        // Note: in debug mode only dump current stack trace
+        debugThreadDumpStackTrace(pthread_self()," *** ABORTED ***");
+      #else /* not NDEBUG */
+        debugThreadDumpAllStackTraces(" *** ABORTED ***");
+      #endif /* NDEBUG */
     }
     pthread_mutex_unlock(&debugThreadSignalLock);
   }
 
+  // call previous handler
   if (debugThreadSignalAbortPrevHandler.sa_sigaction != NULL)
   {
     debugThreadSignalAbortPrevHandler.sa_sigaction(signalNumber,siginfo,context);
@@ -560,10 +559,15 @@ LOCAL void debugThreadSignalQuitHandler(int signalNumber, siginfo_t *siginfo, vo
 
   if (signalNumber == SIGQUIT)
   {
+    // Note: do not lock; signal handler is called for every thread
     debugThreadDumpAllStackTraces(NULL);
   }
 
-  // Note: do not call previouos handler
+  // call previous handler
+  if (debugThreadSignalQuitPrevHandler.sa_sigaction != NULL)
+  {
+    debugThreadSignalQuitPrevHandler.sa_sigaction(signalNumber,siginfo,context);
+  }
 }
 
 /***********************************************************************\
@@ -767,7 +771,7 @@ void Thread_delay(uint time)
   #endif
 }
 
-const char *Thread_getName(ThreadId threadId)
+const char *Thread_getName(const ThreadId threadId)
 {
   #ifndef NDEBUG
     return debugThreadStackTraceGetThreadName(threadId);
@@ -781,6 +785,33 @@ const char *Thread_getName(ThreadId threadId)
 const char *Thread_getCurrentName(void)
 {
   return Thread_getName(pthread_self());
+}
+
+const char *Thread_getIdString(const ThreadId threadId)
+{
+  static char idString[64+1];
+
+  uint  i;
+  uint8 *p;
+  char  *s;
+
+  assert(sizeof(ThreadId)*2 < (sizeof(idString)-1));
+
+  p = (uint8*)(void*)(&threadId);
+  s = idString;
+  for (i = 0; i < sizeof(ThreadId); i++)
+  {
+    sprintf(s,"%02x",p[i]);
+    s += 2;
+  }
+  (*s) = '\0';
+
+  return idString;
+}
+
+const char *Thread_getCurrentIdString(void)
+{
+  return Thread_getIdString(pthread_self());
 }
 
 void Thread_initLocalVariable(ThreadLocalStorage *threadLocalStorage, ThreadLocalStorageAllocFunction threadLocalStorageAllocFunction, void *threadLocalStorageAllocUserData)
