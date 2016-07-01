@@ -199,7 +199,9 @@ LOCAL_INLINE bool equalsEntry(const DictionaryEntry     *entry,
   assert(entry != NULL);
   assert(keyData != NULL);
 
-  if ((hash == entry->hash) && (entry->keyLength == keyLength))
+  if (   (hash == entry->hash)
+      && (entry->keyData != NULL)
+      && (entry->keyLength == keyLength))
   {
     if (dictionaryCompareFunction != NULL)
     {
@@ -525,6 +527,8 @@ LOCAL DictionaryEntry *growTable(DictionaryEntry *entries, uint oldSize, uint ne
 
 #ifdef NDEBUG
   bool Dictionary_init(Dictionary                *dictionary,
+                       DictionaryCopyFunction    dictionaryCopyFunction,
+                       void                      *dictionaryCopyUserData,
                        DictionaryFreeFunction    dictionaryFreeFunction,
                        void                      *dictionaryFreeUserData,
                        DictionaryCompareFunction dictionaryCompareFunction,
@@ -534,6 +538,8 @@ LOCAL DictionaryEntry *growTable(DictionaryEntry *entries, uint oldSize, uint ne
   bool __Dictionary_init(const char                *__fileName__,
                          ulong                     __lineNb__,
                          Dictionary                *dictionary,
+                         DictionaryCopyFunction    dictionaryCopyFunction,
+                         void                      *dictionaryCopyUserData,
                          DictionaryFreeFunction    dictionaryFreeFunction,
                          void                      *dictionaryFreeUserData,
                          DictionaryCompareFunction dictionaryCompareFunction,
@@ -565,6 +571,8 @@ LOCAL DictionaryEntry *growTable(DictionaryEntry *entries, uint oldSize, uint ne
   dictionary->entryTables[0].entryCount = 0;
 //fprintf(stderr,"%s,%d: init entries %p\n",__FILE__,__LINE__,dictionary->entryTables[0].entries);
 
+  dictionary->dictionaryCopyFunction    = dictionaryCopyFunction;
+  dictionary->dictionaryCopyUserData    = dictionaryCopyUserData;
   dictionary->dictionaryFreeFunction    = dictionaryFreeFunction;
   dictionary->dictionaryFreeUserData    = dictionaryFreeUserData;
   dictionary->dictionaryCompareFunction = dictionaryCompareFunction;
@@ -607,7 +615,7 @@ LOCAL DictionaryEntry *growTable(DictionaryEntry *entries, uint oldSize, uint ne
 
     for (index = 0; index < TABLE_SIZES[dictionary->entryTables[z].sizeIndex]; index++)
     {
-      if (dictionary->entryTables[z].entries[index].data != NULL)
+      if (dictionary->entryTables[z].entries[index].keyData != NULL)
       {
         if (dictionary->dictionaryFreeFunction != NULL)
         {
@@ -618,11 +626,10 @@ LOCAL DictionaryEntry *growTable(DictionaryEntry *entries, uint oldSize, uint ne
         }
         if (dictionary->entryTables[z].entries[index].allocatedFlag)
         {
+          assert(dictionary->entryTables[z].entries[index].data != NULL);
           free(dictionary->entryTables[z].entries[index].data);
         }
-      }
-      if (dictionary->entryTables[z].entries[index].keyData != NULL)
-      {
+
         free(dictionary->entryTables[z].entries[index].keyData);
       }
     }
@@ -649,7 +656,7 @@ void Dictionary_clear(Dictionary *dictionary)
 
       for (index = 0; index < TABLE_SIZES[dictionary->entryTables[z].sizeIndex]; index++)
       {
-        if (dictionary->entryTables[z].entries[index].data != NULL)
+        if (dictionary->entryTables[z].entries[index].keyData != NULL)
         {
           if (dictionary->dictionaryFreeFunction != NULL)
           {
@@ -658,11 +665,15 @@ void Dictionary_clear(Dictionary *dictionary)
                                                dictionary->dictionaryFreeUserData
                                               );
           }
-          dictionary->entryTables[z].entries[index].data = NULL;
-        }
-        if (dictionary->entryTables[z].entries[index].keyData != NULL)
-        {
+          if (dictionary->entryTables[z].entries[index].allocatedFlag)
+          {
+            assert(dictionary->entryTables[z].entries[index].data != NULL);
+            free(dictionary->entryTables[z].entries[index].data);
+          }
+
           free(dictionary->entryTables[z].entries[index].keyData);
+
+          dictionary->entryTables[z].entries[index].hash    = 0;
           dictionary->entryTables[z].entries[index].keyData = NULL;
         }
       }
@@ -715,13 +726,11 @@ void Dictionary_byteFree(void *data, ulong length, void *userData)
   free(data);
 }
 
-bool Dictionary_add(Dictionary             *dictionary,
-                    const void             *keyData,
-                    ulong                  keyLength,
-                    const void             *data,
-                    ulong                  length,
-                    DictionaryCopyFunction dictionaryCopyFunction,
-                    void                   *dictionaryCopyUserData
+bool Dictionary_add(Dictionary *dictionary,
+                    const void *keyData,
+                    ulong      keyLength,
+                    const void *data,
+                    ulong      length
                    )
 {
   ulong                hash;
@@ -746,7 +755,7 @@ bool Dictionary_add(Dictionary             *dictionary,
     {
       assert(dictionaryEntryTable->entries != NULL);
 
-      if (dictionaryCopyFunction != NULL)
+      if (dictionary->dictionaryCopyFunction != NULL)
       {
         // allocate/resize data memory
         if (dictionaryEntryTable->entries[entryIndex].length != length)
@@ -765,11 +774,11 @@ bool Dictionary_add(Dictionary             *dictionary,
         }
 
         // copy data
-        if (!dictionaryCopyFunction(data,
-                                    dictionaryEntryTable->entries[entryIndex].data,
-                                    length,
-                                    dictionaryCopyUserData
-                                   )
+        if (!dictionary->dictionaryCopyFunction(data,
+                                                dictionaryEntryTable->entries[entryIndex].data,
+                                                length,
+                                                dictionary->dictionaryCopyUserData
+                                               )
            )
         {
           Semaphore_unlock(&dictionary->lock);
@@ -818,7 +827,7 @@ bool Dictionary_add(Dictionary             *dictionary,
       memcpy(dictionaryEntryTable->entries[entryIndex].keyData,keyData,keyLength);
       dictionaryEntryTable->entries[entryIndex].keyLength = keyLength;
 
-      if (dictionaryCopyFunction != NULL)
+      if (dictionary->dictionaryCopyFunction != NULL)
       {
         // allocate data memory
         newData = malloc(length);
@@ -830,11 +839,11 @@ bool Dictionary_add(Dictionary             *dictionary,
         }
 
         // copy data
-        if (!dictionaryCopyFunction(data,
-                                    newData,
-                                    length,
-                                    dictionaryCopyUserData
-                                   )
+        if (!dictionary->dictionaryCopyFunction(data,
+                                                newData,
+                                                length,
+                                                dictionary->dictionaryCopyUserData
+                                               )
            )
         {
           free(newData);
@@ -942,10 +951,11 @@ bool Dictionary_add(Dictionary             *dictionary,
       memcpy(dictionaryEntryTable->entries[entryIndex].keyData,keyData,keyLength);
       dictionaryEntryTable->entries[entryIndex].keyLength = keyLength;
 
-      if (dictionaryCopyFunction != NULL)
+      if (dictionary->dictionaryCopyFunction != NULL)
       {
         // allocate data memory
         newData = malloc(length);
+fprintf(stderr,"%s, %d: %p\n",__FILE__,__LINE__,newData);
         if (newData == NULL)
         {
           free(dictionaryEntryTable->entries[entryIndex].keyData);
@@ -954,11 +964,11 @@ bool Dictionary_add(Dictionary             *dictionary,
         }
 
         // copy data
-        if (!dictionaryCopyFunction(data,
-                                    newData,
-                                    length,
-                                    dictionaryCopyUserData
-                                   )
+        if (!dictionary->dictionaryCopyFunction(data,
+                                                newData,
+                                                length,
+                                                dictionary->dictionaryCopyUserData
+                                               )
            )
         {
           free(newData);
@@ -1012,26 +1022,16 @@ bool Dictionary_add(Dictionary             *dictionary,
       return FALSE;
     }
 
-//TODO
-#if 1
-    dictionaryEntryTable->entries[entryIndex].data = malloc(length);
-    if (dictionaryEntryTable->entries[entryIndex].data == NULL)
-    {
-      free(dictionaryEntryTable->entries[entryIndex].keyData);
-      Semaphore_unlock(&dictionary->lock);
-      return FALSE;
-    }
-#endif
-
     dictionaryEntryTable->entries[entryIndex].hash = hash;
 
     memcpy(dictionaryEntryTable->entries[entryIndex].keyData,keyData,keyLength);
     dictionaryEntryTable->entries[entryIndex].keyLength = keyLength;
 
-    if (dictionaryCopyFunction != NULL)
+    if (dictionary->dictionaryCopyFunction != NULL)
     {
       // allocate data memory
       newData = malloc(length);
+fprintf(stderr,"%s, %d: %p\n",__FILE__,__LINE__,newData);
       if (newData == NULL)
       {
         free(dictionaryEntryTable->entries[entryIndex].keyData);
@@ -1039,12 +1039,12 @@ bool Dictionary_add(Dictionary             *dictionary,
         return FALSE;
       }
 
-      // copy key data
-      if (!dictionaryCopyFunction(data,
-                                  newData,
-                                  length,
-                                  dictionaryCopyUserData
-                                 )
+      // copy data
+      if (!dictionary->dictionaryCopyFunction(data,
+                                              newData,
+                                              length,
+                                              dictionary->dictionaryCopyUserData
+                                             )
          )
       {
         free(newData);
@@ -1080,6 +1080,7 @@ void Dictionary_remove(Dictionary *dictionary,
   uint                 entryIndex;
 
   assert(dictionary != NULL);
+  assert(keyData != NULL);
 
   hash = calculateHash(keyData,keyLength);
 
@@ -1098,12 +1099,17 @@ void Dictionary_remove(Dictionary *dictionary,
                                            dictionary->dictionaryFreeUserData
                                           );
       }
+
+      if (dictionaryEntryTable->entries[entryIndex].allocatedFlag)
+      {
+        assert(dictionaryEntryTable->entries[entryIndex].data != NULL);
+        free(dictionaryEntryTable->entries[entryIndex].data);
+      }
+
       free(dictionaryEntryTable->entries[entryIndex].keyData);
 
-      dictionaryEntryTable->entries[entryIndex].data      = NULL;
-      dictionaryEntryTable->entries[entryIndex].length    = 0;
-      dictionaryEntryTable->entries[entryIndex].keyData   = NULL;
-      dictionaryEntryTable->entries[entryIndex].keyLength = 0;
+      dictionaryEntryTable->entries[entryIndex].hash    = 0;
+      dictionaryEntryTable->entries[entryIndex].keyData = NULL;
 
       dictionaryEntryTable->entryCount--;
     }
@@ -1124,6 +1130,7 @@ bool Dictionary_find(Dictionary *dictionary,
   uint                 index;
 
   assert(dictionary != NULL);
+  assert(keyData != NULL);
 
   hash = calculateHash(keyData,keyLength);
 
@@ -1198,7 +1205,7 @@ bool Dictionary_getNext(DictionaryIterator *dictionaryIterator,
       dictionaryEntry = &dictionaryIterator->dictionary->entryTables[dictionaryIterator->i].entries[dictionaryIterator->j];
 
       // check if used/empty
-      if (dictionaryEntry->data != NULL)
+      if (dictionaryEntry->keyData != NULL)
       {
         if (keyData   != NULL) (*keyData)   = dictionaryEntry->keyData;
         if (keyLength != NULL) (*keyLength) = dictionaryEntry->keyLength;
