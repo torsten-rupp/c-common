@@ -16,10 +16,13 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdarg.h>
+#include <semaphore.h>
 #include <assert.h>
 
 #include "global.h"
 #include "strings.h"
+#include "threads.h"
 #include "semaphores.h"
 #include "errors.h"
 
@@ -55,12 +58,13 @@ typedef enum
 } DatabaseTypes;
 
 // special database ids
-#define DATABASE_ID_NONE 0LL
-#define DATABASE_ID_ANY -1LL
+#define DATABASE_ID_NONE  0LL
+#define DATABASE_ID_ANY  -1LL
 
 // ordering mode
 typedef enum
 {
+  DATABASE_ORDERING_NONE,
   DATABASE_ORDERING_ASCENDING,
   DATABASE_ORDERING_DESCENDING
 } DatabaseOrdering;
@@ -70,10 +74,28 @@ typedef enum
 // database handle
 typedef struct
 {
-  sqlite3    *handle;
+  Semaphore     lock;                       // lock (Note: do not use sqlite mutex, because of debug facilities in semaphore.c)
+  sqlite3       *handle;                    // SQlite3 handle
+  long          timeout;                    // timeout [ms]
+  sem_t         wakeUp;                     // unlock wake-up
   #ifndef NDEBUG
     char fileName[256];
-    uint lockedLineNb;
+    struct
+    {
+      ThreadId   threadId;                  // thread who aquired lock
+      const char *fileName;
+      uint       lineNb;
+      char       text[8*1024];
+      uint64     t0,t1;                     // lock start/end timestamp [s]
+    } locked;
+    struct
+    {
+      ThreadId   threadId;                  // thread who started transaction
+      const char *fileName;
+      uint       lineNb;
+      void const *stackTrace[16];
+      int        stackTraceSize;
+    } transaction;
   #endif /* not NDEBUG */
 } DatabaseHandle;
 
@@ -81,15 +103,30 @@ typedef struct
 typedef struct
 {
   DatabaseHandle *databaseHandle;
-  sqlite3_stmt   *handle;
+  sqlite3_stmt   *statementHandle;
   #ifndef NDEBUG
-    String     sqlString;
+    String sqlString;
+    uint64 t0,t1;
+    uint64 dt;
   #endif /* not NDEBUG */
 } DatabaseQueryHandle;
 
-// execute row callback function
-typedef bool(*DatabaseRowFunction)(void *userData, uint count, const char* names[], const char* vales[]);
+//
+/***********************************************************************\
+* Name   : DatabaseRowFunction
+* Purpose: execute row callback function
+* Input  : count    - number of columns
+*          names    - column names
+*          values   - column values
+*          userData - user data
+* Output : -
+* Return : ERROR_NONE or error code
+* Notes  : -
+\***********************************************************************/
 
+typedef bool(*DatabaseRowFunction)(uint count, const char* names[], const char* values[], void *userData);
+
+// database id
 typedef int64 DatabaseId;
 
 // table column definition list
@@ -102,16 +139,17 @@ typedef struct DatabaseColumnNode
   union
   {
     // Note: data values are kept as strings to avoid conversion problems e.g. date/time -> integer
-    int64  id;
-    String i;
-    String d;
-    String text;
+    int64  id;      // primary key
+    String i;       // integer, date/time
+    String d;       // double
+    String text;    // text
     struct
     {
       const void *data;
       ulong      length;
     }      blob;
   } value;
+  bool          usedFlag;
 } DatabaseColumnNode;
 
 typedef struct
@@ -131,10 +169,13 @@ typedef Errors(*DatabaseCopyTableFunction)(const DatabaseColumnList *fromColumnL
 #define DATABASE_TRANSFER_OPERATION_END()                      DATABASE_TRANSFER_OPERATION_NONE,NULL,    0,     0
 
 #ifndef NDEBUG
-  #define Database_open(...)     __Database_open(__FILE__,__LINE__,__VA_ARGS__)
-  #define Database_close(...)    __Database_close(__FILE__,__LINE__,__VA_ARGS__)
-  #define Database_prepare(...)  __Database_prepare(__FILE__,__LINE__,__VA_ARGS__)
-  #define Database_finalize(...) __Database_finalize(__FILE__,__LINE__,__VA_ARGS__)
+  #define Database_open(...)             __Database_open(__FILE__,__LINE__, ## __VA_ARGS__)
+  #define Database_close(...)            __Database_close(__FILE__,__LINE__, ## __VA_ARGS__)
+  #define Database_lock(...)             __Database_lock(__FILE__,__LINE__, ## __VA_ARGS__)
+  #define Database_unlock(...)           __Database_unlock(__FILE__,__LINE__, ## __VA_ARGS__)
+  #define Database_beginTransaction(...) __Database_beginTransaction(__FILE__,__LINE__, ## __VA_ARGS__)
+  #define Database_prepare(...)          __Database_prepare(__FILE__,__LINE__, ## __VA_ARGS__)
+  #define Database_finalize(...)         __Database_finalize(__FILE__,__LINE__, ## __VA_ARGS__)
 #endif /* not NDEBUG */
 
 /***************************** Forwards ********************************/
@@ -146,10 +187,34 @@ typedef Errors(*DatabaseCopyTableFunction)(const DatabaseColumnList *fromColumnL
 #endif
 
 /***********************************************************************\
+* Name   : Database_initAll
+* Purpose: init database
+* Input  : -
+* Output : -
+* Return : ERROR_NONE or error code
+* Notes  : -
+\***********************************************************************/
+
+Errors Database_initAll(void);
+
+/***********************************************************************\
+* Name   : Database_doneAll
+* Purpose: done database
+* Input  : -
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+void Database_doneAll(void);
+
+/***********************************************************************\
 * Name   : Database_open
 * Purpose: open database
-* Input  : databaseHandle - database handle variable
-*          fileName       - file name or NULL for "in memory"
+* Input  : databaseHandle   - database handle variable
+*          fileName         - file name or NULL for "in memory"
+*          databaseOpenMode - open mode; see DatabaseOpenModes
+*          timeout          - timeout [ms]
 * Output : databaseHandle - database handle
 * Return : ERROR_NONE or error code
 * Notes  : -
@@ -158,14 +223,16 @@ typedef Errors(*DatabaseCopyTableFunction)(const DatabaseColumnList *fromColumnL
 #ifdef NDEBUG
   Errors Database_open(DatabaseHandle    *databaseHandle,
                        const char        *fileName,
-                       DatabaseOpenModes databaseOpenMode
+                       DatabaseOpenModes databaseOpenMode,
+                       long              timeout
                       );
 #else /* not NDEBUG */
   Errors __Database_open(const char        *__fileName__,
                          uint              __lineNb__,
                          DatabaseHandle    *databaseHandle,
                          const char        *fileName,
-                         DatabaseOpenModes databaseOpenMode
+                         DatabaseOpenModes databaseOpenMode,
+                         long              timeout
                         );
 #endif /* NDEBUG */
 
@@ -186,6 +253,59 @@ typedef Errors(*DatabaseCopyTableFunction)(const DatabaseColumnList *fromColumnL
                         DatabaseHandle *databaseHandle
                        );
 #endif /* NDEBUG */
+
+/***********************************************************************\
+* Name   : Database_lock
+* Purpose: lock database
+* Input  : databaseHandle - database handle
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+#ifdef NDEBUG
+  void Database_lock(DatabaseHandle *databaseHandle);
+#else /* not NDEBUG */
+  void __Database_lock(const char   *__fileName__,
+                       uint         __lineNb__,
+                       DatabaseHandle *databaseHandle
+                      );
+#endif /* NDEBUG */
+
+/***********************************************************************\
+* Name   : Database_unlock
+* Purpose: unlock database
+* Input  : databaseHandle - database handle
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+#ifdef NDEBUG
+  void Database_unlock(DatabaseHandle *databaseHandle);
+#else /* not NDEBUG */
+  void __Database_unlock(const char   *__fileName__,
+                         uint         __lineNb__,
+                         DatabaseHandle *databaseHandle
+                        );
+#endif /* NDEBUG */
+
+/***********************************************************************\
+* Name   : Database_isLocked
+* Purpose: check if database is locked
+* Input  : databaseHandle - database handle
+* Output : -
+* Return : TRUE iff locked
+* Notes  : -
+\***********************************************************************/
+
+INLINE bool Database_isLocked(DatabaseHandle *databaseHandle);
+#if defined(NDEBUG) || defined(__DATABASE_IMPLEMENATION__)
+INLINE bool Database_isLocked(DatabaseHandle *databaseHandle)
+{
+  return Semaphore_isLocked(&databaseHandle->lock);
+}
+#endif /* NDEBUG || __DATABASE_IMPLEMENATION__ */
 
 /***********************************************************************\
 * Name   : Database_setEnabledSync
@@ -218,9 +338,17 @@ Errors Database_setEnabledForeignKeys(DatabaseHandle *databaseHandle,
 /***********************************************************************\
 * Name   : Database_copyTable
 * Purpose: copy table content
-* Input  : fromDatabaseHandle - from-database handle
-*          toDatabaseHandle   - fo-database handle
-*          tableName          - table name
+* Input  : fromDatabaseHandle    - from-database handle
+*          toDatabaseHandle      - fo-database handle
+*          fromTableName         - from-table name
+*          toTableName           - to-table name
+*          preCopyTableFunction  - pre-copy call-back function
+*          preCopyTableUserData  - user data for pre-copy call-back
+*          postCopyTableFunction - pre-copy call-back function
+*          postCopyTableUserData - user data for pre-copy call-back
+*          fromAdditional        - additional SQL condition
+*          ...                   - optional arguments for additional
+*                                  SQL condition
 * Output : -
 * Return : ERROR_NONE or error code
 * Notes  : -
@@ -228,7 +356,9 @@ Errors Database_setEnabledForeignKeys(DatabaseHandle *databaseHandle,
 
 Errors Database_copyTable(DatabaseHandle            *fromDatabaseHandle,
                           DatabaseHandle            *toDatabaseHandle,
-                          const char                *tableName,
+                          const char                *fromTableName,
+                          const char                *toTableName,
+                          bool                      transactionFlag,
                           DatabaseCopyTableFunction preCopyTableFunction,
                           void                      *preCopyTableUserData,
                           DatabaseCopyTableFunction postCopyTableFunction,
@@ -237,17 +367,43 @@ Errors Database_copyTable(DatabaseHandle            *fromDatabaseHandle,
                           ...
                          );
 
+/***********************************************************************\
+* Name   : Database_getTableColumnList*
+* Purpose: get table column list entry
+* Input  : columnList   - column list
+*          columnName   - column name
+*          defaultValue - default value
+* Output : -
+* Return : value
+* Notes  : -
+\***********************************************************************/
+
+int Database_getTableColumnListInt(const DatabaseColumnList *columnList, const char *columnName, int defaultValue);
+uint Database_getTableColumnListUInt(const DatabaseColumnList *columnList, const char *columnName, uint defaultValue);
 int64 Database_getTableColumnListInt64(const DatabaseColumnList *columnList, const char *columnName, int64 defaultValue);
+uint64 Database_getTableColumnListUInt64(const DatabaseColumnList *columnList, const char *columnName, uint64 defaultValue);
 double Database_getTableColumnListDouble(const DatabaseColumnList *columnList, const char *columnName, double defaultValue);
 uint64 Database_getTableColumnListDateTime(const DatabaseColumnList *columnList, const char *columnName, uint64 defaultValue);
-const char *Database_getTableColumnListText(const DatabaseColumnList *columnList, const char *columnName, const char *defaultValue);
+String Database_getTableColumnList(const DatabaseColumnList *columnList, const char *columnName, String value, const char *defaultValue);
+const char *Database_getTableColumnListCString(const DatabaseColumnList *columnList, const char *columnName, const char *defaultValue);
 void Database_getTableColumnListBlob(const DatabaseColumnList *columnList, const char *columnName, void *data, uint length);
+
+/***********************************************************************\
+* Name   : Database_setTableColumnList*
+* Purpose: set table column list entry
+* Input  : columnList - column list
+*          columnName - column name
+*          value      - value
+* Output : -
+* Return : TRUE iff set
+* Notes  : -
+\***********************************************************************/
 
 bool Database_setTableColumnListInt64(const DatabaseColumnList *columnList, const char *columnName, int64 value);
 bool Database_setTableColumnListDouble(const DatabaseColumnList *columnList, const char *columnName, double value);
 bool Database_setTableColumnListDateTime(const DatabaseColumnList *columnList, const char *columnName, uint64 value);
-bool Database_setTableColumnListText(const DatabaseColumnList *columnList, const char *columnName, ConstString value);
-bool Database_setTableColumnListTextCString(const DatabaseColumnList *columnList, const char *columnName, const char *value);
+bool Database_setTableColumnList(const DatabaseColumnList *columnList, const char *columnName, ConstString value);
+bool Database_setTableColumnListCString(const DatabaseColumnList *columnList, const char *columnName, const char *value);
 bool Database_setTableColumnListBlob(const DatabaseColumnList *columnList, const char *columnName, const void *data, uint length);
 
 /***********************************************************************\
@@ -283,6 +439,46 @@ Errors Database_removeColumn(DatabaseHandle *databaseHandle,
                              const char     *tableName,
                              const char     *columnName
                             );
+
+/***********************************************************************\
+* Name   : Database_beginTransaction
+* Purpose: begin transaction
+* Input  : databaseHandle - database handle
+* Output : -
+* Return : ERROR_NONE or error code
+* Notes  : -
+\***********************************************************************/
+
+#ifdef NDEBUG
+  Errors Database_beginTransaction(DatabaseHandle *databaseHandle);
+#else /* not NDEBUG */
+  Errors __Database_beginTransaction(const char     *__fileName__,
+                                     uint           __lineNb__,
+                                     DatabaseHandle *databaseHandle
+                                    );
+#endif /* NDEBUG */
+
+/***********************************************************************\
+* Name   : Database_endTransaction
+* Purpose: end transaction (commit)
+* Input  : databaseHandle - database handle
+* Output : -
+* Return : ERROR_NONE or error code
+* Notes  : -
+\***********************************************************************/
+
+Errors Database_endTransaction(DatabaseHandle *databaseHandle);
+
+/***********************************************************************\
+* Name   : Database_rollbackTransaction
+* Purpose: rollback transcation (discard)
+* Input  : databaseHandle - database handle
+* Output : -
+* Return : ERROR_NONE or error code
+* Notes  : -
+\***********************************************************************/
+
+Errors Database_rollbackTransaction(DatabaseHandle *databaseHandle);
 
 /***********************************************************************\
 * Name   : Database_execute
@@ -400,7 +596,33 @@ bool Database_exists(DatabaseHandle *databaseHandle,
                     );
 
 /***********************************************************************\
-* Name   : Database_getInteger64
+* Name   : Database_getId, Database_vgetId
+* Purpose: get database id of value from database table
+* Input  : databaseHandle - database handle
+*          tableName      - table name
+*          additional     - additional string (e. g. WHERE...)
+*                           special functions:
+*                             REGEXP(pattern,case-flag,text)
+* Output : value - database id
+* Return : ERROR_NONE or error code
+* Notes  : -
+\***********************************************************************/
+
+Errors Database_getId(DatabaseHandle *databaseHandle,
+                      DatabaseId     *value,
+                      const char     *tableName,
+                      const char     *additional,
+                      ...
+                     );
+Errors Database_vgetId(DatabaseHandle *databaseHandle,
+                       DatabaseId     *value,
+                       const char     *tableName,
+                       const char     *additional,
+                       va_list        arguments
+                      );
+
+/***********************************************************************\
+* Name   : Database_getInteger64, Database_vgetInteger64
 * Purpose: get int64 value from database table
 * Input  : databaseHandle - database handle
 *          tableName      - table name
@@ -420,10 +642,17 @@ Errors Database_getInteger64(DatabaseHandle *databaseHandle,
                              const char     *additional,
                              ...
                             );
+Errors Database_vgetInteger64(DatabaseHandle *databaseHandle,
+                              int64          *value,
+                              const char     *tableName,
+                              const char     *columnName,
+                              const char     *additional,
+                              va_list        arguments
+                             );
 
 /***********************************************************************\
-* Name   : Database_setInteger64
-* Purpose: isnert or update int64 value in database table
+* Name   : Database_setInteger64, Database_vsetInteger64
+* Purpose: insert or update int64 value in database table
 * Input  : databaseHandle - database handle
 *          value          - int64 value
 *          tableName      - table name
@@ -443,9 +672,75 @@ Errors Database_setInteger64(DatabaseHandle *databaseHandle,
                              const char     *additional,
                              ...
                             );
+Errors Database_vsetInteger64(DatabaseHandle *databaseHandle,
+                              int64          value,
+                              const char     *tableName,
+                              const char     *columnName,
+                              const char     *additional,
+                              va_list        arguments
+                             );
 
 /***********************************************************************\
-* Name   : Database_getString
+* Name   : Database_getDouble, Database_vgetDouble
+* Purpose: get int64 value from database table
+* Input  : databaseHandle - database handle
+*          tableName      - table name
+*          columnName     - column name
+*          additional     - additional string (e. g. WHERE...)
+*                           special functions:
+*                             REGEXP(pattern,case-flag,text)
+* Output : value - double value
+* Return : ERROR_NONE or error code
+* Notes  : -
+\***********************************************************************/
+
+Errors Database_getDouble(DatabaseHandle *databaseHandle,
+                          double         *value,
+                          const char     *tableName,
+                          const char     *columnName,
+                          const char     *additional,
+                          ...
+                         );
+Errors Database_vgetDouble(DatabaseHandle *databaseHandle,
+                           double         *value,
+                           const char     *tableName,
+                           const char     *columnName,
+                           const char     *additional,
+                           va_list        arguments
+                          );
+
+/***********************************************************************\
+* Name   : Database_setDouble, Database_vsetDouble
+* Purpose: insert or update double value in database table
+* Input  : databaseHandle - database handle
+*          value          - double value
+*          tableName      - table name
+*          columnName     - column name
+*          additional     - additional string (e. g. WHERE...)
+*                           special functions:
+*                             REGEXP(pattern,case-flag,text)
+* Output : -
+* Return : ERROR_NONE or error code
+* Notes  : -
+\***********************************************************************/
+
+Errors Database_setDouble(DatabaseHandle *databaseHandle,
+                          double         value,
+                          const char     *tableName,
+                          const char     *columnName,
+                          const char     *additional,
+                          ...
+                         );
+Errors Database_vsetDouble(DatabaseHandle *databaseHandle,
+                           double         value,
+                           const char     *tableName,
+                           const char     *columnName,
+                           const char     *additional,
+                           va_list        arguments
+                          );
+
+/***********************************************************************\
+* Name   : Database_getString, Database_vgetString
 * Purpose: get string value from database table
 * Input  : databaseHandle - database handle
 *          tableName      - table name
@@ -453,21 +748,28 @@ Errors Database_setInteger64(DatabaseHandle *databaseHandle,
 *          additional     - additional string (e. g. WHERE...)
 *                           special functions:
 *                             REGEXP(pattern,case-flag,text)
-* Output : value - string value
+* Output : string - string value
 * Return : ERROR_NONE or error code
 * Notes  : -
 \***********************************************************************/
 
 Errors Database_getString(DatabaseHandle *databaseHandle,
-                          String         value,
+                          String         string,
                           const char     *tableName,
                           const char     *columnName,
                           const char     *additional,
                           ...
                          );
+Errors Database_vgetString(DatabaseHandle *databaseHandle,
+                           String         string,
+                           const char     *tableName,
+                           const char     *columnName,
+                           const char     *additional,
+                           va_list        arguments
+                          );
 
 /***********************************************************************\
-* Name   : Database_setString
+* Name   : Database_setString, Database_vsetString
 * Purpose: insert or update string value in database table
 * Input  : databaseHandle - database handle
 *          string         - string value
@@ -488,6 +790,13 @@ Errors Database_setString(DatabaseHandle *databaseHandle,
                           const char     *additional,
                           ...
                          );
+Errors Database_vsetString(DatabaseHandle *databaseHandle,
+                           const String   string,
+                           const char     *tableName,
+                           const char     *columnName,
+                           const char     *additional,
+                           va_list        arguments
+                          );
 
 /***********************************************************************\
 * Name   : Database_getLastRowId
