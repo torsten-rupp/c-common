@@ -84,13 +84,37 @@ typedef struct
   byte                 *data;        // array data
 } Array;
 
+#ifndef NDEBUG
+/***********************************************************************\
+* Name   : ArrayDumpInfoFunction
+* Purpose: string dump info call-back function
+* Input  : array    - array
+*          fileName - file name
+*          lineNb   - line number
+*          n        - array number [0..count-1]
+*          count    - total array count
+*          userData - user data
+* Output : -
+* Return : TRUE for continue, FALSE for abort
+* Notes  : -
+\***********************************************************************/
+
+typedef bool(*ArrayDumpInfoFunction)(const Array *array,
+                                     const char  *fileName,
+                                     ulong       lineNb,
+                                     ulong       n,
+                                     ulong       count,
+                                     void        *userData
+                                    );
+#endif /* not NDEBUG */
+
 /***************************** Variables *******************************/
 
 /****************************** Macros *********************************/
 
 #ifndef NDEBUG
-  #define Array_init(...) __Array_init(__FILE__,__LINE__,__VA_ARGS__)
-  #define Array_new(...)  __Array_new(__FILE__,__LINE__,__VA_ARGS__)
+  #define Array_init(...) __Array_init(__FILE__,__LINE__, ## __VA_ARGS__)
+  #define Array_new(...)  __Array_new(__FILE__,__LINE__, ## __VA_ARGS__)
 #endif /* not NDEBUG */
 
 /***********************************************************************\
@@ -473,14 +497,21 @@ void Array_debugDone(void);
 /***********************************************************************\
 * Name   : Array_debugDumpInfo, Array_debugPrintInfo
 * Purpose: array debug function: output allocated arrays
-* Input  : handle - output channel
+* Input  : handle                - output channel
+*          arrayDumpInfoFunction - array dump info call-back or NULL
+*          arrayDumpInfoUserData - array dump info user data
 * Output : -
 * Return : -
 * Notes  : -
 \***********************************************************************/
 
-void Array_debugDumpInfo(FILE *handle);
-void Array_debugPrintInfo(void);
+void Array_debugDumpInfo(FILE *handle,
+                         ArrayDumpInfoFunction arrayDumpInfoFunction,
+                         void                  *arrayDumpInfoUserData
+                        );
+void Array_debugPrintInfo(ArrayDumpInfoFunction arrayDumpInfoFunction,
+                          void                  *arrayDumpInfoUserData
+                         );
 
 /***********************************************************************\
 * Name   : Array_debugPrintStatistics
