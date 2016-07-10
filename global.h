@@ -1178,7 +1178,7 @@ extern "C" {
 \***********************************************************************/
 
 void __dprintf__(const char *__fileName__,
-                 uint       __lineNb__,
+                 ulong      __lineNb__,
                  const char *format,
                  ...
                 );
@@ -1407,12 +1407,15 @@ inline double normDegree360(double n)
 * Input  : s - string
 * Output : -
 * Return : string
-* Notes  : -
+* Notes  : string is always NUL-terminated
 \***********************************************************************/
 
 static inline char *stringClear(char *s)
 {
-  (*s) = '\0';
+  if (s != NULL)
+  {
+    (*s) = '\0';
+  }
 
   return s;
 }
@@ -1486,7 +1489,7 @@ static inline bool stringStartsWithIgnoreCase(const char *s, const char *prefix)
 
 static inline bool stringIsEmpty(const char *s)
 {
-  return (s == NULL) || (s[0] =='\0');
+  return (s == NULL) || (s[0] == '\0');
 }
 
 /***********************************************************************\
@@ -1497,7 +1500,7 @@ static inline bool stringIsEmpty(const char *s)
 *          n           - size of destination string
 * Output : -
 * Return : destination string
-* Notes  : -
+* Notes  : string is always NULL or NUL-terminated
 \***********************************************************************/
 
 static inline char* stringCopy(char *destination, const char *source, size_t n)
@@ -1508,11 +1511,40 @@ static inline char* stringCopy(char *destination, const char *source, size_t n)
   {
     if (source != NULL)
     {
-      strncpy(destination,source,n); destination[n-1] = '\0';
+      strncpy(destination,source,n-1); destination[n-1] = '\0';
     }
     else
     {
       destination[0] = '\0';
+    }
+  }
+
+  return destination;
+}
+
+/***********************************************************************\
+* Name   : stringConcat
+* Purpose: concatenate string
+* Input  : destination - destination string
+*          source      - source string
+*          n           - size of destination string
+* Output : -
+* Return : destination string
+* Notes  : string is always NULL or NUL-terminated
+\***********************************************************************/
+
+static inline char* stringConcat(char *destination, const char *source, size_t n)
+{
+  size_t m;
+
+  assert(n > 0);
+
+  if (destination != NULL)
+  {
+    m = strlen(destination);
+    if ((source != NULL) && (n > (m+1)))
+    {
+      strncat(destination,source,n-(m+1));
     }
   }
 
@@ -1547,7 +1579,7 @@ static inline const char* stringTrim(const char *string)
 *          ...    - optional arguments
 * Output : -
 * Return : destination string
-* Notes  : -
+* Notes  : string is always NULL or NUL-terminated
 \***********************************************************************/
 
 static inline char* stringFormat(char *string, size_t n, const char *format, ...)
@@ -1559,7 +1591,7 @@ static inline char* stringFormat(char *string, size_t n, const char *format, ...
   assert(format != NULL);
 
   va_start(arguments,format);
-  vsnprintf(string,n,format,arguments); string[n-1] = '\0';
+  vsnprintf(string,n-1,format,arguments); string[n-1] = '\0';
   va_end(arguments);
 
   return string;
@@ -1624,7 +1656,7 @@ void __halt(int        exitcode,
              __attribute__((format(printf,2,3)));
 #else /* not NDEBUG */
 void __halt(const char *__fileName__,
-            uint       __lineNb__,
+            ulong      __lineNb__,
             int        exitcode,
             const char *format,
             ...
@@ -1654,7 +1686,7 @@ void __abort(const char *prefix,
 
 #else /* not NDEBUG */
 void __abort(const char *__fileName__,
-             uint       __lineNb__,
+             ulong      __lineNb__,
              const char *prefix,
              const char *format,
              ...
@@ -1662,7 +1694,7 @@ void __abort(const char *__fileName__,
               __attribute__((format(printf,4,5)));
 #endif /* NDEBUG */
 void __abortAt(const char *fileName,
-             uint         lineNb,
+             ulong        lineNb,
              const char   *prefix,
              const char   *format,
              ...
@@ -1684,7 +1716,7 @@ void __abortAt(const char *fileName,
 \***********************************************************************/
 
 bool debugIsTestCodeEnabled(const char *__fileName__,
-                            uint       __lineNb__,
+                            ulong      __lineNb__,
                             const char *functionName,
                             uint       counter
                            );
@@ -1699,7 +1731,7 @@ bool debugIsTestCodeEnabled(const char *__fileName__,
 \***********************************************************************/
 
 Errors debugTestCodeError(const char *__fileName__,
-                          uint       __lineNb__
+                          ulong      __lineNb__
                          );
 
 /***********************************************************************\
@@ -1715,7 +1747,7 @@ Errors debugTestCodeError(const char *__fileName__,
 \***********************************************************************/
 
 void debugLocalResource(const char *__fileName__,
-                        uint       __lineNb__,
+                        ulong      __lineNb__,
                         const void *resource
                        ) ATTRIBUTE_NO_INSTRUMENT_FUNCTION;
 #endif /* not NDEBUG */
@@ -1734,7 +1766,7 @@ void debugLocalResource(const char *__fileName__,
 \***********************************************************************/
 
 void debugAddResourceTrace(const char *__fileName__,
-                           uint       __lineNb__,
+                           ulong      __lineNb__,
                            const char *typeName,
                            const void *resource,
                            uint       size
@@ -1752,7 +1784,7 @@ void debugAddResourceTrace(const char *__fileName__,
 \***********************************************************************/
 
 void debugRemoveResourceTrace(const char *__fileName__,
-                              uint       __lineNb__,
+                              ulong      __lineNb__,
                               const void *resource,
                               uint       size
                              );
@@ -1769,7 +1801,7 @@ void debugRemoveResourceTrace(const char *__fileName__,
 \***********************************************************************/
 
 void debugCheckResourceTrace(const char *__fileName__,
-                             uint       __lineNb__,
+                             ulong      __lineNb__,
                              const void *resource
                             );
 
