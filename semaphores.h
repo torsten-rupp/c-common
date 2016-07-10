@@ -115,6 +115,7 @@ typedef bool SemaphoreLock;
 * Input  : semaphoreLock     - lock flag variable (SemaphoreLock)
 *          semaphore         - semaphore
 *          semaphoreLockType - lock type; see SemaphoreLockTypes
+*          timeout           - timeout [ms] or NO_WAIT, WAIT_FOREVER
 * Output : -
 * Return : -
 * Notes  : usage:
@@ -127,8 +128,8 @@ typedef bool SemaphoreLock;
 *          semaphore must be unlocked manually if break is used!
 \***********************************************************************/
 
-#define SEMAPHORE_LOCKED_DO(semaphoreLock,semaphore,semaphoreLockType) \
-  for (semaphoreLock = Semaphore_lock(semaphore,semaphoreLockType,WAIT_FOREVER); \
+#define SEMAPHORE_LOCKED_DO(semaphoreLock,semaphore,semaphoreLockType,timeout) \
+  for (semaphoreLock = Semaphore_lock(semaphore,semaphoreLockType,timeout); \
        semaphoreLock; \
        Semaphore_unlock(semaphore), semaphoreLock = FALSE \
       )
@@ -302,6 +303,25 @@ void Semaphore_unlock(Semaphore *semaphore);
 #else /* not NDEBUG */
 void __Semaphore_unlock(const char *fileName, ulong lineNb, Semaphore *semaphore);
 #endif /* NDEBUG */
+
+/***********************************************************************\
+* Name   : Semaphore_lockCount
+* Purpose: get number locks (READ or READ/WRITE)
+* Input  : semaphore - semaphore
+* Output : -
+* Return : number of locks
+* Notes  : -
+\***********************************************************************/
+
+INLINE uint Semaphore_lockCount(Semaphore *semaphore);
+#if defined(NDEBUG) || defined(__SEMAPHORES_IMPLEMENATION__)
+INLINE uint Semaphore_lockCount(Semaphore *semaphore)
+{
+  assert(semaphore != NULL);
+
+  return semaphore->readLockCount+semaphore->readWriteLockCount;
+}
+#endif /* NDEBUG || __SEMAPHORES_IMPLEMENATION__ */
 
 /***********************************************************************\
 * Name   : Semaphore_isLocked
