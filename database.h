@@ -145,8 +145,8 @@ typedef struct DatabaseColumnNode
     String text;    // text
     struct
     {
-      const void *data;
-      ulong      length;
+      void  *data;
+      ulong length;
     }      blob;
   } value;
   bool          usedFlag;
@@ -334,6 +334,20 @@ Errors Database_setEnabledSync(DatabaseHandle *databaseHandle,
 Errors Database_setEnabledForeignKeys(DatabaseHandle *databaseHandle,
                                       bool           enabled
                                      );
+
+/***********************************************************************\
+* Name   : Database_compare
+* Purpose: compare database structure
+* Input  : databaseHandleReference - reference database handle
+*          databaseHandle          - database handle 1
+* Output : -
+* Return : ERROR_NONE or error code
+* Notes  : -
+\***********************************************************************/
+
+Errors Database_compare(DatabaseHandle *databaseHandleReference,
+                        DatabaseHandle *databaseHandle
+                       );
 
 /***********************************************************************\
 * Name   : Database_copyTable

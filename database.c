@@ -42,6 +42,7 @@
 #include "database.h"
 
 /****************** Conditional compilation switches *******************/
+#define DATABASE_SUPPORT_TRANSACTIONS
 
 /***************************** Constants *******************************/
 #if 1
@@ -836,12 +837,17 @@ LOCAL int busyHandlerCallback(void *userData, int n)
   assert(databaseHandle != NULL);
 
   #ifndef NDEBUG
-//    fprintf(stderr,"Warning: database busy handler called %s: %d\n",Thread_getCurrentIdString(),n);
+    if ((n > 60) && ((n % 60) == 0))
+    {
+      fprintf(stderr,"Warning: database busy handler called '%s' (%s): %d\n",Thread_getCurrentName(),Thread_getCurrentIdString(),n);
+    }
   #endif /* not NDEBUG */
 
   delay(SLEEP_TIME);
 
-  return ((databaseHandle->timeout == WAIT_FOREVER) || (n < databaseHandle->timeout)) ? 1 : 0;
+  if      (databaseHandle->timeout == WAIT_FOREVER) return 1;
+  else if (databaseHandle->timeout == NO_WAIT     ) return 0;
+  else                                              return ((n*SLEEP_TIME) < databaseHandle->timeout) ? 1 : 0;
 
   #undef SLEEP_TIME
 }
@@ -1118,8 +1124,10 @@ LOCAL void freeColumnNode(DatabaseColumnNode *columnNode, void *userData)
     case DATABASE_TYPE_FOREIGN_KEY:
       break;
     case DATABASE_TYPE_INT64:
+      String_delete(columnNode->value.i);
       break;
     case DATABASE_TYPE_DOUBLE:
+      String_delete(columnNode->value.d);
       break;
     case DATABASE_TYPE_DATETIME:
       break;
@@ -1127,8 +1135,12 @@ LOCAL void freeColumnNode(DatabaseColumnNode *columnNode, void *userData)
       String_delete(columnNode->value.text);
       break;
     case DATABASE_TYPE_BLOB:
-//TODO: blob
-      HALT_INTERNAL_ERROR_STILL_NOT_IMPLEMENTED();
+      if (columnNode->value.blob.data != NULL)
+      {
+        free(columnNode->value.blob.data);
+      }
+      break;
+    case DATABASE_TYPE_UNKNOWN:
       break;
     default:
       #ifndef NDEBUG
@@ -1137,6 +1149,50 @@ LOCAL void freeColumnNode(DatabaseColumnNode *columnNode, void *userData)
       break; // not reached
   }
   free(columnNode->name);
+}
+
+/***********************************************************************\
+* Name   : getTableList
+* Purpose: get table list
+* Input  : tableList      - table list variable
+*          databaseHandle - database handle
+* Output : tableList - table list
+* Return : ERROR_NONE or error code
+* Notes  : -
+\***********************************************************************/
+
+LOCAL Errors getTableList(StringList     *tableList,
+                          DatabaseHandle *databaseHandle
+                         )
+{
+  Errors              error;
+  DatabaseQueryHandle databaseQueryHandle1;
+  const char          *name;
+
+  assert(tableList != NULL);
+  assert(databaseHandle != NULL);
+
+  StringList_init(tableList);
+
+  error = Database_prepare(&databaseQueryHandle1,
+                           databaseHandle,
+                           "SELECT name FROM sqlite_master where type='table'"
+                          );
+  if (error != ERROR_NONE)
+  {
+    return error;
+  }
+  while (Database_getNextRow(&databaseQueryHandle1,
+                             "%p",
+                             &name
+                            )
+        )
+  {
+    StringList_appendCString(tableList,name);
+  }
+  Database_finalize(&databaseQueryHandle1);
+
+  return ERROR_NONE;
 }
 
 /***********************************************************************\
@@ -1162,6 +1218,7 @@ LOCAL Errors getTableColumnList(DatabaseColumnList *columnList,
   DatabaseColumnNode  *columnNode;
 
   assert(columnList != NULL);
+  assert(databaseHandle != NULL);
 
   List_init(columnList);
 
@@ -1227,7 +1284,7 @@ LOCAL Errors getTableColumnList(DatabaseColumnList *columnList,
     }
     else
     {
-      HALT_INTERNAL_ERROR("Unknown database data type '%s' for '%s'",type,name);
+      columnNode->type = DATABASE_TYPE_UNKNOWN;
     }
     columnNode->usedFlag = FALSE;
 
@@ -1310,6 +1367,9 @@ LOCAL const char *getDatabaseTypeString(DatabaseTypes type)
     case DATABASE_TYPE_BLOB:
       string = "BLOB";
       break;
+    case DATABASE_TYPE_UNKNOWN:
+      string = "unknown";
+      break;
     default:
       #ifndef NDEBUG
         HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
@@ -1382,10 +1442,18 @@ void Database_doneAll(void)
   #endif /* not NDEBUG */
 
   // create lock
-  if (!Semaphore_init(&databaseHandle->lock))
-  {
-    return ERRORX_(DATABASE,0,"create lock fail");
-  }
+  #ifdef NDEBUG
+    if (!Semaphore_init(&databaseHandle->lock))
+    {
+      return ERRORX_(DATABASE,0,"create lock fail");
+    }
+  #else /* not NDEBUG */
+    if (!__Semaphore_init(__fileName__,__lineNb__,_SEMAPHORE_NAME(&databaseHandle->lock),&databaseHandle->lock))
+    {
+      return ERRORX_(DATABASE,0,"create lock fail");
+    }
+  #endif /* NDEBUG */
+
   // create directory if needed
   if (fileName != NULL)
   {
@@ -1613,6 +1681,105 @@ Errors Database_setEnabledForeignKeys(DatabaseHandle *databaseHandle,
                           "PRAGMA foreign_keys=%s;",
                           enabled ? "ON" : "OFF"
                          );
+}
+
+Errors Database_compare(DatabaseHandle *databaseHandleReference,
+                        DatabaseHandle *databaseHandle
+                       )
+{
+  Errors             error;
+  StringList         tableListReference,tableList;
+  DatabaseColumnList columnListReference,columnList;
+  StringNode         *tableNameNodeReference,*tableNameNode;
+  String             tableNameReference,tableName;
+  DatabaseColumnNode *columnNodeReference,*columnNode;
+
+  assert(databaseHandleReference != NULL);
+  assert(databaseHandleReference->handle != NULL);
+  assert(databaseHandle != NULL);
+  assert(databaseHandle->handle != NULL);
+
+  // get table lists
+  error = getTableList(&tableListReference,databaseHandleReference);
+  if (error != ERROR_NONE)
+  {
+    return error;
+  }
+  error = getTableList(&tableList,databaseHandle);
+  if (error != ERROR_NONE)
+  {
+    StringList_done(&tableListReference);
+    return error;
+  }
+
+  // compare tables
+  STRINGLIST_ITERATEX(&tableListReference,tableNameNodeReference,tableNameReference,error == ERROR_NONE)
+  {
+    if (StringList_contain(&tableList,tableNameReference))
+    {
+      // get column lists
+      error = getTableColumnList(&columnListReference,databaseHandleReference,String_cString(tableNameReference));
+      if (error != ERROR_NONE)
+      {
+        break;
+      }
+      error = getTableColumnList(&columnList,databaseHandle,String_cString(tableNameReference));
+      if (error != ERROR_NONE)
+      {
+        freeTableColumnList(&columnListReference);
+        break;
+      }
+
+      // compare columns
+      LIST_ITERATEX(&columnListReference,columnNodeReference,error == ERROR_NONE)
+      {
+        columnNode = LIST_FIND(&columnList,columnNode,stringEquals(columnNodeReference->name,columnNode->name));
+        if (columnNode != NULL)
+        {
+          if (columnNodeReference->type != columnNode->type)
+          {
+            error = ERRORX_(DATABASE_TYPE_MISMATCH,0,columnNodeReference->name);
+          }
+        }
+        else
+        {
+          error = ERRORX_(DATABASE_MISSING_COLUMN,0,columnNodeReference->name);
+        }
+      }
+
+      // check for obsolete columns
+      LIST_ITERATEX(&columnList,columnNode,error == ERROR_NONE)
+      {
+        if (LIST_FIND(&columnListReference,columnNodeReference,stringEquals(columnNodeReference->name,columnNode->name)) == NULL)
+        {
+          error = ERRORX_(DATABASE_OBSOLETE_COLUMN,0,columnNode->name);
+        }
+      }
+
+      // free resources
+      freeTableColumnList(&columnList);
+      freeTableColumnList(&columnListReference);
+    }
+    else
+    {
+      error = ERRORX_(DATABASE_MISSING_TABLE,0,String_cString(tableNameReference));
+    }
+  }
+
+  // check for obsolete tables
+  STRINGLIST_ITERATEX(&tableList,tableNameNode,tableName,error == ERROR_NONE)
+  {
+    if (!StringList_contain(&tableListReference,tableName))
+    {
+      error = ERRORX_(DATABASE_OBSOLETE_TABLE,0,String_cString(tableName));
+    }
+  }
+
+  // free resources
+  StringList_done(&tableList);
+  StringList_done(&tableListReference);
+
+  return error;
 }
 
 Errors Database_copyTable(DatabaseHandle            *fromDatabaseHandle,
@@ -1965,6 +2132,7 @@ fprintf(stderr,"%s, %d: 4 %s %s\n",__FILE__,__LINE__,sqlite3_errmsg(toDatabaseHa
           case DATABASE_TYPE_DATETIME:
           case DATABASE_TYPE_TEXT:
           case DATABASE_TYPE_BLOB:
+          case DATABASE_TYPE_UNKNOWN:
             break;
           default:
             #ifndef NDEBUG
@@ -2303,8 +2471,12 @@ bool Database_setTableColumnListBlob(const DatabaseColumnList *columnList, const
   {
     assert(columnNode->type == DATABASE_TYPE_BLOB);
 HALT_INTERNAL_ERROR_STILL_NOT_IMPLEMENTED();
-    columnNode->value.blob.data   = data;
-    columnNode->value.blob.length = length;
+UNUSED_VARIABLE(data);
+UNUSED_VARIABLE(length);
+//    columnNode->value.blob.data   = data;
+//    columnNode->value.blob.length = length;
+    columnNode->value.blob.data   = NULL;
+    columnNode->value.blob.length = 0;
     columnNode->usedFlag = TRUE;
     return TRUE;
   }
@@ -2594,144 +2766,168 @@ Errors Database_removeColumn(DatabaseHandle *databaseHandle,
                                     )
 #endif /* NDEBUG */
 {
-  String sqlString;
-  Errors error;
+  #ifdef DATABASE_SUPPORT_TRANSACTIONS
+    String sqlString;
+    Errors error;
+  #endif /* DATABASE_SUPPORT_TRANSACTIONS */
 
   assert(databaseHandle != NULL);
   assert(databaseHandle->handle != NULL);
 
-  #ifndef NDEBUG
-    if (databaseHandle->transaction.fileName != NULL)
+  #ifdef DATABASE_SUPPORT_TRANSACTIONS
+    #ifndef NDEBUG
+      if (databaseHandle->transaction.fileName != NULL)
+      {
+        const char *name1,*name2;
+
+        name1 = Thread_getCurrentName();
+        name2 = Thread_getName(databaseHandle->transaction.threadId);
+        fprintf(stderr,"DEBUG ERROR: multiple transactions requested thread '%s' (%s) at %s, %u and previously thread '%s' (%s) at %s, %u!\n",
+                (name1 != NULL) ? name1 : "none",
+                Thread_getCurrentIdString(),
+                __fileName__,
+                __lineNb__,
+                (name2 != NULL) ? name2 : "none",
+                Thread_getIdString(databaseHandle->transaction.threadId),
+                databaseHandle->transaction.fileName,
+                databaseHandle->transaction.lineNb
+               );
+        #ifdef HAVE_BACKTRACE
+          debugDumpStackTrace(stderr,0,databaseHandle->transaction.stackTrace,databaseHandle->transaction.stackTraceSize,0);
+        #endif /* HAVE_BACKTRACE */
+        HALT_INTERNAL_ERROR("begin transactions fail");
+      }
+    #endif /* NDEBUG */
+
+    // format SQL command string
+    sqlString = String_format(String_new(),"BEGIN TRANSACTION;");
+
+    DATABASE_DEBUG_SQL(databaseHandle,sqlString);
+    error = sqliteExecute(databaseHandle,
+                          String_cString(sqlString),
+                          CALLBACK(NULL,NULL),
+                          databaseHandle->timeout
+                         );
+    if (error != ERROR_NONE)
     {
-      const char *name1,*name2;
-
-      name1 = Thread_getCurrentName();
-      name2 = Thread_getName(databaseHandle->transaction.threadId);
-      fprintf(stderr,"DEBUG ERROR: multiple transactions requested thread '%s' (%s) at %s, %u and previously thread '%s' (%s) at %s, %u!\n",
-              (name1 != NULL) ? name1 : "none",
-              Thread_getCurrentIdString(),
-              __fileName__,
-              __lineNb__,
-              (name2 != NULL) ? name2 : "none",
-              Thread_getIdString(databaseHandle->transaction.threadId),
-              databaseHandle->transaction.fileName,
-              databaseHandle->transaction.lineNb
-             );
-      #ifdef HAVE_BACKTRACE
-        debugDumpStackTrace(stderr,0,databaseHandle->transaction.stackTrace,databaseHandle->transaction.stackTraceSize,0);
-      #endif /* HAVE_BACKTRACE */
-      HALT_INTERNAL_ERROR("begin transactions fail");
+      String_delete(sqlString);
+      return error;
     }
-  #endif /* NDEBUG */
 
-  // format SQL command string
-  sqlString = String_format(String_new(),"BEGIN TRANSACTION;");
-
-  DATABASE_DEBUG_SQL(databaseHandle,sqlString);
-  error = sqliteExecute(databaseHandle,
-                        String_cString(sqlString),
-                        CALLBACK(NULL,NULL),
-                        databaseHandle->timeout
-                       );
-  if (error != ERROR_NONE)
-  {
+    // free resources
     String_delete(sqlString);
-    return error;
-  }
 
-  // free resources
-  String_delete(sqlString);
-
-  #ifndef NDEBUG
-    databaseHandle->transaction.threadId = Thread_getCurrentId();
-    databaseHandle->transaction.fileName = __fileName__;
-    databaseHandle->transaction.lineNb   = __lineNb__;
-    #ifdef HAVE_BACKTRACE
-      databaseHandle->transaction.stackTraceSize = backtrace((void*)databaseHandle->transaction.stackTrace,SIZE_OF_ARRAY(databaseHandle->transaction.stackTrace));
-    #endif /* HAVE_BACKTRACE */
-  #endif /* NDEBUG */
+    #ifndef NDEBUG
+      databaseHandle->transaction.threadId = Thread_getCurrentId();
+      databaseHandle->transaction.fileName = __fileName__;
+      databaseHandle->transaction.lineNb   = __lineNb__;
+      #ifdef HAVE_BACKTRACE
+        databaseHandle->transaction.stackTraceSize = backtrace((void*)databaseHandle->transaction.stackTrace,SIZE_OF_ARRAY(databaseHandle->transaction.stackTrace));
+      #endif /* HAVE_BACKTRACE */
+    #endif /* NDEBUG */
+  #else /* not DATABASE_SUPPORT_TRANSACTIONS */
+    #ifndef NDEBUG
+      UNUSED_VARIABLE(__fileName__);
+      UNUSED_VARIABLE(__lineNb__);
+    #endif
+    UNUSED_VARIABLE(databaseHandle);
+  #endif /* DATABASE_SUPPORT_TRANSACTIONS */
 
   return ERROR_NONE;
 }
 
 Errors Database_endTransaction(DatabaseHandle *databaseHandle)
 {
-  String sqlString;
-  Errors error;
+  #ifdef DATABASE_SUPPORT_TRANSACTIONS
+    String sqlString;
+    Errors error;
+  #endif /* DATABASE_SUPPORT_TRANSACTIONS */
 
   assert(databaseHandle != NULL);
   assert(databaseHandle->handle != NULL);
-  assert(databaseHandle->transaction.fileName != NULL);
 
-  #ifndef NDEBUG
-    databaseHandle->transaction.fileName = NULL;
-    databaseHandle->transaction.lineNb   = 0;
-    #ifdef HAVE_BACKTRACE
-      databaseHandle->transaction.stackTraceSize = 0;
-    #endif /* HAVE_BACKTRACE */
-  #endif /* NDEBUG */
+  #ifdef DATABASE_SUPPORT_TRANSACTIONS
+    assert(databaseHandle->transaction.fileName != NULL);
 
-  // format SQL command string
-  sqlString = String_format(String_new(),"END TRANSACTION;");
+    #ifndef NDEBUG
+      databaseHandle->transaction.fileName = NULL;
+      databaseHandle->transaction.lineNb   = 0;
+      #ifdef HAVE_BACKTRACE
+        databaseHandle->transaction.stackTraceSize = 0;
+      #endif /* HAVE_BACKTRACE */
+    #endif /* NDEBUG */
 
-  // end transaction
-  DATABASE_DEBUG_SQL(databaseHandle,sqlString);
-  error = sqliteExecute(databaseHandle,
-                        String_cString(sqlString),
-                        CALLBACK(NULL,NULL),
-                        databaseHandle->timeout
-                       );
-  if (error != ERROR_NONE)
-  {
+    // format SQL command string
+    sqlString = String_format(String_new(),"END TRANSACTION;");
+
+    // end transaction
+    DATABASE_DEBUG_SQL(databaseHandle,sqlString);
+    error = sqliteExecute(databaseHandle,
+                          String_cString(sqlString),
+                          CALLBACK(NULL,NULL),
+                          databaseHandle->timeout
+                         );
+    if (error != ERROR_NONE)
+    {
+      String_delete(sqlString);
+      return error;
+    }
+
+    // free resources
     String_delete(sqlString);
-    return error;
-  }
 
-  // free resources
-  String_delete(sqlString);
-
-  // try to execute checkpoint
-  sqlite3_wal_checkpoint(databaseHandle->handle,NULL);
+    // try to execute checkpoint
+//TODO
+//    sqlite3_wal_checkpoint(databaseHandle->handle,NULL);
+  #else /* not DATABASE_SUPPORT_TRANSACTIONS */
+    UNUSED_VARIABLE(databaseHandle);
+  #endif /* DATABASE_SUPPORT_TRANSACTIONS */
 
   return ERROR_NONE;
 }
 
 Errors Database_rollbackTransaction(DatabaseHandle *databaseHandle)
 {
-  String sqlString;
-  Errors error;
+  #ifdef DATABASE_SUPPORT_TRANSACTIONS
+    String sqlString;
+    Errors error;
+  #endif /* DATABASE_SUPPORT_TRANSACTIONS */
 
   assert(databaseHandle != NULL);
   assert(databaseHandle->handle != NULL);
-  assert(databaseHandle->transaction.fileName != NULL);
 
-fprintf(stderr,"%s, %d: Database_rollbackTransaction\n",__FILE__,__LINE__);
-  #ifndef NDEBUG
-    databaseHandle->transaction.fileName = NULL;
-    databaseHandle->transaction.lineNb   = 0;
-    #ifdef HAVE_BACKTRACE
-      databaseHandle->transaction.stackTraceSize = 0;
-    #endif /* HAVE_BACKTRACE */
-  #endif /* NDEBUG */
+  #ifdef DATABASE_SUPPORT_TRANSACTIONS
+    assert(databaseHandle->transaction.fileName != NULL);
 
-  // format SQL command string
-  sqlString = String_format(String_new(),"ROLLBACK TRANSACTION;");
+    #ifndef NDEBUG
+      databaseHandle->transaction.fileName = NULL;
+      databaseHandle->transaction.lineNb   = 0;
+      #ifdef HAVE_BACKTRACE
+        databaseHandle->transaction.stackTraceSize = 0;
+      #endif /* HAVE_BACKTRACE */
+    #endif /* NDEBUG */
 
-  // rollback transaction
-  DATABASE_DEBUG_SQL(databaseHandle,sqlString);
-  error = sqliteExecute(databaseHandle,
-                        String_cString(sqlString),
-                        CALLBACK(NULL,NULL),
-                        databaseHandle->timeout
-                       );
-  if (error != ERROR_NONE)
-  {
+    // format SQL command string
+    sqlString = String_format(String_new(),"ROLLBACK TRANSACTION;");
+
+    // rollback transaction
+    DATABASE_DEBUG_SQL(databaseHandle,sqlString);
+    error = sqliteExecute(databaseHandle,
+                          String_cString(sqlString),
+                          CALLBACK(NULL,NULL),
+                          databaseHandle->timeout
+                         );
+    if (error != ERROR_NONE)
+    {
+      String_delete(sqlString);
+      return error;
+    }
+
+    // free resources
     String_delete(sqlString);
-    return error;
-  }
-
-  // free resources
-  String_delete(sqlString);
+  #else /* not DATABASE_SUPPORT_TRANSACTIONS */
+    UNUSED_VARIABLE(databaseHandle);
+  #endif /* DATABASE_SUPPORT_TRANSACTIONS */
 
   return ERROR_NONE;
 }
