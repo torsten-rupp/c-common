@@ -1324,6 +1324,9 @@ LOCAL bool processValue(const ConfigValue *configValue,
     case CONFIG_VALUE_TYPE_END_SECTION:
       // nothing to do
       break;
+    case CONFIG_VALUE_TYPE_COMMENT:
+      // nothing to do
+      break;
     case CONFIG_VALUE_TYPE_END:
       // nothing to do
       break;
@@ -1676,7 +1679,9 @@ bool ConfigValue_parse(const char        *name,
   j = ConfigValue_lastValueIndex(configValues,sectionName);
   if (j < 0) return FALSE;
   while (   (i <= j)
-         && !stringEquals(configValues[i].name,name)
+         && (   (configValues[i].name == NULL)
+             || !stringEquals(configValues[i].name,name)
+            )
         )
   {
     i = ConfigValue_nextValueIndex(configValues,i);
@@ -1808,6 +1813,9 @@ void ConfigValue_formatInit(ConfigValueFormat      *configValueFormat,
     case CONFIG_VALUE_TYPE_END_SECTION:
       // nothing to do
       break;
+    case CONFIG_VALUE_TYPE_COMMENT:
+//TODO
+      break;
     case CONFIG_VALUE_TYPE_END:
       // nothing to do
       break;
@@ -1854,6 +1862,9 @@ void ConfigValue_formatDone(ConfigValueFormat *configValueFormat)
     case CONFIG_VALUE_TYPE_BEGIN_SECTION:
     case CONFIG_VALUE_TYPE_END_SECTION:
       // nothing to do
+      break;
+    case CONFIG_VALUE_TYPE_COMMENT:
+//TODO
       break;
     case CONFIG_VALUE_TYPE_END:
       // nothing to do
@@ -2349,6 +2360,9 @@ bool ConfigValue_format(ConfigValueFormat *configValueFormat,
       case CONFIG_VALUE_TYPE_END_SECTION:
         // nothing to do
         return FALSE;
+        break;
+      case CONFIG_VALUE_TYPE_COMMENT:
+//TODO
         break;
       case CONFIG_VALUE_TYPE_END:
         // nothing to do
