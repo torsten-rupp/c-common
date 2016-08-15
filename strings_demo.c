@@ -23,6 +23,7 @@
 /***************************** Datatypes *******************************/
 
 /***************************** Variables *******************************/
+String a[500000];
 
 /****************************** Macros *********************************/
 
@@ -46,7 +47,6 @@ int main(int argc, char *argv[])
   StringTokenizer stringTokenizer;
   ConstString     token;
   uint            u;
-  String          a[5000];
 
   UNUSED_VARIABLE(argc);
   UNUSED_VARIABLE(argv);
@@ -163,7 +163,7 @@ int main(int argc, char *argv[])
   w = String_new();
   String_setCString(s,"Hello 4711 we are 08.15");
   printf("String: %s\n",String_cString(s));
-  if (String_matchCString(s,STRING_BEGIN,".* ([0-7]+) .*are ([[:digit:]]+).*",NULL,NULL,t,w))
+  if (String_matchCString(s,STRING_BEGIN,".* ([0-7]+) .*are ([[:digit:]]+).*",NULL,NULL,t,w,NULL))
   {
     printf("Match result 1:\n");
     printf("group 1 [0-7]+=%s\n",String_cString(t));
@@ -234,14 +234,16 @@ int main(int argc, char *argv[])
   String_delete(s);
 
   // many strings
+  printf("Many strings..."); fflush(stdout);
   for (u = 0; u < SIZE_OF_ARRAY(a); u++)
   {
-    a[u] = String_newCString("Hello");
+    a[u] = String_format(String_new(),"Hello %d",u);
   }
   for (u = 0; u < SIZE_OF_ARRAY(a); u++)
   {
     String_delete(a[u]);
   }
+  printf("OK\n");
 
   // uncomment to see debug functions
 
@@ -275,7 +277,7 @@ int main(int argc, char *argv[])
   #endif /* 0 */
 
   #ifndef NDEBUG
-    String_debugPrintInfo();
+    String_debugPrintInfo(CALLBACK(NULL,NULL));
   #endif
 
   return 0;

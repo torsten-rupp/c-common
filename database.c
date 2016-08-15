@@ -59,6 +59,18 @@
 
 /***************************** Datatypes *******************************/
 
+typedef struct DatabaseHandleNode
+{
+  LIST_NODE_HEADER(struct DatabaseHandleNode);
+
+  DatabaseHandle *databaseHandle;
+} DatabaseHandleNode;
+
+typedef struct
+{
+  LIST_HEADER(DatabaseHandleNode);
+} DatabaseHandleList;
+
 // callback function
 typedef struct
 {
@@ -98,6 +110,14 @@ typedef union
 #endif /* not NDEBUG */
 
 /***************************** Variables *******************************/
+
+//TODO: remove
+#if 0
+LOCAL Semaphore          databaseRequestLock;
+LOCAL DatabaseHandleList databaseRequestList;
+LOCAL uint               databaseRequestHighestPiority;
+uint transactionCount = 0;
+#endif
 
 #ifndef NDEBUG
   LOCAL uint databaseDebugCounter = 0;
@@ -330,7 +350,7 @@ LOCAL int debugPrintQueryPlanCallback(void *userData, int argc, char *argv[], ch
 #endif
 
 /***********************************************************************\
-* Name   : Database_vformatSQLString
+* Name   : vformatSQLString
 * Purpose: format SQL string from command
 * Input  : sqlString - SQL string variable
 *          command   - command string with %[l]d, %S, %s
@@ -1386,6 +1406,13 @@ Errors Database_initAll(void)
 {
   int sqliteResult;
 
+//TODO: remove
+#if 0
+  Semaphore_init(&databaseRequestLock);
+  List_init(&databaseRequestList);
+  databaseRequestHighestPiority = DATABASE_PRIORITY_LOW;
+#endif
+
   sqliteResult = sqlite3_config(SQLITE_CONFIG_MULTITHREAD);
   if (sqliteResult != SQLITE_OK)
   {
@@ -1397,12 +1424,18 @@ Errors Database_initAll(void)
 
 void Database_doneAll(void)
 {
+//TODO: remove
+#if 0
+  List_done(&databaseRequestList,CALLBACK(NULL,NULL));
+  Semaphore_done(&databaseRequestLock);
+#endif
 }
 
 #ifdef NDEBUG
   Errors Database_open(DatabaseHandle    *databaseHandle,
                        const char        *fileName,
                        DatabaseOpenModes databaseOpenMode,
+                       uint              priority,
                        long              timeout
                       )
 #else /* not NDEBUG */
@@ -1411,6 +1444,7 @@ void Database_doneAll(void)
                          DatabaseHandle    *databaseHandle,
                          const char        *fileName,
                          DatabaseOpenModes databaseOpenMode,
+                         uint              priority,
                          long              timeout
                         )
 #endif /* NDEBUG */
@@ -1423,13 +1457,14 @@ void Database_doneAll(void)
   assert(databaseHandle != NULL);
 
   // init variables
+  databaseHandle->priority = priority;
 //TODO
 #if 0
-  databaseHandle->lock    = NULL;
+  databaseHandle->lock     = NULL;
 #else
 #endif
-  databaseHandle->handle  = NULL;
-  databaseHandle->timeout = timeout;
+  databaseHandle->handle   = NULL;
+  databaseHandle->timeout  = timeout;
   sem_init(&databaseHandle->wakeUp,0,0);
   #ifndef NDEBUG
     stringClear(databaseHandle->fileName);
@@ -1592,6 +1627,140 @@ void Database_doneAll(void)
   Semaphore_done(&databaseHandle->lock);
   sem_destroy(&databaseHandle->wakeUp);
 }
+
+//TODO: remove
+#if 0
+bool Database_isHigherRequestPending(uint priority)
+{
+  return databaseRequestHighestPiority > priority;
+}
+
+LOCAL void dumpRequest(const char *s,DatabaseHandle *databaseHandle)
+{
+  const DatabaseHandleNode *databaseHandleNode;
+fprintf(stderr,"%s, %d: dump request %s: transactionCount=%d my priority=%d databaseHandleHighestRequestPiority=%d list=%d\n",__FILE__,__LINE__,s,transactionCount,databaseHandle->priority,databaseRequestHighestPiority,List_count(&databaseRequestList));
+LIST_ITERATE(&databaseRequestList,databaseHandleNode)
+{
+  fprintf(stderr,"%s, %d:   %d %p\n",__FILE__,__LINE__,databaseHandleNode->databaseHandle->priority,databaseHandleNode->databaseHandle);
+}
+}
+
+bool Database_request(DatabaseHandle *databaseHandle, ulong timeout)
+{
+  SemaphoreLock            semaphoreLock;
+  DatabaseHandleNode       *databaseHandleNode;
+  const DatabaseHandleNode *nextDatabaseHandleNode;
+  uint64                   t;
+
+  assert(databaseHandle != NULL);
+
+  // insert request node, update highest request priority
+  SEMAPHORE_LOCKED_DO(semaphoreLock,&databaseRequestLock,SEMAPHORE_LOCK_TYPE_READ_WRITE,WAIT_FOREVER)
+  {
+    // allocate database handle node
+    databaseHandleNode = LIST_NEW_NODE(DatabaseHandleNode);
+    if (databaseHandleNode == NULL)
+    {
+      HALT_INSUFFICIENT_MEMORY();
+    }
+    databaseHandleNode->databaseHandle = databaseHandle;
+
+    // insert into request list
+    nextDatabaseHandleNode = databaseRequestList.head;
+    while ((nextDatabaseHandleNode != NULL) && (nextDatabaseHandleNode->databaseHandle->priority >= databaseHandle->priority))
+    {
+      nextDatabaseHandleNode = nextDatabaseHandleNode->next;
+    }
+    List_insert(&databaseRequestList,databaseHandleNode,nextDatabaseHandleNode);
+
+    // get new highest requested priority
+    databaseRequestHighestPiority = databaseRequestList.head->databaseHandle->priority;
+
+    // wait until own request is active (first in list)
+dumpRequest("after insert",databaseHandle);
+    t = Misc_getTimestamp();
+    while (   (databaseRequestList.head->databaseHandle != databaseHandle)
+//           && ((Misc_getTimestamp()-t)/1000LL > timeout)
+          )
+    {
+fprintf(stderr,"%s, %d: request wait my=%d hi=%d list=%d\n",__FILE__,__LINE__,databaseHandle->priority, databaseRequestHighestPiority, List_count(&databaseRequestList) );
+      Semaphore_waitModified(&databaseRequestLock,WAIT_FOREVER);
+    }
+    if (databaseRequestList.head->databaseHandle != databaseHandle)
+    {
+      List_remove(&databaseRequestList,databaseHandleNode);
+      LIST_DELETE_NODE(databaseHandleNode);
+      databaseRequestHighestPiority = !List_isEmpty(&databaseRequestList)
+                                        ? databaseRequestList.head->databaseHandle->priority
+                                        : DATABASE_PRIORITY_LOW;
+dumpRequest("FAIL",databaseHandle);
+      Semaphore_unlock(&databaseRequestLock);
+      return FALSE;
+    }
+
+dumpRequest("request done",databaseHandle);
+  }
+
+  return TRUE;
+}
+
+void Database_release(DatabaseHandle *databaseHandle)
+{
+  SemaphoreLock      semaphoreLock;
+  DatabaseHandleNode *databaseHandleNode;
+
+  assert(databaseHandle != NULL);
+
+  // remove request node, update highest request priority
+  SEMAPHORE_LOCKED_DO(semaphoreLock,&databaseRequestLock,SEMAPHORE_LOCK_TYPE_READ_WRITE,WAIT_FOREVER)
+  {
+    // remove from request list
+    databaseHandleNode = databaseRequestList.head;
+    while ((databaseHandleNode != NULL) && (databaseHandleNode->databaseHandle != databaseHandle))
+    {
+      databaseHandleNode = databaseHandleNode->next;
+    }
+    assert(databaseHandleNode != NULL);
+    List_remove(&databaseRequestList,databaseHandleNode);
+    LIST_DELETE_NODE(databaseHandleNode);
+
+    // get new highest requested priority
+    databaseRequestHighestPiority = !List_isEmpty(&databaseRequestList)
+                                      ? databaseRequestList.head->databaseHandle->priority
+                                      : DATABASE_PRIORITY_LOW;
+
+dumpRequest("after release",databaseHandle);
+  }
+}
+
+void Database_yield(DatabaseHandle *databaseHandle, void(*yieldStart)(void*), void *userDataStart, void(*yieldEnd)(void*), void *userDataEnd)
+{
+  SemaphoreLock semaphoreLock;
+
+  assert(databaseHandle != NULL);
+
+  if (databaseRequestHighestPiority > databaseHandle->priority)
+  {
+    // call yield start code
+    if (yieldStart != NULL) yieldStart(userDataStart);
+
+    SEMAPHORE_LOCKED_DO(semaphoreLock,&databaseRequestLock,SEMAPHORE_LOCK_TYPE_READ,WAIT_FOREVER)
+    {
+      assert(databaseRequestList.head->databaseHandle != databaseHandle);
+      do
+      {
+dumpRequest("yield",databaseHandle);
+//      Semaphore_waitModified(&databaseRequest,WAIT_FOREVER);
+        Semaphore_waitModified(&databaseRequestLock,WAIT_FOREVER);
+      }
+      while (databaseRequestList.head->databaseHandle != databaseHandle);
+    }
+
+    // call yield end code
+    if (yieldEnd != NULL) yieldEnd(userDataEnd);
+  }
+}
+#endif
 
 #ifdef NDEBUG
   void Database_lock(DatabaseHandle *databaseHandle)
@@ -1782,16 +1951,18 @@ Errors Database_compare(DatabaseHandle *databaseHandleReference,
   return error;
 }
 
-Errors Database_copyTable(DatabaseHandle            *fromDatabaseHandle,
-                          DatabaseHandle            *toDatabaseHandle,
-                          const char                *fromTableName,
-                          const char                *toTableName,
-                          bool                      transactionFlag,
-                          DatabaseCopyTableFunction preCopyTableFunction,
-                          void                      *preCopyTableUserData,
-                          DatabaseCopyTableFunction postCopyTableFunction,
-                          void                      *postCopyTableUserData,
-                          const char                *fromAdditional,
+Errors Database_copyTable(DatabaseHandle                *fromDatabaseHandle,
+                          DatabaseHandle                *toDatabaseHandle,
+                          const char                    *fromTableName,
+                          const char                    *toTableName,
+                          bool                          transactionFlag,
+                          DatabaseCopyTableFunction     preCopyTableFunction,
+                          void                          *preCopyTableUserData,
+                          DatabaseCopyTableFunction     postCopyTableFunction,
+                          void                          *postCopyTableUserData,
+                          DatabasePauseCallbackFunction pauseCallbackFunction,
+                          void                          *pauseCallbackUserData,
+                          const char                    *fromAdditional,
                           ...
                          )
 {
@@ -1822,11 +1993,22 @@ ulong xxx=0;
   {
     return error;
   }
+  if (List_isEmpty(&fromColumnList))
+  {
+    freeTableColumnList(&fromColumnList);
+    return ERRORX_(DATABASE_MISSING_TABLE,0,fromTableName);
+  }
   error = getTableColumnList(&toColumnList,toDatabaseHandle,toTableName);
   if (error != ERROR_NONE)
   {
     freeTableColumnList(&fromColumnList);
     return error;
+  }
+  if (List_isEmpty(&toColumnList))
+  {
+    freeTableColumnList(&toColumnList);
+    freeTableColumnList(&fromColumnList);
+    return ERRORX_(DATABASE_MISSING_TABLE,0,toTableName);
   }
 
   // create SQL select statement string
@@ -1864,7 +2046,7 @@ ulong xxx=0;
   {
     Errors error;
 
-#if 1
+    // begin transaction
     if (transactionFlag)
     {
       error = Database_beginTransaction(toDatabaseHandle);
@@ -1873,7 +2055,6 @@ ulong xxx=0;
         return error;
       }
     }
-#endif
 
     // create select statement
     sqliteResult = sqlite3_prepare_v2(fromDatabaseHandle->handle,
@@ -1916,7 +2097,6 @@ xxx++;
       {
         columnNode->usedFlag = FALSE;
       }
-//      sqlite3_reset(toStatementHandle);
 
       // get from values, set in toColumnList
       n = 0;
@@ -1997,8 +2177,6 @@ xxx++;
         });
         if (error != ERROR_NONE)
         {
-fprintf(stderr,"%s, %d: 2\n",__FILE__,__LINE__);
-//          sqlite3_finalize(toStatementHandle);
           sqlite3_finalize(fromStatementHandle);
           if (transactionFlag)
           {
@@ -2080,7 +2258,7 @@ fprintf(stderr,"%s, %d: 2\n",__FILE__,__LINE__);
               // can not be set
               break;
             case DATABASE_TYPE_INT64:
-  //fprintf(stderr,"%s, %d: DATABASE_TYPE_INT64 %d %s: %s %d\n",__FILE__,__LINE__,n,columnNode->name,String_cString(columnNode->value.i),sqlite3_column_type(fromStatementHandle,n));
+//fprintf(stderr,"%s, %d: DATABASE_TYPE_INT64 %d %s: %s %d\n",__FILE__,__LINE__,n,columnNode->name,String_cString(columnNode->value.i),sqlite3_column_type(fromStatementHandle,n));
               sqlite3_bind_text(toStatementHandle,n,String_cString(columnNode->value.i),-1,NULL);
               break;
             case DATABASE_TYPE_DOUBLE:
@@ -2090,7 +2268,7 @@ fprintf(stderr,"%s, %d: 2\n",__FILE__,__LINE__);
               sqlite3_bind_text(toStatementHandle,n,String_cString(columnNode->value.i),-1,NULL);
               break;
             case DATABASE_TYPE_TEXT:
-  //fprintf(stderr,"%s, %d: DATABASE_TYPE_TEXT %d %s: %s\n",__FILE__,__LINE__,n,columnNode->name,String_cString(columnNode->value.text));
+//fprintf(stderr,"%s, %d: DATABASE_TYPE_TEXT %d %s: %s\n",__FILE__,__LINE__,n,columnNode->name,String_cString(columnNode->value.text));
               sqlite3_bind_text(toStatementHandle,n,String_cString(columnNode->value.text),-1,NULL);
               break;
             case DATABASE_TYPE_BLOB:
@@ -2109,7 +2287,7 @@ fprintf(stderr,"%s, %d: 2\n",__FILE__,__LINE__);
       // insert row
       if (sqliteStep(toDatabaseHandle->handle,toStatementHandle,toDatabaseHandle->timeout) != SQLITE_DONE)
       {
-fprintf(stderr,"%s, %d: 4 %s %s\n",__FILE__,__LINE__,sqlite3_errmsg(toDatabaseHandle->handle),String_cString(sqlInsertString));
+//fprintf(stderr,"%s, %d: 4 %s %s\n",__FILE__,__LINE__,sqlite3_errmsg(toDatabaseHandle->handle),String_cString(sqlInsertString));
         error = ERRORX_(DATABASE,sqlite3_errcode(toDatabaseHandle->handle),"%s: %s",sqlite3_errmsg(toDatabaseHandle->handle),String_cString(sqlInsertString));
         sqlite3_finalize(toStatementHandle);
         sqlite3_finalize(fromStatementHandle);
@@ -2156,8 +2334,6 @@ fprintf(stderr,"%s, %d: 4 %s %s\n",__FILE__,__LINE__,sqlite3_errmsg(toDatabaseHa
         });
         if (error != ERROR_NONE)
         {
-fprintf(stderr,"%s, %d: 5\n",__FILE__,__LINE__);
-//          sqlite3_finalize(toStatementHandle);
           sqlite3_finalize(fromStatementHandle);
           if (transactionFlag)
           {
@@ -2166,23 +2342,54 @@ fprintf(stderr,"%s, %d: 5\n",__FILE__,__LINE__);
           return error;
         }
       }
+
+      // pause
+      if ((pauseCallbackFunction != NULL) && pauseCallbackFunction(pauseCallbackUserData))
+      {
+        // end transaction
+        if (transactionFlag)
+        {
+          error = Database_endTransaction(toDatabaseHandle);
+          if (error != ERROR_NONE)
+          {
+            sqlite3_finalize(fromStatementHandle);
+            return error;
+          }
+        }
+
+        // wait
+        do
+        {
+          Misc_udelay(10LL*US_PER_SECOND);
+        }
+        while (pauseCallbackFunction(pauseCallbackUserData));
+
+        // begin transaction
+        if (transactionFlag)
+        {
+          error = Database_beginTransaction(toDatabaseHandle);
+          if (error != ERROR_NONE)
+          {
+            sqlite3_finalize(fromStatementHandle);
+            return error;
+          }
+        }
+
+      }
     }
 
-#if 1
+    // end transaction
     if (transactionFlag)
     {
       error = Database_endTransaction(toDatabaseHandle);
       if (error != ERROR_NONE)
       {
-//        sqlite3_finalize(toStatementHandle);
         sqlite3_finalize(fromStatementHandle);
         return error;
       }
     }
-#endif
 
     // free resources
-//    sqlite3_finalize(toStatementHandle);
     sqlite3_finalize(fromStatementHandle);
 
 if (xxx > 0)

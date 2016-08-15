@@ -108,11 +108,12 @@ LOCAL void debugThreadStackTraceAddThread(ThreadId threadId)
 {
   pthread_mutex_lock(&debugThreadStackTraceThreadLock);
   {
-    assert(debugThreadStackTraceThreadCount < SIZE_OF_ARRAY(debugThreadStackTraceThreads));
-
-    debugThreadStackTraceThreads[debugThreadStackTraceThreadCount].id   = threadId;
-    debugThreadStackTraceThreads[debugThreadStackTraceThreadCount].name = NULL;
-    debugThreadStackTraceThreadCount++;
+    if (debugThreadStackTraceThreadCount < SIZE_OF_ARRAY(debugThreadStackTraceThreads))
+    {
+      debugThreadStackTraceThreads[debugThreadStackTraceThreadCount].id   = threadId;
+      debugThreadStackTraceThreads[debugThreadStackTraceThreadCount].name = NULL;
+      debugThreadStackTraceThreadCount++;
+    }
   }
   pthread_mutex_unlock(&debugThreadStackTraceThreadLock);
 }
@@ -836,7 +837,7 @@ void Thread_doneLocalVariable(ThreadLocalStorage *threadLocalStorage, ThreadLoca
   {
     while (!List_isEmpty(&threadLocalStorage->instanceList))
     {
-      threadLocalStorageInstanceNode = (ThreadLocalStorageInstanceNode*)List_getFirst(&threadLocalStorage->instanceList);
+      threadLocalStorageInstanceNode = (ThreadLocalStorageInstanceNode*)List_removeFirst(&threadLocalStorage->instanceList);
       if (threadLocalStorageFreeFunction != NULL) threadLocalStorageFreeFunction(threadLocalStorageInstanceNode->p,threadLocalStorageFreeUserData);
       LIST_DELETE_NODE(threadLocalStorageInstanceNode);
     }

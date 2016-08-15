@@ -255,7 +255,8 @@ LOCAL void fileCheckValid(const char       *fileName,
   }
   pthread_mutex_unlock(&debugFileLock);
 
-  assert(((fileHandle->mode & FILE_STREAM) == FILE_STREAM) || (fileHandle->index == (uint64)FTELL(fileHandle->file)));
+  // Note: real file index may be different, because of buffer in stream object
+  // assert(((fileHandle->mode & FILE_STREAM) == FILE_STREAM) || (fileHandle->index == (uint64)FTELL(fileHandle->file)));
 }
 #endif /* NDEBUG */
 
@@ -424,7 +425,6 @@ LOCAL Errors initFileHandle(const char  *__fileName__,
     fileHandle->deleteOnCloseFlag = FALSE;
   #endif /* not NDEBUG */
   StringList_init(&fileHandle->lineBufferList);
-  assert((((fileHandle->mode & FILE_STREAM) == FILE_STREAM) || fileHandle->index == (uint64)FTELL(fileHandle->file)));
 
   #ifndef NDEBUG
     pthread_once(&debugFileInitFlag,debugFileInit);
@@ -564,7 +564,7 @@ LOCAL void doneFileHandle(const char  *__fileName__,
         // shorten closed list
         while (debugClosedFileList.count > DEBUG_MAX_CLOSED_LIST)
         {
-          debugFileNode = (DebugFileNode*)List_getFirst(&debugClosedFileList);
+          debugFileNode = (DebugFileNode*)List_removeFirst(&debugClosedFileList);
           LIST_DELETE_NODE(debugFileNode);
         }
       }
@@ -2015,7 +2015,8 @@ Errors File_write(FileHandle *fileHandle,
   if (n > 0)
   {
     fileHandle->index += (uint64)n;
-    assert(((fileHandle->mode & FILE_STREAM) == FILE_STREAM) || (fileHandle->index == (uint64)FTELL(fileHandle->file)));
+    // Note: real file index may be different, because of buffer in stream object
+    // assert(((fileHandle->mode & FILE_STREAM) == FILE_STREAM) || (fileHandle->index == (uint64)FTELL(fileHandle->file)));
   }
   if (fileHandle->index > fileHandle->size) fileHandle->size = fileHandle->index;
   if (n != (ssize_t)bufferLength)
@@ -2083,7 +2084,7 @@ Errors File_readLine(FileHandle *fileHandle,
   }
   else
   {
-    StringList_getLast(&fileHandle->lineBufferList,line);
+    StringList_removeLast(&fileHandle->lineBufferList,line);
   }
 
   return ERROR_NONE;
@@ -2246,7 +2247,7 @@ bool File_getLine(FileHandle *fileHandle,
     else
     {
       // get next line from line buffer
-      StringList_getLast(&fileHandle->lineBufferList,line);
+      StringList_removeLast(&fileHandle->lineBufferList,line);
     }
     if (lineNb != NULL) (*lineNb)++;
 
@@ -2292,7 +2293,8 @@ Errors File_tell(const FileHandle *fileHandle, uint64 *offset)
   {
     return ERRORX_(IO_ERROR,errno,"%s",String_cString(fileHandle->name));
   }
-  assert(fileHandle->index == (uint64)n);
+  // Note: real file index may be different, because of buffer in stream object
+  // assert(fileHandle->index == (uint64)n);
 
   (*offset) = fileHandle->index;
 
@@ -2311,6 +2313,7 @@ Errors File_seek(FileHandle *fileHandle,
   }
   fileHandle->index = offset;
   assert(fileHandle->index == (uint64)FTELL(fileHandle->file));
+  if (fileHandle->index > fileHandle->size) fileHandle->size = fileHandle->index;
 
   return ERROR_NONE;
 }
@@ -3145,7 +3148,7 @@ Errors File_deleteCString(const char *fileName, bool recursiveFlag)
       name = File_newFileName();
       while (!StringList_isEmpty(&directoryList) && (error == ERROR_NONE))
       {
-        StringList_getFirst(&directoryList,directoryName);
+        StringList_removeFirst(&directoryList,directoryName);
 
         dir = opendir(String_cString(directoryName));
         if (dir != NULL)
