@@ -33,9 +33,7 @@
 #ifdef HAVE_SYS_IOCTL_H
   #include <sys/ioctl.h>
 #endif /* HAVE_SYS_IOCTL_H */
-#ifdef HAVE_SYS_SELECT_H
-  #include <sys/select.h>
-#endif /* HAVE_SYS_SELECT_H */
+#include <poll.h>
 #include <signal.h>
 #ifdef HAVE_SSH2
   #include <openssl/crypto.h>
@@ -61,11 +59,14 @@
 #include "misc.h"
 #include "errors.h"
 
+#include "bar.h"
 #include "passwords.h"
 
 #include "network.h"
 
 /****************** Conditional compilation switches *******************/
+
+#define _GNUTLS_DEBUG     // enable for GNU TLS debug output
 
 /***************************** Constants *******************************/
 #ifdef HAVE_GNU_TLS
@@ -98,7 +99,12 @@
   extern "C" {
 #endif
 
-//void tlslog(int level, char *s) { fprintf(stderr,"%s,%d: %d %s",__FILE__,__LINE__,level,s); }
+#ifdef GNUTLS_DEBUG
+LOCAL void gnuTLSLog(int level, char *s)
+{
+  fprintf(stderr,"DEBUG GNU TLS %d: %s",level,s);
+}
+#endif /* GNUTLS_DEBUG */
 
 #ifdef HAVE_SSH2
 /***********************************************************************\
@@ -154,32 +160,119 @@ LOCAL void cryptoLockingCallback(int mode, int n, const char *fileName, int line
 #endif /* HAVE_SSH2 */
 
 #ifdef HAVE_GNU_TLS
+
+/***********************************************************************\
+* Name   : validateCertificate
+* Purpose: valciate SSL certificate
+* Input  : cert       - TLS cerificate or NULL
+*          certLength - TSL cerificate data length
+* Output : -
+* Return : ERROR_NONE if certificate is valid or error code
+* Notes  : -
+\***********************************************************************/
+
+LOCAL Errors validateCertificate(const void *certData,
+                                 uint       certLength
+                                )
+{
+  gnutls_x509_crt_t cert;
+  gnutls_datum_t    datum;
+  time_t            certActivationTime,certExpireTime;
+  char              buffer[64];
+
+  // check if certificate is valid
+  if (gnutls_x509_crt_init(&cert) != GNUTLS_E_SUCCESS)
+  {
+    return ERROR_INVALID_TLS_CERTIFICATE;
+  }
+  datum.data = (void*)certData;
+  datum.size = certLength;
+  if (gnutls_x509_crt_import(cert,&datum,GNUTLS_X509_FMT_PEM) != GNUTLS_E_SUCCESS)
+  {
+    gnutls_x509_crt_deinit(cert);
+    return ERROR_INVALID_TLS_CERTIFICATE;
+  }
+  certActivationTime = gnutls_x509_crt_get_activation_time(cert);
+  if (certActivationTime != (time_t)(-1))
+  {
+    if (time(NULL) < certActivationTime)
+    {
+      gnutls_x509_crt_deinit(cert);
+      return ERRORX_(TLS_CERTIFICATE_NOT_ACTIVE,0,"%s",Misc_formatDateTimeCString(buffer,sizeof(buffer),(uint64)certActivationTime,DATE_TIME_FORMAT_LOCALE));
+    }
+  }
+  certExpireTime = gnutls_x509_crt_get_expiration_time(cert);
+  if (certExpireTime != (time_t)(-1))
+  {
+    if (time(NULL) > certExpireTime)
+    {
+      gnutls_x509_crt_deinit(cert);
+      return ERRORX_(TLS_CERTIFICATE_EXPIRED,0,"%s",Misc_formatDateTimeCString(buffer,sizeof(buffer),(uint64)certExpireTime,DATE_TIME_FORMAT_LOCALE));
+    }
+  }
+#if 0
+NYI: how to do certificate verification?
+gnutls_x509_crt_t ca;
+gnutls_x509_crt_init(&ca);
+data=Xread_file("/etc/ssl/certs/bar-ca.pem",&size);
+d.data=data,d.size=size;
+fprintf(stderr,"%s,%d: import=%d\n",__FILE__,__LINE__,gnutls_x509_crt_import(ca,&d,GNUTLS_X509_FMT_PEM));
+
+  if (gnutls_x509_crt_verify(cert,&ca,1,0,&verify));
+
+or
+
+  result = gnutls_certificate_set_x509_trust_file(serverSocketHandle->gnuTLSCredentials,
+                                                  caFileName,
+                                                  GNUTLS_X509_FMT_PEM
+                                                 );
+  if (result < 0)
+  {
+    gnutls_certificate_free_credentials(serverSocketHandle->gnuTLSCredentials);
+    return ERROR_INVALID_TLS_CA;
+  }
+#endif /* 0 */
+  gnutls_x509_crt_deinit(cert);
+
+  return ERROR_NONE;
+}
+
 /***********************************************************************\
 * Name   : initSSL
 * Purpose: init SSL encryption on socket
 * Input  : socketHandle - socket handle
-*          caFileName   - file with TLS CA
-*          certFileName - file with TLS cerificate
-*          keyFileName  - file with TLS key
+*          caData       - TLS CA data or NULL
+*          caLength     - TSL CA data length
+*          cert         - TLS cerificate or NULL
+*          certLength   - TSL cerificate data length
+*          key          - TLS key or NULL
+*          keyLength    - TSL key data length
 * Output : -
 * Return : ERROR_NONE or error code
 * Notes  : -
 \***********************************************************************/
 
 LOCAL Errors initSSL(SocketHandle *socketHandle,
-                     const char   *caFileName,
-                     const char   *certFileName,
-                     const char   *keyFileName
+                     const void   *caData,
+                     uint         caDataLength,
+                     const void   *certData,
+                     uint         certLength,
+                     const void   *keyData,
+                     uint         keyLength
                     )
 {
-  int result;
+  gnutls_datum_t caDatum,certDatum,keyDatum;
+  int            result;
 
   assert(socketHandle != NULL);
-  assert(caFileName != NULL);
-  assert(certFileName != NULL);
-  assert(keyFileName != NULL);
+//TODO
+//  assert(caData != NULL);
+//  assert(certData != NULL);
+//  assert(keyData != NULL);
 
-UNUSED_VARIABLE(caFileName);
+UNUSED_VARIABLE(caDatum);
+UNUSED_VARIABLE(caData);
+UNUSED_VARIABLE(caDataLength);
 
   // init certificate and key
   if (gnutls_certificate_allocate_credentials(&socketHandle->gnuTLS.credentials) != GNUTLS_E_SUCCESS)
@@ -187,12 +280,35 @@ UNUSED_VARIABLE(caFileName);
     return ERROR_INIT_TLS;
   }
 
+#if 0
   result = gnutls_certificate_set_x509_key_file(socketHandle->gnuTLS.credentials,
-                                                certFileName,
-                                                keyFileName,
+                                                "/tmp/bar-server-cert.pem",
+                                                "/tmp/bar-server-key.pem",
                                                 GNUTLS_X509_FMT_PEM
                                                );
-  if (result < 0)
+#elif 0
+  result = gnutls_certificate_set_x509_key_file(socketHandle->gnuTLS.credentials,
+                                                "/tmp/x509-server.pem",
+                                                "/tmp/x509-server-key.pem",
+                                                GNUTLS_X509_FMT_PEM
+                                               );
+#else
+  #ifdef GNUTLS_DEBUG
+    fprintf(stderr,"DEBUG GNU TLS: certificate: ");write(2,certData,certLength);fprintf(stderr,"\n");
+    fprintf(stderr,"DEBUG GNU TLS: key:");write(2,keyData,keyLength);fprintf(stderr,"\n");
+  #endif /* GNUTLS_DEBUG */
+
+  certDatum.data = (void*)certData;
+  certDatum.size = certLength;
+  keyDatum.data  = (void*)keyData;
+  keyDatum.size  = keyLength;
+  result = gnutls_certificate_set_x509_key_mem(socketHandle->gnuTLS.credentials,
+                                               &certDatum,
+                                               &keyDatum,
+                                               GNUTLS_X509_FMT_PEM
+                                              );
+#endif
+  if (result != GNUTLS_E_SUCCESS)
   {
     gnutls_certificate_free_credentials(socketHandle->gnuTLS.credentials);
     return ERROR_INVALID_TLS_CERTIFICATE;
@@ -200,7 +316,7 @@ UNUSED_VARIABLE(caFileName);
 
   gnutls_dh_params_init(&socketHandle->gnuTLS.dhParams);
   result = gnutls_dh_params_generate2(socketHandle->gnuTLS.dhParams,DH_BITS);
-  if (result < 0)
+  if (result != GNUTLS_E_SUCCESS)
   {
     gnutls_dh_params_deinit(socketHandle->gnuTLS.dhParams);
     gnutls_certificate_free_credentials(socketHandle->gnuTLS.credentials);
@@ -251,8 +367,13 @@ NYI: how to do certificate verification?
                           );
 
   // do handshake
-  result = gnutls_handshake(socketHandle->gnuTLS.session);
-  if (result < 0)
+  gnutls_transport_set_int(socketHandle->gnuTLS.session, socketHandle->handle);
+  do
+  {
+    result = gnutls_handshake(socketHandle->gnuTLS.session);
+  }
+  while ((result < 0) && gnutls_error_is_fatal(result) == 0);
+  if (result != GNUTLS_E_SUCCESS)
   {
     gnutls_deinit(socketHandle->gnuTLS.session);
     gnutls_dh_params_deinit(socketHandle->gnuTLS.dhParams);
@@ -263,7 +384,7 @@ NYI: how to do certificate verification?
 #if 0
 NYI: how to enable client authentication?
   result = gnutls_certificate_verify_peers2(socketHandle->gnuTLS.session,&status);
-  if (result < 0)
+  if (result != GNUTLS_E_SUCCESS)
   {
     gnutls_deinit(socketHandle->gnuTLS.session);
     gnutls_dh_params_deinit(socketHandle->gnuTLS.dhParams);
@@ -312,8 +433,10 @@ Errors Network_initAll(void)
   #endif /* HAVE_GCRYPT */
   #ifdef HAVE_GNU_TLS
     gnutls_global_init();
-//gnutls_global_set_log_level(10);
-//gnutls_global_set_log_function(tlslog);
+    #ifdef GNUTLS_DEBUG
+      gnutls_global_set_log_level(10);
+      gnutls_global_set_log_function(tlslog);
+    #endif /* GNUTLS_DEBUG */
   #endif /* HAVE_GNU_TLS */
 
   #ifdef HAVE_SIGPIP
@@ -513,6 +636,9 @@ Errors Network_connect(SocketHandle *socketHandle,
         }
       }
       break;
+    case SOCKET_TYPE_TLS:
+      return ERROR_FUNCTION_NOT_SUPPORTED;
+      break;
     case SOCKET_TYPE_SSH:
       #ifdef HAVE_SSH2
       {
@@ -593,7 +719,8 @@ Errors Network_connect(SocketHandle *socketHandle,
           return error;
         }
 
-        // init session
+        // init SSL session
+#if 1
         socketHandle->ssh2.session = libssh2_session_init();
         if (socketHandle->ssh2.session == NULL)
         {
@@ -689,7 +816,16 @@ Errors Network_connect(SocketHandle *socketHandle,
           return error;
         }
 #endif /* 0 */
-
+#else
+        error = Network_startSSLSession(socketHandle,
+                                        loginName,
+                                        password,
+                                        sshPublicKeyData,
+                                        sshPublicKeyLength,
+                                        sshPrivateKeyData,
+                                        sshPrivateKeyLength
+                                       );
+#endif
         if ((flags & SOCKET_FLAG_NON_BLOCKING) != 0)
         {
           // enable non-blocking
@@ -714,9 +850,6 @@ Errors Network_connect(SocketHandle *socketHandle,
         return ERROR_FUNCTION_NOT_SUPPORTED;
       #endif /* HAVE_SSH2 */
       break;
-    case SOCKET_TYPE_TLS:
-      return ERROR_FUNCTION_NOT_SUPPORTED;
-      break;
     #ifndef NDEBUG
       default:
         HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
@@ -736,14 +869,6 @@ void Network_disconnect(SocketHandle *socketHandle)
   {
     case SOCKET_TYPE_PLAIN:
       break;
-    case SOCKET_TYPE_SSH:
-      #ifdef HAVE_SSH2
-        libssh2_session_disconnect(socketHandle->ssh2.session,"");
-        libssh2_session_free(socketHandle->ssh2.session);
-        Misc_udelay(1000*1000);
-      #else /* not HAVE_SSH2 */
-      #endif /* HAVE_SSH2 */
-      break;
     case SOCKET_TYPE_TLS:
       #ifdef HAVE_GNU_TLS
         gnutls_deinit(socketHandle->gnuTLS.session);
@@ -751,6 +876,14 @@ void Network_disconnect(SocketHandle *socketHandle)
         gnutls_certificate_free_credentials(socketHandle->gnuTLS.credentials);
       #else /* not HAVE_GNU_TLS */
       #endif /* HAVE_GNU_TLS */
+      break;
+    case SOCKET_TYPE_SSH:
+      #ifdef HAVE_SSH2
+        libssh2_session_disconnect(socketHandle->ssh2.session,"");
+        libssh2_session_free(socketHandle->ssh2.session);
+        Misc_udelay(1000*1000);
+      #else /* not HAVE_SSH2 */
+      #endif /* HAVE_SSH2 */
       break;
     #ifndef NDEBUG
       default:
@@ -761,12 +894,147 @@ void Network_disconnect(SocketHandle *socketHandle)
   close(socketHandle->handle);
 }
 
-int Network_getSocket(SocketHandle *socketHandle)
+#if 0
+Errors Network_startSSLSession(SocketHandle *socketHandle,
+                               ConstString  loginName,
+                               Password     *password,
+                               const void   *sshPublicKeyData,
+                               uint         sshPublicKeyLength,
+                               const void   *sshPrivateKeyData,
+                               uint         sshPrivateKeyLength
+                              )
 {
+  #if   defined(HAVE_GETHOSTBYNAME_R)
+    char           buffer[512];
+    struct hostent bufferAddressEntry;
+    int            getHostByNameError;
+  #elif defined(HAVE_GETHOSTBYNAME)
+  #endif /* HAVE_GETHOSTBYNAME* */
+  struct hostent     *hostAddressEntry;
+  #ifdef PLATFORM_LINUX
+    in_addr_t          ipAddress;
+  #else /* not PLATFORM_LINUX */
+    unsigned long      ipAddress;
+  #endif /* PLATFORM_LINUX */
+  struct sockaddr_in socketAddress;
+  #ifdef HAVE_SSH2
+    int                ssh2Error;
+    char               *ssh2ErrorText;
+  #endif /* HAVE_SSH2 */
+  Errors             error;
+
+        const char *plainPassword;
+        #if  defined(PLATFORM_LINUX)
+          long       socketFlags;
+        #elif defined(PLATFORM_WINDOWS)
+          u_long     n;
+        #endif /* PLATFORM_... */
+        int result;
+
+
   assert(socketHandle != NULL);
 
-  return socketHandle->handle;
+
+  // init session
+  socketHandle->ssh2.session = libssh2_session_init();
+  if (socketHandle->ssh2.session == NULL)
+  {
+    close(socketHandle->handle);
+    return ERROR_SSH_SESSION_FAIL;
+  }
+  if      (globalOptions.verboseLevel >= 6) libssh2_trace(socketHandle->ssh2.session,
+                                                            LIBSSH2_TRACE_SOCKET
+                                                          | LIBSSH2_TRACE_TRANS
+                                                          | LIBSSH2_TRACE_KEX
+                                                          | LIBSSH2_TRACE_AUTH
+                                                          | LIBSSH2_TRACE_CONN
+                                                          | LIBSSH2_TRACE_SCP
+                                                          | LIBSSH2_TRACE_SFTP
+                                                          | LIBSSH2_TRACE_ERROR
+                                                          | LIBSSH2_TRACE_PUBLICKEY
+                                                         );
+  else if (globalOptions.verboseLevel >= 5) libssh2_trace(socketHandle->ssh2.session,
+                                                            LIBSSH2_TRACE_KEX
+                                                          | LIBSSH2_TRACE_AUTH
+                                                          | LIBSSH2_TRACE_SCP
+                                                          | LIBSSH2_TRACE_SFTP
+                                                          | LIBSSH2_TRACE_ERROR
+                                                          | LIBSSH2_TRACE_PUBLICKEY
+                                                         );
+  if (libssh2_session_startup(socketHandle->ssh2.session,
+                              socketHandle->handle
+                             ) != 0
+     )
+  {
+    libssh2_session_disconnect(socketHandle->ssh2.session,"");
+    libssh2_session_free(socketHandle->ssh2.session);
+    close(socketHandle->handle);
+    return ERROR_SSH_SESSION_FAIL;
+  }
+  #ifdef HAVE_SSH2_KEEPALIVE_CONFIG
+// NYI/???: does not work?
+//          libssh2_keepalive_config(socketHandle->ssh2.session,0,2*60);
+  #endif /* HAVE_SSH2_KEEPALIVE_CONFIG */
+
+#if 1
+  // authorize with key
+  plainPassword = Password_deploy(password);
+  result = libssh2_userauth_publickey_frommemory(socketHandle->ssh2.session,
+                                                 String_cString(loginName),
+                                                 String_length(loginName),
+                                                 sshPublicKeyData,
+                                                 sshPublicKeyLength,
+                                                 sshPrivateKeyData,
+                                                 sshPrivateKeyLength,
+                                                 plainPassword
+                                                );
+  if (result != 0)
+  {
+    ssh2Error = libssh2_session_last_error(socketHandle->ssh2.session,&ssh2ErrorText,NULL,0);
+    // Note: work-around for missleading error message from libssh2: original error (-16) is overwritten by callback-error (-19) in libssh2.
+    if (ssh2Error == LIBSSH2_ERROR_PUBLICKEY_UNVERIFIED)
+    {
+      error = ERRORX_(SSH_AUTHENTICATION,ssh2Error,"Unable to initialize private key from file");
+    }
+    else
+    {
+      error = ERRORX_(SSH_AUTHENTICATION,ssh2Error,"%s",ssh2ErrorText);
+    }
+    Password_undeploy(password);
+    libssh2_session_disconnect(socketHandle->ssh2.session,"");
+    libssh2_session_free(socketHandle->ssh2.session);
+    close(socketHandle->handle);
+    return error;
+  }
+  Password_undeploy(password);
+#else
+  // authorize interactive
+  if (libssh2_userauth_keyboard_interactive(socketHandle->ssh2.session,
+                                            String_cString(loginName),
+                                            NULL
+                                          ) != 0
+     )
+  {
+    ssh2Error = libssh2_session_last_error(socketHandle->ssh2.session,&ssh2ErrorText,NULL,0);
+    // Note: work-around for missleading error message from libssh2: original error (-16) is overwritten by callback-error (-19) in libssh2.
+    if (ssh2Error == LIBSSH2_ERROR_PUBLICKEY_UNVERIFIED)
+    {
+      error = ERRORX_(SSH_AUTHENTICATION,ssh2Error,"Unable to initialize private key");
+    }
+    else
+    {
+      error = ERRORX_(SSH_AUTHENTICATION,ssh2Error,"%s",ssh2ErrorText);
+    }
+    libssh2_session_disconnect(socketHandle->ssh2.session,"");
+    libssh2_session_free(socketHandle->ssh2.session);
+    close(socketHandle->handle);
+    return error;
+  }
+#endif /* 0 */
+
+  return ERROR_NONE;
 }
+#endif
 
 bool Network_eof(SocketHandle *socketHandle)
 {
@@ -792,17 +1060,17 @@ bool Network_eof(SocketHandle *socketHandle)
         #endif /* PLATFORM_... */
       }
       break;
-    case SOCKET_TYPE_SSH:
-      #ifdef HAVE_SSH2
-HALT_INTERNAL_ERROR_STILL_NOT_IMPLEMENTED();
-      #else /* not HAVE_SSH2 */
-      #endif /* HAVE_SSH2 */
-      break;
     case SOCKET_TYPE_TLS:
       #ifdef HAVE_GNU_TLS
 HALT_INTERNAL_ERROR_STILL_NOT_IMPLEMENTED();
       #else /* not HAVE_GNU_TLS */
       #endif /* HAVE_GNU_TLS */
+      break;
+    case SOCKET_TYPE_SSH:
+      #ifdef HAVE_SSH2
+HALT_INTERNAL_ERROR_STILL_NOT_IMPLEMENTED();
+      #else /* not HAVE_SSH2 */
+      #endif /* HAVE_SSH2 */
       break;
     #ifndef NDEBUG
       default:
@@ -844,17 +1112,17 @@ ulong Network_getAvaibleBytes(SocketHandle *socketHandle)
         #endif /* PLATFORM_... */
       }
       break;
-    case SOCKET_TYPE_SSH:
-      #ifdef HAVE_SSH2
-HALT_INTERNAL_ERROR_STILL_NOT_IMPLEMENTED();
-      #else /* not HAVE_SSH2 */
-      #endif /* HAVE_SSH2 */
-      break;
     case SOCKET_TYPE_TLS:
       #ifdef HAVE_GNU_TLS
 HALT_INTERNAL_ERROR_STILL_NOT_IMPLEMENTED();
       #else /* not HAVE_GNU_TLS */
       #endif /* HAVE_GNU_TLS */
+      break;
+    case SOCKET_TYPE_SSH:
+      #ifdef HAVE_SSH2
+HALT_INTERNAL_ERROR_STILL_NOT_IMPLEMENTED();
+      #else /* not HAVE_SSH2 */
+      #endif /* HAVE_SSH2 */
       break;
     #ifndef NDEBUG
       default:
@@ -874,8 +1142,8 @@ Errors Network_receive(SocketHandle *socketHandle,
                       )
 {
   sigset_t        signalMask;
-  struct timespec ts;
-  fd_set          fdSet;
+  struct timespec pollTimeout;
+  struct pollfd   pollfds[1];
   long            n;
 
   assert(socketHandle != NULL);
@@ -887,24 +1155,59 @@ Errors Network_receive(SocketHandle *socketHandle,
     case SOCKET_TYPE_PLAIN:
       if (timeout == WAIT_FOREVER)
       {
+        // receive
         n = recv(socketHandle->handle,buffer,maxLength,0);
       }
       else
       {
-        // Note: ignore SIGALRM in pselect()
+        // Note: ignore SIGALRM in ppoll()
         sigemptyset(&signalMask);
         sigaddset(&signalMask,SIGALRM);
 
-        ts.tv_sec  = timeout/1000L;
-        ts.tv_nsec = (timeout%1000L)*1000000L;
-        FD_ZERO(&fdSet);
-        assert(socketHandle->handle < FD_SETSIZE);
-        FD_SET(socketHandle->handle,&fdSet);
-        if (pselect(socketHandle->handle+1,&fdSet,NULL,NULL,&ts,&signalMask) > 0)
+        // wait for data
+        pollTimeout.tv_sec  = timeout/1000L;
+        pollTimeout.tv_nsec = (timeout%1000L)*1000000L;
+        pollfds[0].fd     = socketHandle->handle;
+        pollfds[0].events = POLLIN|POLLERR|POLLNVAL;
+        if (   (ppoll(pollfds,1,&pollTimeout,&signalMask) == -1)
+            || ((pollfds[0].revents & (POLLERR|POLLNVAL)) != 0)
+           )
         {
-          n = recv(socketHandle->handle,buffer,maxLength,0);
+          break;
         }
+
+        // receive
+        n = recv(socketHandle->handle,buffer,maxLength,0);
       }
+      break;
+    case SOCKET_TYPE_TLS:
+      #ifdef HAVE_GNU_TLS
+        if (timeout == WAIT_FOREVER)
+        {
+          // receive
+          n = gnutls_record_recv(socketHandle->gnuTLS.session,buffer,maxLength);
+        }
+        else
+        {
+          // Note: ignore SIGALRM in ppoll()
+          sigemptyset(&signalMask);
+          sigaddset(&signalMask,SIGALRM);
+
+          // wait for data
+          pollfds[0].fd     = socketHandle->handle;
+          pollfds[0].events = POLLIN|POLLERR|POLLNVAL;
+          if (   (ppoll(pollfds,1,&pollTimeout,&signalMask) == -1)
+              || ((pollfds[0].revents & (POLLERR|POLLNVAL)) != 0)
+             )
+          {
+            break;
+          }
+
+          // receive
+          n = gnutls_record_recv(socketHandle->gnuTLS.session,buffer,maxLength);
+        }
+      #else /* not HAVE_GNU_TLS */
+      #endif /* HAVE_GNU_TLS */
       break;
     case SOCKET_TYPE_SSH:
       #ifdef HAVE_SSH2
@@ -912,19 +1215,6 @@ HALT_INTERNAL_ERROR_STILL_NOT_IMPLEMENTED();
       #else /* not HAVE_SSH2 */
         return ERROR_FUNCTION_NOT_SUPPORTED;
       #endif /* HAVE_SSH2 */
-      break;
-    case SOCKET_TYPE_TLS:
-      #ifdef HAVE_GNU_TLS
-        if (timeout == WAIT_FOREVER)
-        {
-          n = gnutls_record_recv(socketHandle->gnuTLS.session,buffer,maxLength);
-        }
-        else
-        {
-HALT_INTERNAL_ERROR_STILL_NOT_IMPLEMENTED();
-        }
-      #else /* not HAVE_GNU_TLS */
-      #endif /* HAVE_GNU_TLS */
       break;
     #ifndef NDEBUG
       default:
@@ -944,8 +1234,8 @@ Errors Network_send(SocketHandle *socketHandle,
 {
   ulong           sentBytes;
   sigset_t        signalMask;
-  struct timespec ts;
-  fd_set          fdSetInput,fdSetOutput,fdSetError;
+  struct timespec pollTimeout;
+  struct pollfd   pollfds[1];
   long            n;
 
   assert(socketHandle != NULL);
@@ -960,20 +1250,21 @@ Errors Network_send(SocketHandle *socketHandle,
           {
             assert(socketHandle->handle < FD_SETSIZE);
 
-            // Note: ignore SIGALRM in pselect()
+            // Note: ignore SIGALRM in ppoll()
             sigemptyset(&signalMask);
             sigaddset(&signalMask,SIGALRM);
 
             // wait until space in buffer is available
-            ts.tv_sec  = SEND_TIMEOUT/1000L;
-            ts.tv_nsec = (SEND_TIMEOUT%1000L)*1000000L;
-            FD_ZERO(&fdSetInput);
-            FD_SET(socketHandle->handle,&fdSetInput);
-            FD_ZERO(&fdSetOutput);
-            FD_SET(socketHandle->handle,&fdSetOutput);
-            FD_ZERO(&fdSetError);
-            FD_SET(socketHandle->handle,&fdSetError);
-            pselect(socketHandle->handle+1,NULL,&fdSetOutput,NULL,&ts,&signalMask);
+            pollTimeout.tv_sec  = SEND_TIMEOUT/1000L;
+            pollTimeout.tv_nsec = (SEND_TIMEOUT%1000L)*1000000L;
+            pollfds[0].fd     = socketHandle->handle;
+            pollfds[0].events = POLLOUT|POLLERR|POLLNVAL;
+            if (   (ppoll(pollfds,1,&pollTimeout,&signalMask) == -1)
+                || ((pollfds[0].revents & (POLLERR|POLLNVAL)) != 0)
+               )
+            {
+              break;
+            }
 
             // send data
             n = send(socketHandle->handle,((byte*)buffer)+sentBytes,length-sentBytes,MSG_NOSIGNAL);
@@ -982,33 +1273,27 @@ Errors Network_send(SocketHandle *socketHandle,
           }
           while (sentBytes < length);
         break;
-      case SOCKET_TYPE_SSH:
-        #ifdef HAVE_SSH2
-HALT_INTERNAL_ERROR_STILL_NOT_IMPLEMENTED();
-        #else /* not HAVE_SSH2 */
-          return ERROR_FUNCTION_NOT_SUPPORTED;
-        #endif /* HAVE_SSH2 */
-        break;
       case SOCKET_TYPE_TLS:
         #ifdef HAVE_GNU_TLS
           do
           {
             assert(socketHandle->handle < FD_SETSIZE);
 
-            // Note: ignore SIGALRM in pselect()
+            // Note: ignore SIGALRM in ppoll()
             sigemptyset(&signalMask);
             sigaddset(&signalMask,SIGALRM);
 
             // wait until space in buffer is available
-            ts.tv_sec  = SEND_TIMEOUT/1000L;
-            ts.tv_nsec = (SEND_TIMEOUT%1000L)*1000000L;
-            FD_ZERO(&fdSetInput);
-            FD_SET(socketHandle->handle,&fdSetInput);
-            FD_ZERO(&fdSetOutput);
-            FD_SET(socketHandle->handle,&fdSetOutput);
-            FD_ZERO(&fdSetError);
-            FD_SET(socketHandle->handle,&fdSetError);
-            pselect(socketHandle->handle+1,NULL,&fdSetOutput,NULL,&ts,&signalMask);
+            pollTimeout.tv_sec  = SEND_TIMEOUT/1000L;
+            pollTimeout.tv_nsec = (SEND_TIMEOUT%1000L)*1000000L;
+            pollfds[0].fd     = socketHandle->handle;
+            pollfds[0].events = POLLOUT|POLLERR|POLLNVAL;
+            if (   (ppoll(pollfds,1,&pollTimeout,&signalMask) == -1)
+                || ((pollfds[0].revents & (POLLERR|POLLNVAL)) != 0)
+               )
+            {
+              break;
+            }
 
             // send data
             n = gnutls_record_send(socketHandle->gnuTLS.session,((byte*)buffer)+sentBytes,length-sentBytes);
@@ -1019,6 +1304,13 @@ HALT_INTERNAL_ERROR_STILL_NOT_IMPLEMENTED();
         #else /* not HAVE_GNU_TLS */
           sentBytes = 0L;
         #endif /* HAVE_GNU_TLS */
+        break;
+      case SOCKET_TYPE_SSH:
+        #ifdef HAVE_SSH2
+HALT_INTERNAL_ERROR_STILL_NOT_IMPLEMENTED();
+        #else /* not HAVE_SSH2 */
+          return ERROR_FUNCTION_NOT_SUPPORTED;
+        #endif /* HAVE_SSH2 */
         break;
       #ifndef NDEBUG
         default:
@@ -1102,10 +1394,15 @@ Errors Network_writeLine(SocketHandle *socketHandle,
 
 Errors Network_initServer(ServerSocketHandle *serverSocketHandle,
                           uint               serverPort,
-                          ServerSocketTypes  serverSocketType,
-                          const char         *caFileName,
-                          const char         *certFileName,
-                          const char         *keyFileName
+                          ServerSocketTypes  serverSocketType
+#if 0
+                          const void         *caData,
+                          uint               caLength,
+                          const void         *certData,
+                          uint               certLength,
+                          const void         *keyData,
+                          uint               keyLength
+#endif
                          )
 {
   struct sockaddr_in socketAddress;
@@ -1114,6 +1411,8 @@ Errors Network_initServer(ServerSocketHandle *serverSocketHandle,
 
   assert(serverSocketHandle != NULL);
 
+  // init variables
+//  serverSocketHandle->socketType = SOCKET_TYPE_PLAIN;
   serverSocketHandle->socketType = serverSocketType;
 
   // create socket
@@ -1148,6 +1447,8 @@ Errors Network_initServer(ServerSocketHandle *serverSocketHandle,
   }
   listen(serverSocketHandle->handle,5);
 
+//TODO: remove
+#if 0
   switch (serverSocketType)
   {
     case SERVER_SOCKET_TYPE_PLAIN:
@@ -1155,49 +1456,39 @@ Errors Network_initServer(ServerSocketHandle *serverSocketHandle,
     case SERVER_SOCKET_TYPE_TLS:
       #ifdef HAVE_GNU_TLS
       {
-        void              *certData;
-        ulong             certDataSize;
         gnutls_x509_crt_t cert;
         gnutls_datum_t    datum;
         time_t            certActivationTime,certExpireTime;
         char              buffer[64];
 
-        // check if all key files exists and can be read
-        if ((caFileName == NULL) || !File_isFileCString(caFileName) || !File_isReadableCString(caFileName))
+        // check if all key files exists
+        if (caData == NULL)
         {
           close(serverSocketHandle->handle);
           return ERROR_NO_TLS_CA;
         }
-        if ((certFileName == NULL) || !File_isFileCString(certFileName) || !File_isReadableCString(certFileName))
+        if (certData == NULL)
         {
           close(serverSocketHandle->handle);
           return ERROR_NO_TLS_CERTIFICATE;
         }
-        if ((keyFileName == NULL) || !File_isFileCString(keyFileName) || !File_isReadableCString(keyFileName))
+        if (keyData == NULL)
         {
           close(serverSocketHandle->handle);
           return ERROR_NO_TLS_KEY;
         }
 
         // check if certificate is valid
-        error = File_getDataCString(certFileName,&certData,&certDataSize);
-        if (error != ERROR_NONE)
-        {
-          close(serverSocketHandle->handle);
-          return error;
-        }
         if (gnutls_x509_crt_init(&cert) != GNUTLS_E_SUCCESS)
         {
-          free(certData);
           close(serverSocketHandle->handle);
           return ERROR_INVALID_TLS_CERTIFICATE;
         }
         datum.data = certData;
-        datum.size = certDataSize;
+        datum.size = certLength;
         if (gnutls_x509_crt_import(cert,&datum,GNUTLS_X509_FMT_PEM) != GNUTLS_E_SUCCESS)
         {
           gnutls_x509_crt_deinit(cert);
-          free(certData);
           close(serverSocketHandle->handle);
           return ERROR_INVALID_TLS_CERTIFICATE;
         }
@@ -1207,7 +1498,6 @@ Errors Network_initServer(ServerSocketHandle *serverSocketHandle,
           if (time(NULL) < certActivationTime)
           {
             gnutls_x509_crt_deinit(cert);
-            free(certData);
             close(serverSocketHandle->handle);
             return ERRORX_(TLS_CERTIFICATE_NOT_ACTIVE,0,"%s",Misc_formatDateTimeCString(buffer,sizeof(buffer),(uint64)certActivationTime,DATE_TIME_FORMAT_LOCALE));
           }
@@ -1218,7 +1508,6 @@ Errors Network_initServer(ServerSocketHandle *serverSocketHandle,
           if (time(NULL) > certExpireTime)
           {
             gnutls_x509_crt_deinit(cert);
-            free(certData);
             close(serverSocketHandle->handle);
             return ERRORX_(TLS_CERTIFICATE_EXPIRED,0,"%s",Misc_formatDateTimeCString(buffer,sizeof(buffer),(uint64)certExpireTime,DATE_TIME_FORMAT_LOCALE));
           }
@@ -1247,11 +1536,13 @@ or
         }
 #endif /* 0 */
         gnutls_x509_crt_deinit(cert);
-        free(certData);
 
-        serverSocketHandle->caFileName   = caFileName;
-        serverSocketHandle->certFileName = certFileName;
-        serverSocketHandle->keyFileName  = keyFileName;
+        serverSocketHandle->caData     = caData;
+        serverSocketHandle->caLength   = caLength;
+        serverSocketHandle->certData   = certData;
+        serverSocketHandle->certLength = certLength;
+        serverSocketHandle->keyData    = keyData;
+        serverSocketHandle->keyLength  = keyLength;
       }
       #else /* not HAVE_GNU_TLS */
         UNUSED_VARIABLE(caFileName);
@@ -1265,6 +1556,7 @@ or
         break; /* not reached */
     #endif /* NDEBUG */
   }
+#endif
 
   return ERROR_NONE;
 }
@@ -1289,6 +1581,90 @@ void Network_doneServer(ServerSocketHandle *serverSocketHandle)
     #endif /* NDEBUG */
   }
   close(serverSocketHandle->handle);
+}
+
+Errors Network_startSSL(SocketHandle *socketHandle,
+                        const void   *caData,
+                        uint         caLength,
+                        const void   *certData,
+                        uint         certLength,
+                        const void   *keyData,
+                        uint         keyLength
+                       )
+{
+  #ifdef HAVE_GNU_TLS
+    #if  defined(PLATFORM_LINUX)
+      long               socketFlags;
+    #elif defined(PLATFORM_WINDOWS)
+      u_long             n;
+    #endif /* PLATFORM_... */
+    Errors error;
+  #endif /* HAVE_GNU_TLS */
+
+  assert(socketHandle->type == SOCKET_TYPE_PLAIN);
+
+  #ifdef HAVE_GNU_TLS
+    // check if all key files exists
+    if (caData == NULL)
+    {
+      return ERROR_NO_TLS_CA;
+    }
+    if (certData == NULL)
+    {
+      return ERROR_NO_TLS_CERTIFICATE;
+    }
+    if (keyData == NULL)
+    {
+      return ERROR_NO_TLS_KEY;
+    }
+
+    // check if certificate is valid
+    error = validateCertificate(certData,certLength);
+    if (error != ERROR_NONE)
+    {
+      return error;
+    }
+
+    // temporary disable non-blocking
+    if ((socketHandle->flags & SOCKET_FLAG_NON_BLOCKING) !=  0)
+    {
+      #if  defined(PLATFORM_LINUX)
+        socketFlags = fcntl(socketHandle->handle,F_GETFL,0);
+        fcntl(socketHandle->handle,F_SETFL,socketFlags & ~O_NONBLOCK);
+      #elif defined(PLATFORM_WINDOWS)
+        n = 0;
+        ioctlsocket(socketHandle->handle,FIONBIO,&n);
+      #endif /* PLATFORM_... */
+    }
+
+    // init SSL
+    error = initSSL(socketHandle,caData,caLength,certData,certLength,keyData,keyLength);
+    if (error == ERROR_NONE)
+    {
+      socketHandle->type = SOCKET_TYPE_TLS;
+    }
+
+    // re-enable temporary non-blocking
+    if ((socketHandle->flags & SOCKET_FLAG_NON_BLOCKING) !=  0)
+    {
+      #if  defined(PLATFORM_LINUX)
+        socketFlags = fcntl(socketHandle->handle,F_GETFL,0);
+        fcntl(socketHandle->handle,F_SETFL,socketFlags | O_NONBLOCK);
+      #elif defined(PLATFORM_WINDOWS)
+        n = 1;
+        ioctlsocket(socketHandle->handle,FIONBIO,&n);
+      #endif /* PLATFORM_... */
+    }
+
+    return ERROR_NONE;
+  #else /* not HAVE_GNU_TLS */
+    UNUSED_VARIABLE(socketHandle);
+    UNUSED_VARIABLE(caFileName);
+    UNUSED_VARIABLE(certFileName);
+    UNUSED_VARIABLE(keyFileName);
+
+    return ERROR_FUNCTION_NOT_SUPPORTED;
+  #endif /* HAVE_GNU_TLS */
 }
 
 int Network_getServerSocket(ServerSocketHandle *serverSocketHandle)
@@ -1337,7 +1713,7 @@ Errors Network_accept(SocketHandle             *socketHandle,
     return error;
   }
 
-  // initialize TLS session
+#if 0
   switch (serverSocketHandle->socketType)
   {
     case SERVER_SOCKET_TYPE_PLAIN:
@@ -1345,11 +1721,16 @@ Errors Network_accept(SocketHandle             *socketHandle,
       break;
     case SERVER_SOCKET_TYPE_TLS:
       #ifdef HAVE_GNU_TLS
+fprintf(stderr,"%s, %d: call initSSL\n",__FILE__,__LINE__);
         // init SSL
         error = initSSL(socketHandle,
-                        serverSocketHandle->caFileName,
-                        serverSocketHandle->certFileName,
-                        serverSocketHandle->keyFileName
+//TODO
+                        serverSocketHandle->caData,
+                        serverSocketHandle->caLength,
+                        serverSocketHandle->certData,
+                        serverSocketHandle->certLength,
+                        serverSocketHandle->keyData,
+                        serverSocketHandle->keyLength
                        );
         if (error != ERROR_NONE)
         {
@@ -1371,6 +1752,9 @@ Errors Network_accept(SocketHandle             *socketHandle,
           break; /* not reached */
       #endif /* NDEBUG */
   }
+#else
+      socketHandle->type = SOCKET_TYPE_PLAIN;
+#endif
 
   if ((flags & SOCKET_FLAG_NON_BLOCKING) != 0)
   {
@@ -1385,64 +1769,6 @@ Errors Network_accept(SocketHandle             *socketHandle,
   }
 
   return ERROR_NONE;
-}
-
-Errors Network_startSSL(SocketHandle *socketHandle,
-                        const char   *caFileName,
-                        const char   *certFileName,
-                        const char   *keyFileName
-                       )
-{
-  #if  defined(PLATFORM_LINUX)
-    long               socketFlags;
-  #elif defined(PLATFORM_WINDOWS)
-    u_long             n;
-  #endif /* PLATFORM_... */
-  Errors error;
-
-  assert(socketHandle->type == SOCKET_TYPE_PLAIN);
-
-  #ifdef HAVE_GNU_TLS
-    if ((socketHandle->flags & SOCKET_FLAG_NON_BLOCKING) !=  0)
-    {
-      // temporary disable non-blocking
-      #if  defined(PLATFORM_LINUX)
-        socketFlags = fcntl(socketHandle->handle,F_GETFL,0);
-        fcntl(socketHandle->handle,F_SETFL,socketFlags & ~O_NONBLOCK);
-      #elif defined(PLATFORM_WINDOWS)
-        n = 0;
-        ioctlsocket(socketHandle->handle,FIONBIO,&n);
-      #endif /* PLATFORM_... */
-    }
-
-    // init SSL
-    error = initSSL(socketHandle,caFileName,certFileName,keyFileName);
-    if (error == ERROR_NONE)
-    {
-      socketHandle->type = SOCKET_TYPE_TLS;
-    }
-
-    if ((socketHandle->flags & SOCKET_FLAG_NON_BLOCKING) !=  0)
-    {
-      // enable non-blocking
-      #if  defined(PLATFORM_LINUX)
-        socketFlags = fcntl(socketHandle->handle,F_GETFL,0);
-        fcntl(socketHandle->handle,F_SETFL,socketFlags | O_NONBLOCK);
-      #elif defined(PLATFORM_WINDOWS)
-        n = 1;
-        ioctlsocket(socketHandle->handle,FIONBIO,&n);
-      #endif /* PLATFORM_... */
-    }
-
-    return ERROR_NONE;
-  #else /* not HAVE_GNU_TLS */
-    UNUSED_VARIABLE(socketHandle);
-    UNUSED_VARIABLE(caFileName);
-    UNUSED_VARIABLE(certFileName);
-    UNUSED_VARIABLE(keyFileName);
-
-    return ERROR_FUNCTION_NOT_SUPPORTED;
-  #endif /* HAVE_GNU_TLS */
 }
 
 void Network_getLocalInfo(SocketHandle *socketHandle,
@@ -1981,7 +2307,7 @@ void Network_executeFlush(NetworkExecuteHandle  *networkExecuteHandle,
 
 Errors Network_executeKeepAlive(NetworkExecuteHandle *networkExecuteHandle)
 {
-  #if defined(HAVE_SSH2_KEEPALIVE_SEND)
+  #if defined(HAVE_SSH2) && defined(HAVE_SSH2_KEEPALIVE_SEND)
     int dummy;
   #endif
 

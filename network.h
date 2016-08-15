@@ -43,8 +43,8 @@
 typedef enum
 {
   SOCKET_TYPE_PLAIN,
-  SOCKET_TYPE_SSH,
   SOCKET_TYPE_TLS,
+  SOCKET_TYPE_SSH
 } SocketTypes;
 
 typedef struct
@@ -89,9 +89,12 @@ typedef struct
   ServerSocketTypes socketType;
   int               handle;
   #ifdef HAVE_GNU_TLS
-    const char        *caFileName;
-    const char        *certFileName;
-    const char        *keyFileName;
+    void *caData;
+    uint caLength;
+    void *certData;
+    uint certLength;
+    void *keyData;
+    uint keyLength;
   #endif /* HAVE_GNU_TLS */
 } ServerSocketHandle;
 
@@ -188,9 +191,9 @@ bool Network_hostExistsCString(const char *hostName);
 * Input  : socketType          - socket type; see SOCKET_TYPE_*
 *          hostName            - host name
 *          hostPort            - host port (host byte order)
-*          loginName           -  login user name
-*          password            - SSH password
-*          sshPublicKeyData    - SSh public key data for login or NULL
+*          loginName           - login user name
+*          password            - SSH private key password
+*          sshPublicKeyData    - SSH public key data for login or NULL
 *          sshPublicKeyLength  - SSH public key data length
 *          sshPrivateKeyData   - SSH private key data for login or NULL
 *          sshPrivateKeyLength - SSH private key data length
@@ -207,9 +210,9 @@ Errors Network_connect(SocketHandle *socketHandle,
                        ConstString  loginName,
                        Password     *password,
                        const void   *sshPublicKeyData,
-                       uint         sshPublicKeyDataLength,
+                       uint         sshPublicKeyLength,
                        const void   *sshPrivateKeyData,
-                       uint         sshPrivateKeyDataLength,
+                       uint         sshPrivateKeyLength,
                        uint         flags
                       );
 
@@ -233,7 +236,15 @@ void Network_disconnect(SocketHandle *socketHandle);
 * Notes  : -
 \***********************************************************************/
 
-int Network_getSocket(SocketHandle *socketHandle);
+INLINE int Network_getSocket(const SocketHandle *socketHandle);
+#if defined(NDEBUG) || defined(__NETWORK_IMPLEMENATION__)
+INLINE int Network_getSocket(const SocketHandle *socketHandle)
+{
+  assert(socketHandle != NULL);
+
+  return socketHandle->handle;
+}
+#endif /* NDEBUG || __NETWORK_IMPLEMENATION__ */
 
 /***********************************************************************\
 * Name   : Network_getSSHSession
@@ -351,20 +362,14 @@ Errors Network_writeLine(SocketHandle *socketHandle,
 * Input  : serverPort        - server port (host byte order)
 *          ServerSocketTypes - server socket type; see
 *                              SERVER_SOCKET_TYPE_*
-*          caFileName        - file with TLS CA or NULL
-*          certFileName      - file with TLS cerificate or NULL
-*          keyFileName       - file with TLS key or NULL
 * Output : serverSocketHandle - server socket handle
 * Return : ERROR_NONE or errorcode
 * Notes  : -
 \***********************************************************************/
 
 Errors Network_initServer(ServerSocketHandle *serverSocketHandle,
-                          ServerSocketTypes  serverSocketType,
                           uint               serverPort,
-                          const char         *caFileName,
-                          const char         *certFileName,
-                          const char         *keyFileName
+                          ServerSocketTypes  serverSocketType
                          );
 
 /***********************************************************************\
@@ -405,21 +410,27 @@ Errors Network_accept(SocketHandle             *socketHandle,
                      );
 
 /***********************************************************************\
-* Name   : Network_startSSL
-* Purpose: start SSL encryption on socket connection
-* Input  : serverSocketHandle - server socket handle
-*          caFileName        - file with TLS CA or NULL
-*          certFileName      - file with TLS cerificate or NULL
-*          keyFileName       - file with TLS key or NULL
+* Name   : Network_startServerSSL
+* Purpose: start SSL/TLS encryption on socket connection
+* Input  : socketHandle - socket handle
+*          caData       - TLS CA data or NULL
+*          caLength     - TLS CA data length
+*          cert         - TLS cerificate or NULL
+*          certLength   - TLS cerificate data length
+*          key          - TLS private key or NULL
+*          keyLength    - TLS private key data length
 * Output : -
 * Return : ERROR_NONE or errorcode
-* Notes  : -
+* Notes  : call after Network_accept() to establish a SSL encryption
 \***********************************************************************/
 
 Errors Network_startSSL(SocketHandle *socketHandle,
-                        const char   *caFileName,
-                        const char   *certFileName,
-                        const char   *keyFileName
+                        const void   *caData,
+                        uint         caLength,
+                        const void   *certData,
+                        uint         certLength,
+                        const void   *keyData,
+                        uint         keyLength
                        );
 
 /***********************************************************************\
