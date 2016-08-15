@@ -40,6 +40,12 @@ typedef enum
   DATABASE_OPENMODE_READWRITE,
 } DatabaseOpenModes;
 
+// priorities
+#define DATABASE_PRIORITY_IMMEDIATE 3
+#define DATABASE_PRIORITY_HIGH      2
+#define DATABASE_PRIORITY_MEDIUM    1
+#define DATABASE_PRIORITY_LOW       0
+
 // database types
 typedef enum
 {
@@ -74,6 +80,7 @@ typedef enum
 // database handle
 typedef struct
 {
+  uint          priority;                   // access priority
   Semaphore     lock;                       // lock (Note: do not use sqlite mutex, because of debug facilities in semaphore.c)
   sqlite3       *handle;                    // SQlite3 handle
   long          timeout;                    // timeout [ms]
@@ -157,8 +164,32 @@ typedef struct
   LIST_HEADER(DatabaseColumnNode);
 } DatabaseColumnList;
 
-// execute copy table row callback function
-typedef Errors(*DatabaseCopyTableFunction)(const DatabaseColumnList *fromColumnList, const DatabaseColumnList *toColumnList, void *userData);
+/***********************************************************************\
+* Name   : DatabaseCopyTableFunction
+* Purpose: execute copy table row callback function
+* Input  : fromColumnList - from column list
+*          toColumnList   - to column list
+*          userData       - user data
+* Output : -
+* Return : TRUE iff pause
+* Notes  : -
+\***********************************************************************/
+
+typedef Errors(*DatabaseCopyTableFunction)(const DatabaseColumnList *fromColumnList,
+                                           const DatabaseColumnList *toColumnList,
+                                           void                     *userData
+                                          );
+
+/***********************************************************************\
+* Name   : DatabasePauseCallbackFunction
+* Purpose: call back to check for pausing
+* Input  : userData - user data
+* Output : -
+* Return : TRUE iff pause
+* Notes  : -
+\***********************************************************************/
+
+typedef bool(*DatabasePauseCallbackFunction)(void *userData);
 
 /***************************** Variables *******************************/
 
@@ -214,6 +245,7 @@ void Database_doneAll(void);
 * Input  : databaseHandle   - database handle variable
 *          fileName         - file name or NULL for "in memory"
 *          databaseOpenMode - open mode; see DatabaseOpenModes
+*          priority         - priority (0=highest)
 *          timeout          - timeout [ms]
 * Output : databaseHandle - database handle
 * Return : ERROR_NONE or error code
@@ -224,6 +256,7 @@ void Database_doneAll(void);
   Errors Database_open(DatabaseHandle    *databaseHandle,
                        const char        *fileName,
                        DatabaseOpenModes databaseOpenMode,
+                       uint              priority,
                        long              timeout
                       );
 #else /* not NDEBUG */
@@ -232,6 +265,7 @@ void Database_doneAll(void);
                          DatabaseHandle    *databaseHandle,
                          const char        *fileName,
                          DatabaseOpenModes databaseOpenMode,
+                         uint              priority,
                          long              timeout
                         );
 #endif /* NDEBUG */
@@ -254,9 +288,57 @@ void Database_doneAll(void);
                        );
 #endif /* NDEBUG */
 
+//bool Database_isHigherRequestPending(uint priority);
+
+//TODO: remove
+#if 0
+/***********************************************************************\
+* Name   : Database_request
+* Purpose: request long-run database access
+* Input  : databaseHandle - database handle
+*          timeout        - timeout request long-run [ms]
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+bool Database_request(DatabaseHandle *databaseHandle, ulong timeout);
+
+/***********************************************************************\
+* Name   : Database_release
+* Purpose: release long-run database access
+* Input  : databaseHandle - database handle
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+void Database_release(DatabaseHandle *databaseHandle);
+
+/***********************************************************************\
+* Name   : Database_yield
+* Purpose: yield long-run database access if access with higher priority
+*          is pending
+* Input  : databaseHandle - database handle
+* Output : yieldStart     - yield start call-back code (can be NULL)
+*          userDataStart  - yield start user data
+*          yieldEnd       - yield end call-back code (can be NULL)
+*          userDataEnd    - yield end user data
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+void Database_yield(DatabaseHandle *databaseHandle,
+                    void           (*yieldStart)(void*),
+                    void           *userDataStart,
+                    void           (*yieldEnd)(void*),
+                    void           *userDataEnd
+                   );
+#endif
+
 /***********************************************************************\
 * Name   : Database_lock
-* Purpose: lock database
+* Purpose: lock database exclusive for this handle
 * Input  : databaseHandle - database handle
 * Output : -
 * Return : -
@@ -359,7 +441,7 @@ Errors Database_compare(DatabaseHandle *databaseHandleReference,
 *          preCopyTableFunction  - pre-copy call-back function
 *          preCopyTableUserData  - user data for pre-copy call-back
 *          postCopyTableFunction - pre-copy call-back function
-*          postCopyTableUserData - user data for pre-copy call-back
+*          postCopyTableUserData - user data for post-copy call-back
 *          fromAdditional        - additional SQL condition
 *          ...                   - optional arguments for additional
 *                                  SQL condition
@@ -368,16 +450,18 @@ Errors Database_compare(DatabaseHandle *databaseHandleReference,
 * Notes  : -
 \***********************************************************************/
 
-Errors Database_copyTable(DatabaseHandle            *fromDatabaseHandle,
-                          DatabaseHandle            *toDatabaseHandle,
-                          const char                *fromTableName,
-                          const char                *toTableName,
-                          bool                      transactionFlag,
-                          DatabaseCopyTableFunction preCopyTableFunction,
-                          void                      *preCopyTableUserData,
-                          DatabaseCopyTableFunction postCopyTableFunction,
-                          void                      *postCopyTableUserData,
-                          const char                *fromAdditional,
+Errors Database_copyTable(DatabaseHandle                *fromDatabaseHandle,
+                          DatabaseHandle                *toDatabaseHandle,
+                          const char                    *fromTableName,
+                          const char                    *toTableName,
+                          bool                          transactionFlag,
+                          DatabaseCopyTableFunction     preCopyTableFunction,
+                          void                          *preCopyTableUserData,
+                          DatabaseCopyTableFunction     postCopyTableFunction,
+                          void                          *postCopyTableUserData,
+                          DatabasePauseCallbackFunction pauseCallbackFunction,
+                          void                          *pauseCallbackUserData,
+                          const char                    *fromAdditional,
                           ...
                          );
 
