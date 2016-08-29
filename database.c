@@ -959,6 +959,7 @@ LOCAL int sqliteStep(sqlite3 *handle, sqlite3_stmt *statementHandle, long timeou
       waitUnlockNotify(handle);
       sqlite3_reset(statementHandle);
     }
+//TODO: correct? abort here?
     else if (sqliteResult == SQLITE_BUSY)
     {
       delay(SLEEP_TIME);
@@ -982,6 +983,7 @@ LOCAL int sqliteStep(sqlite3 *handle, sqlite3_stmt *statementHandle, long timeou
 *          sqlString           - SQL string
 *          databaseRowFunction - row call-back function (can be NULL)
 *          databaseRowUserData - user data for row call-back
+*          changedRowCount     - number of changed rows (can be NULL)
 *          timeout             - timeout [ms]
 * Output : -
 * Return : ERROR_NONE or error code
@@ -992,130 +994,157 @@ LOCAL Errors sqliteExecute(DatabaseHandle      *databaseHandle,
                            const char          *sqlString,
                            DatabaseRowFunction databaseRowFunction,
                            void                *databaseRowUserData,
+                           ulong               *changedRowCount,
                            long                timeout
                           )
 {
   #define SLEEP_TIME 1000L
 
-  const char   *nextSqlCommand;
+  uint         maxRetryCount;
+  uint         retryCount;
+  const char   *sqlCommand,*nextSqlCommand;
   Errors       error;
   int          sqliteResult;
   sqlite3_stmt *statementHandle;
   uint         count;
   const char   **names,**values;
-  uint         n;
   uint         i;
 
   assert(databaseHandle != NULL);
   assert(databaseHandle->handle != NULL);
 
-  nextSqlCommand = stringTrim(sqlString);
-  error          = ERROR_NONE;
+  if (changedRowCount != NULL) (*changedRowCount) = 0L;
+
+  maxRetryCount = (timeout != WAIT_FOREVER) ? (uint)((timeout+SLEEP_TIME-1L)/SLEEP_TIME) : 0;
+  sqlCommand    = stringTrim(sqlString);
+  error         = ERROR_NONE;
+  retryCount    = 0;
   while (   (error == ERROR_NONE)
-         && !stringIsEmpty(nextSqlCommand)
+         && !stringIsEmpty(sqlCommand)
+         && (retryCount <= maxRetryCount)
         )
   {
 //fprintf(stderr,"%s, %d: sqlCommands='%s'\n",__FILE__,__LINE__,sqlCommands);
+    // prepare SQL statement
     sqliteResult = sqlite3_prepare_v2(databaseHandle->handle,
-                                      nextSqlCommand,
+                                      sqlCommand,
                                       -1,
                                       &statementHandle,
                                       &nextSqlCommand
                                      );
-    if (sqliteResult == SQLITE_OK)
-    {
-      assert(statementHandle != NULL);
-
-      // allocate call-back data
-      names  = NULL;
-      values = NULL;
-      count  = 0;
-      if (databaseRowFunction != NULL)
-      {
-        count = sqlite3_column_count(statementHandle);
-        names = (const char**)malloc(count*sizeof(const char*));
-        if (names == NULL)
-        {
-          HALT_INSUFFICIENT_MEMORY();
-        }
-        values = (const char**)malloc(count*sizeof(const char*));
-        if (values == NULL)
-        {
-          HALT_INSUFFICIENT_MEMORY();
-        }
-      }
-
-      // step and process rows
-      do
-      {
-        // step
-        n = 0;
-        do
-        {
-          sqliteResult = sqlite3_step(statementHandle);
-          if      (sqliteResult == SQLITE_LOCKED)
-          {
-            waitUnlockNotify(databaseHandle->handle);
-            sqlite3_reset(statementHandle);
-          }
-          else if (sqliteResult == SQLITE_BUSY)
-          {
-            delay(SLEEP_TIME);
-            sqlite3_reset(statementHandle);
-            n++;
-          }
-          else if (sqliteResult == SQLITE_MISUSE)
-          {
-            HALT_INTERNAL_ERROR("SQLite library reported misuse %d %d",sqliteResult,sqlite3_extended_errcode(databaseHandle->handle));
-          }
-        }
-        while (   ((sqliteResult == SQLITE_LOCKED) || (sqliteResult == SQLITE_BUSY))
-               && ((timeout == WAIT_FOREVER) || (n < (uint)((timeout+SLEEP_TIME-1L)/SLEEP_TIME)))
-              );
-
-        // process row
-        if      (sqliteResult == SQLITE_ROW)
-        {
-          if (databaseRowFunction != NULL)
-          {
-            for (i = 0; i < count; i++)
-            {
-              names[i]  = sqlite3_column_name(statementHandle,i);
-              values[i] = (const char*)sqlite3_column_text(statementHandle,i);
-            }
-            error = databaseRowFunction(count,names,values,databaseRowUserData);
-//TODO callback
-          }
-        }
-      }
-      while ((error == ERROR_NONE) && (sqliteResult == SQLITE_ROW));
-      if (sqliteResult != SQLITE_DONE)
-      {
-        error = ERRORX_(DATABASE,sqlite3_errcode(databaseHandle->handle),"%s: %s",sqlite3_errmsg(databaseHandle->handle),sqlString);
-      }
-
-      // free call-back data
-      if (databaseRowFunction != NULL)
-      {
-        free(values);
-        free(names);
-      }
-    }
-    else if (sqliteResult == SQLITE_MISUSE)
+    if      (sqliteResult == SQLITE_MISUSE)
     {
       HALT_INTERNAL_ERROR("SQLite library reported misuse %d %d",sqliteResult,sqlite3_extended_errcode(databaseHandle->handle));
     }
-    else
+    else if (sqliteResult != SQLITE_OK)
     {
       error = ERRORX_(DATABASE,sqlite3_errcode(databaseHandle->handle),"%s: %s",sqlite3_errmsg(databaseHandle->handle),sqlString);
+      break;
+    }
+    assert(statementHandle != NULL);
+
+    // allocate call-back data
+    names  = NULL;
+    values = NULL;
+    count  = 0;
+    if (databaseRowFunction != NULL)
+    {
+      count = sqlite3_column_count(statementHandle);
+      names = (const char**)malloc(count*sizeof(const char*));
+      if (names == NULL)
+      {
+        HALT_INSUFFICIENT_MEMORY();
+      }
+      values = (const char**)malloc(count*sizeof(const char*));
+      if (values == NULL)
+      {
+        HALT_INSUFFICIENT_MEMORY();
+      }
     }
 
-    nextSqlCommand = stringTrim(nextSqlCommand);
+    // step and process rows
+    do
+    {
+      // step
+      do
+      {
+        sqliteResult = sqlite3_step(statementHandle);
+        if      (sqliteResult == SQLITE_LOCKED)
+        {
+          waitUnlockNotify(databaseHandle->handle);
+          sqlite3_reset(statementHandle);
+        }
+        else if (sqliteResult == SQLITE_MISUSE)
+        {
+          HALT_INTERNAL_ERROR("SQLite library reported misuse %d %d",sqliteResult,sqlite3_extended_errcode(databaseHandle->handle));
+        }
+      }
+      while (sqliteResult == SQLITE_LOCKED);
+
+      // process row
+      if      (sqliteResult == SQLITE_ROW)
+      {
+        if (databaseRowFunction != NULL)
+        {
+          for (i = 0; i < count; i++)
+          {
+            names[i]  = sqlite3_column_name(statementHandle,i);
+            values[i] = (const char*)sqlite3_column_text(statementHandle,i);
+          }
+          error = databaseRowFunction(count,names,values,databaseRowUserData);
+//TODO callback
+        }
+      }
+
+      if (changedRowCount != NULL)
+      {
+        (*changedRowCount) += (ulong)sqlite3_changes(databaseHandle->handle);
+      }
+    }
+    while ((error == ERROR_NONE) && (sqliteResult == SQLITE_ROW));
+
+    // free call-back data
+    if (databaseRowFunction != NULL)
+    {
+      free(values);
+      free(names);
+    }
+
+    // done SQL statement
+    sqlite3_finalize(statementHandle);
+
+    // check result
+    if      (sqliteResult == SQLITE_BUSY)
+    {
+      // try again
+      delay(SLEEP_TIME);
+      retryCount++;
+      continue;
+    }
+    else if (sqliteResult != SQLITE_DONE)
+    {
+      // report error
+      error = ERRORX_(DATABASE,sqlite3_errcode(databaseHandle->handle),"%s: %s",sqlite3_errmsg(databaseHandle->handle),sqlString);
+    }
+    else
+    {
+      // next SQL command part
+      sqlCommand = stringTrim(nextSqlCommand);
+    }
   }
 
-  sqlite3_finalize(statementHandle);
-
-  return error;
+  if      (error != ERROR_NONE)
+  {
+    return error;
+  }
+  else if (retryCount > maxRetryCount)
+  {
+    return ERROR_DATABASE_TIMEOUT;
+  }
+  else
+  {
+    return ERROR_NONE;
+  }
 
   #undef SLEEP_TIME
 }
@@ -1818,7 +1847,8 @@ Errors Database_setEnabledSync(DatabaseHandle *databaseHandle,
   assert(databaseHandle != NULL);
 
   error = Database_execute(databaseHandle,
-                           CALLBACK(NULL,NULL),
+                           CALLBACK(NULL,NULL),  // databaseRowFunction
+                           NULL,  // changedRowCount
                            "PRAGMA synchronous=%s;",
                            enabled ? "ON" : "OFF"
                           );
@@ -1827,7 +1857,8 @@ Errors Database_setEnabledSync(DatabaseHandle *databaseHandle,
     return error;
   }
   error = Database_execute(databaseHandle,
-                           CALLBACK(NULL,NULL),
+                           CALLBACK(NULL,NULL),  // databaseRowFunction
+                           NULL,  // changedRowCount
                            "PRAGMA journal_mode=%s;",
                            enabled ? "ON" : "WAL"
                           );
@@ -1846,7 +1877,8 @@ Errors Database_setEnabledForeignKeys(DatabaseHandle *databaseHandle,
   assert(databaseHandle != NULL);
 
   return Database_execute(databaseHandle,
-                          CALLBACK(NULL,NULL),
+                          CALLBACK(NULL,NULL),  // databaseRowFunction
+                          NULL,  // changedRowCount
                           "PRAGMA foreign_keys=%s;",
                           enabled ? "ON" : "OFF"
                          );
@@ -1884,7 +1916,7 @@ Errors Database_compare(DatabaseHandle *databaseHandleReference,
   // compare tables
   STRINGLIST_ITERATEX(&tableListReference,tableNameNodeReference,tableNameReference,error == ERROR_NONE)
   {
-    if (StringList_contain(&tableList,tableNameReference))
+    if (StringList_contains(&tableList,tableNameReference))
     {
       // get column lists
       error = getTableColumnList(&columnListReference,databaseHandleReference,String_cString(tableNameReference));
@@ -1938,7 +1970,7 @@ Errors Database_compare(DatabaseHandle *databaseHandleReference,
   // check for obsolete tables
   STRINGLIST_ITERATEX(&tableList,tableNameNode,tableName,error == ERROR_NONE)
   {
-    if (!StringList_contain(&tableListReference,tableName))
+    if (!StringList_contains(&tableListReference,tableName))
     {
       error = ERRORX_(DATABASE_OBSOLETE_TABLE,0,String_cString(tableName));
     }
@@ -2736,8 +2768,8 @@ Errors Database_addColumn(DatabaseHandle *databaseHandle,
 
   // execute SQL command
   error = Database_execute(databaseHandle,
-                           NULL,
-                           NULL,
+                           CALLBACK(NULL,NULL),  // databaseRowFunction
+                           NULL,  // changedRowCount
                            "ALTER TABLE %s ADD COLUMN %s %s; \
                            ",
                            tableName,
@@ -2802,7 +2834,8 @@ Errors Database_removeColumn(DatabaseHandle *databaseHandle,
     DATABASE_DEBUG_SQL(databaseHandle,sqlString);
     error = sqliteExecute(databaseHandle,
                           String_cString(sqlString),
-                          CALLBACK(NULL,NULL),
+                          CALLBACK(NULL,NULL),  // databaseRowFunction
+                          NULL,  // changedRowCount
                           databaseHandle->timeout
                          );
     if (error != ERROR_NONE)
@@ -2894,7 +2927,8 @@ Errors Database_removeColumn(DatabaseHandle *databaseHandle,
       DATABASE_DEBUG_SQL(databaseHandle,sqlString);
       error = sqliteExecute(databaseHandle,
                             String_cString(sqlString),
-                            CALLBACK(NULL,NULL),
+                            CALLBACK(NULL,NULL),  // databaseRowFunction
+                            NULL,  // changedRowCount
                             databaseHandle->timeout
                            );
       if (error != ERROR_NONE)
@@ -2916,44 +2950,44 @@ Errors Database_removeColumn(DatabaseHandle *databaseHandle,
 
   // rename tables
   error = Database_execute(databaseHandle,
-                           NULL,
-                           NULL,
+                           CALLBACK(NULL,NULL),  // databaseRowFunction
+                           NULL,  // changedRowCount
                            "ALTER TABLE %s RENAME TO __old__;",
                            tableName
                           );
   if (error != ERROR_NONE)
   {
     (void)Database_execute(databaseHandle,
-                           NULL,
-                           NULL,
+                           CALLBACK(NULL,NULL),  // databaseRowFunction
+                           NULL,  // changedRowCount
                            "DROP TABLE __new__;"
                           );
     return error;
   }
   error = Database_execute(databaseHandle,
-                           NULL,
-                           NULL,
+                           CALLBACK(NULL,NULL),  // databaseRowFunction
+                           NULL,  // changedRowCount
                            "ALTER TABLE __new__ RENAME TO %s;",
                            tableName
                           );
   if (error != ERROR_NONE)
   {
     (void)Database_execute(databaseHandle,
-                           NULL,
-                           NULL,
+                           CALLBACK(NULL,NULL),  // databaseRowFunction
+                           NULL,  // changedRowCount
                            "ALTER TABLE __old__ RENAME TO %s;",
                            tableName
                           );
     (void)Database_execute(databaseHandle,
-                           NULL,
-                           NULL,
+                           CALLBACK(NULL,NULL),  // databaseRowFunction
+                           NULL,  // changedRowCount
                            "DROP TABLE __new__;"
                           );
     return error;
   }
   error = Database_execute(databaseHandle,
-                           NULL,
-                           NULL,
+                           CALLBACK(NULL,NULL),  // databaseRowFunction
+                           NULL,  // changedRowCount
                            "DROP TABLE __old__;"
                           );
   if (error != ERROR_NONE)
@@ -3012,7 +3046,8 @@ Errors Database_removeColumn(DatabaseHandle *databaseHandle,
     DATABASE_DEBUG_SQL(databaseHandle,sqlString);
     error = sqliteExecute(databaseHandle,
                           String_cString(sqlString),
-                          CALLBACK(NULL,NULL),
+                          CALLBACK(NULL,NULL),  // databaseRowFunction
+                          NULL,  // changedRowCount
                           databaseHandle->timeout
                          );
     if (error != ERROR_NONE)
@@ -3071,7 +3106,8 @@ Errors Database_endTransaction(DatabaseHandle *databaseHandle)
     DATABASE_DEBUG_SQL(databaseHandle,sqlString);
     error = sqliteExecute(databaseHandle,
                           String_cString(sqlString),
-                          CALLBACK(NULL,NULL),
+                          CALLBACK(NULL,NULL),  // databaseRowFunction
+                          NULL,  // changedRowCount
                           databaseHandle->timeout
                          );
     if (error != ERROR_NONE)
@@ -3121,7 +3157,8 @@ Errors Database_rollbackTransaction(DatabaseHandle *databaseHandle)
     DATABASE_DEBUG_SQL(databaseHandle,sqlString);
     error = sqliteExecute(databaseHandle,
                           String_cString(sqlString),
-                          CALLBACK(NULL,NULL),
+                          CALLBACK(NULL,NULL),  // databaseRowFunction
+                          NULL,  // changedRowCount
                           databaseHandle->timeout
                          );
     if (error != ERROR_NONE)
@@ -3142,18 +3179,21 @@ Errors Database_rollbackTransaction(DatabaseHandle *databaseHandle)
 Errors Database_execute(DatabaseHandle      *databaseHandle,
                         DatabaseRowFunction databaseRowFunction,
                         void                *databaseRowUserData,
+                        ulong               *changedRowCount,
                         const char          *command,
                         ...
                        )
 {
-  String              sqlString;
-  va_list             arguments;
-  Errors              error;
-//  DatabaseRowCallback databaseRowCallback;
+  String  sqlString;
+  va_list arguments;
+  Errors  error;
 
   assert(databaseHandle != NULL);
   assert(databaseHandle->handle != NULL);
   assert(command != NULL);
+
+  // init variables
+  if (changedRowCount != NULL) (*changedRowCount) = 0L;
 
   // format SQL command string
   va_start(arguments,command);
@@ -3168,6 +3208,7 @@ Errors Database_execute(DatabaseHandle      *databaseHandle,
   error = sqliteExecute(databaseHandle,
                         String_cString(sqlString),
                         CALLBACK(databaseRowFunction,databaseRowUserData),
+                        changedRowCount,
                         databaseHandle->timeout
                        );
   if (error != ERROR_NONE)
@@ -3248,6 +3289,11 @@ Errors Database_execute(DatabaseHandle      *databaseHandle,
   else
   {
     error = ERRORX_(DATABASE,sqlite3_errcode(databaseHandle->handle),"%s: %s",sqlite3_errmsg(databaseHandle->handle),String_cString(sqlString));
+    #ifndef NDEBUG
+      String_delete(databaseQueryHandle->sqlString);
+    #endif /* not NDEBUG */
+    String_delete(sqlString);
+    return error;
   }
   #ifndef NDEBUG
     if (databaseQueryHandle->statementHandle == NULL)
@@ -3256,14 +3302,6 @@ Errors Database_execute(DatabaseHandle      *databaseHandle,
       abort();
     }
   #endif /* not NDEBUG */
-  if (error != ERROR_NONE)
-  {
-    #ifndef NDEBUG
-      String_delete(databaseQueryHandle->sqlString);
-    #endif /* not NDEBUG */
-    String_delete(sqlString);
-    return error;
-  }
 
   // free resources
   String_delete(sqlString);
@@ -3656,7 +3694,7 @@ Errors Database_getId(DatabaseHandle *databaseHandle,
   assert(tableName != NULL);
 
   va_start(arguments,additional);
-  error = Database_getId(databaseHandle,value,tableName,additional,arguments);
+  error = Database_vgetId(databaseHandle,value,tableName,additional,arguments);
   va_end(arguments);
 
   return error;
@@ -3678,6 +3716,9 @@ Errors Database_vgetId(DatabaseHandle *databaseHandle,
   assert(databaseHandle->handle != NULL);
   assert(value != NULL);
   assert(tableName != NULL);
+
+  // init variables
+  (*value) = DATABASE_ID_NONE;
 
   // format SQL command string
   sqlString = formatSQLString(String_new(),
@@ -3908,10 +3949,11 @@ Errors Database_vsetInteger64(DatabaseHandle *databaseHandle,
   }
   DATABASE_DEBUG_SQLX(databaseHandle,"set int64",sqlString);
   error = sqliteExecute(databaseHandle,
-                         String_cString(sqlString),
-                         CALLBACK(NULL,NULL),
-                         databaseHandle->timeout
-                        );
+                        String_cString(sqlString),
+                        CALLBACK(NULL,NULL),  // databaseRowFunction
+                        NULL,  // changedRowCount
+                        databaseHandle->timeout
+                       );
   if (error != ERROR_NONE)
   {
     // insert
@@ -3927,7 +3969,8 @@ Errors Database_vsetInteger64(DatabaseHandle *databaseHandle,
     DATABASE_DEBUG_SQLX(databaseHandle,"set int64",sqlString);
     error = sqliteExecute(databaseHandle,
                           String_cString(sqlString),
-                          CALLBACK(NULL,NULL),
+                          CALLBACK(NULL,NULL),  // databaseRowFunction
+                          NULL,  // changedRowCount
                           databaseHandle->timeout
                          );
     if (error != ERROR_NONE)
@@ -4111,7 +4154,8 @@ Errors Database_vsetDouble(DatabaseHandle *databaseHandle,
   DATABASE_DEBUG_SQLX(databaseHandle,"set double",sqlString);
   error = sqliteExecute(databaseHandle,
                         String_cString(sqlString),
-                        CALLBACK(NULL,NULL),
+                        CALLBACK(NULL,NULL),  // databaseRowFunction
+                        NULL,  // changedRowCount
                         databaseHandle->timeout
                        );
   if (error != ERROR_NONE)
@@ -4129,7 +4173,8 @@ Errors Database_vsetDouble(DatabaseHandle *databaseHandle,
     DATABASE_DEBUG_SQLX(databaseHandle,"set double",sqlString);
     error = sqliteExecute(databaseHandle,
                           String_cString(sqlString),
-                          CALLBACK(NULL,NULL),
+                          CALLBACK(NULL,NULL),  // databaseRowFunction
+                          NULL,  // changedRowCount
                           databaseHandle->timeout
                          );
     if (error != ERROR_NONE)
@@ -4314,7 +4359,8 @@ Errors Database_vsetString(DatabaseHandle *databaseHandle,
   DATABASE_DEBUG_SQLX(databaseHandle,"set string",sqlString);
   error = sqliteExecute(databaseHandle,
                         String_cString(sqlString),
-                        CALLBACK(NULL,NULL),
+                        CALLBACK(NULL,NULL),  // databaseRowFunction
+                        NULL,  // changedRowCount
                         databaseHandle->timeout
                        );
   if (error != ERROR_NONE)
