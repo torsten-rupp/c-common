@@ -38,19 +38,15 @@ typedef struct
 // delete ring bufferelement function
 typedef void(*RingBufferElementFreeFunction)(void *data, void *userData);
 
-// comparison, iteration functions
-typedef int(*RingBufferElementCompareFunction)(void *userData, void *data1, void *data2);
-typedef char(*RingBufferElementIterateFunction)(void *userData, void *data);
-
 /***************************** Variables *******************************/
 
 /****************************** Macros *********************************/
 
 #ifndef NDEBUG
-  #define RingBuffer_init(...)   __RingBuffer_init(__FILE__,__LINE__,__VA_ARGS__)
-  #define RingBuffer_done(...)   __RingBuffer_done(__FILE__,__LINE__,__VA_ARGS__)
-  #define RingBuffer_new(...)    __RingBuffer_new(__FILE__,__LINE__,__VA_ARGS__)
-  #define RingBuffer_delete(...) __RingBuffer_delete(__FILE__,__LINE__,__VA_ARGS__)
+  #define RingBuffer_init(...)   __RingBuffer_init(__FILE__,__LINE__, ## __VA_ARGS__)
+  #define RingBuffer_done(...)   __RingBuffer_done(__FILE__,__LINE__, ## __VA_ARGS__)
+  #define RingBuffer_new(...)    __RingBuffer_new(__FILE__,__LINE__, ## __VA_ARGS__)
+  #define RingBuffer_delete(...) __RingBuffer_delete(__FILE__,__LINE__, ## __VA_ARGS__)
 #endif /* not NDEBUG */
 
 /***********************************************************************\
