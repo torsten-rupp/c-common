@@ -254,6 +254,20 @@ typedef enum
 #define LIST_FIND(list,variable,condition) LIST_FIND_FIRST(list,variable,condition)
 
 /***********************************************************************\
+* Name   : LIST_CONTAINS
+* Purpose: check if entry is in list
+* Input  : list      - list
+*          variable  - variable name
+*          condition - condition code
+* Output : -
+* Return : TRUE iff in list
+* Notes  : usage:
+*          LIST_CONTAINS(list,variable,variable->... == ...)
+\***********************************************************************/
+
+#define LIST_CONTAINS(list,variable,condition) (LIST_FIND(list,variable,condition) != NULL)
+
+/***********************************************************************\
 * Name   : LIST_REMOVE
 * Purpose: find and remove entry in list
 * Input  : list      - list
@@ -264,21 +278,20 @@ typedef enum
 * Notes  : -
 \***********************************************************************/
 
-#define LIST_REMOVE(list,condition) \
+#define LIST_REMOVE(list,variable,condition) \
   do \
   { \
-    ListNode *__listNode; \
-    \
-    __listNode = list->head; \
-    while (__listNode != NULL) \
+    variable = list->head; \
+    while ((variable) != NULL) \
     { \
       if (condition) \
       { \
-        __listNode = List_remove(list,__listNode); \
+        (variable) = List_remove(list,variable); \
+        break; \
       } \
       else \
       { \
-        __listNode = __listNode->next; \
+        (variable) = (variable)->next; \
       } \
     } \
   } \
@@ -754,7 +767,7 @@ Node *List_removeLast(void *list);
 
 /***********************************************************************\
 * Name   : List_contains
-* Purpose: check if list contain node
+* Purpose: check if list contains node
 * Input  : list                   - list
 *          node                   - node
 *          listNodeEqualsFunction - equals function or NULL
@@ -807,6 +820,25 @@ void *List_findNext(const void             *list,
                     ListNodeEqualsFunction listNodeEqualsFunction,
                     void                   *listNodeEqualsUserData
                    );
+
+/***********************************************************************\
+* Name   : List_findAndRemove
+* Purpose: find and remove node from list
+* Input  : list                   - list
+*          listFindMode           - list find mode
+*          listNodeEqualsFunction - equals function or NULL
+*          listNodeEqualsUserData - user data for equals function
+* Output : -
+* Return : node or NULL if list is empty
+* Notes  : -
+\***********************************************************************/
+
+Node *List_findAndRemove(void                   *list,
+                         ListFindModes          listFindMode,
+                         ListNodeEqualsFunction listNodeEqualsFunction,
+                         void                   *listNodeEqualsUserData
+                        );
+
 
 /***********************************************************************\
 * Name   : List_sort
