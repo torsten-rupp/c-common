@@ -325,7 +325,7 @@ error = ERROR_NONE;
       exitcode = WEXITSTATUS(status);
       if (exitcode == 0)
       {
-        printInfo(3,"ok\n");
+        printInfo(3,"OK\n");
       }
       else
       {
@@ -908,6 +908,30 @@ void Misc_udelay(uint64 time)
   #else
     #error usleep()/nanosleep() not available nor Windows system!
   #endif
+}
+
+/*---------------------------------------------------------------------*/
+
+String Misc_getCurrentUserName(String string)
+{
+  #ifdef HAVE_GETLOGIN_R
+    char buffer[256];
+  #endif
+
+  #ifdef HAVE_GETLOGIN_R
+    if (getlogin_r(buffer,sizeof(buffer)) == 0)
+    {
+      String_setCString(string,buffer);
+    }
+    else
+    {
+      String_clear(string);
+    }
+  #else
+    String_setCString(string,getlogin();
+  #endif
+
+  return string;
 }
 
 /*---------------------------------------------------------------------*/
