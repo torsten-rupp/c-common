@@ -256,10 +256,13 @@ LOCAL void *debugThreadStackTraceWrapStartCode(void *userData)
 
 /***********************************************************************\
 * Name   : __wrap_pthread_create
-* Purpose: wrapper function for pthread_create
-* Input  : -
+* Purpose: wrapper function for pthread_create()
+* Input  : thread    - thread variable
+*          attr      - thread attributes
+*          startCode - thread entry code
+*          argument  - thread argument
 * Output : -
-* Return : -
+* Return : 0 or error code
 * Notes  : -
 \***********************************************************************/
 
@@ -708,6 +711,7 @@ bool Thread_init(Thread     *thread,
   #endif /* HAVE_PTHREAD_ATTR_SETNAME */
 
   // start thread
+  thread->terminatedFlag = FALSE;
   if (pthread_create(&thread->handle,
                      &threadAttributes,
                      threadStartCode,
@@ -745,7 +749,17 @@ bool Thread_join(Thread *thread)
 {
   assert(thread != NULL);
 
-  return pthread_join(thread->handle,NULL) == 0;
+  if (!thread->terminatedFlag)
+  {
+    // Note: pthread_join() can only be called once with success!
+    if (pthread_join(thread->handle,NULL) != 0)
+    {
+      return FALSE;
+    }
+    thread->terminatedFlag = TRUE;
+  }
+
+  return TRUE;
 }
 
 void Thread_delay(uint time)
