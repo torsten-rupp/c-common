@@ -78,15 +78,27 @@ typedef enum
 /***************************** Datatypes *******************************/
 
 // database handle
-typedef struct
+typedef struct DatabaseHandle
 {
+  #ifndef NDEBUG
+    LIST_NODE_HEADER(struct DatabaseHandle);
+  #endif /* not NDEBUG */
+
   uint          priority;                   // access priority
   Semaphore     lock;                       // lock (Note: do not use sqlite mutex, because of debug facilities in semaphore.c)
   sqlite3       *handle;                    // SQlite3 handle
   long          timeout;                    // timeout [ms]
   sem_t         wakeUp;                     // unlock wake-up
   #ifndef NDEBUG
-    char fileName[256];
+    char         name[256];                 // database name (file name)
+
+    const char   *fileName;
+    ulong        lineNb;
+    #ifdef HAVE_BACKTRACE
+      void const *stackTrace[16];
+      int        stackTraceSize;
+    #endif /* HAVE_BACKTRACE */
+
     struct
     {
       ThreadId   threadId;                  // thread who aquired lock
@@ -98,7 +110,7 @@ typedef struct
     struct
     {
       ThreadId   threadId;                  // thread who started transaction
-      const char *fileName;
+      const char *fileName;                 // != NULL iff transaction
       uint       lineNb;
       void const *stackTrace[16];
       int        stackTraceSize;
@@ -290,6 +302,17 @@ void Database_doneAll(void);
 
 //bool Database_isHigherRequestPending(uint priority);
 
+/***********************************************************************\
+* Name   : Database_interrupt
+* Purpose: interrupt currently running database command
+* Input  : databaseHandle - database handle
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+void Database_interrupt(DatabaseHandle *databaseHandle);
+
 //TODO: remove
 #if 0
 /***********************************************************************\
@@ -442,6 +465,8 @@ Errors Database_compare(DatabaseHandle *databaseHandleReference,
 *          preCopyTableUserData  - user data for pre-copy call-back
 *          postCopyTableFunction - pre-copy call-back function
 *          postCopyTableUserData - user data for post-copy call-back
+*          pauseCallbackFunction - pause call-back
+*          pauseCallbackUserData - user data for pause call-back
 *          fromAdditional        - additional SQL condition
 *          ...                   - optional arguments for additional
 *                                  SQL condition
@@ -922,6 +947,17 @@ int64 Database_getLastRowId(DatabaseHandle *databaseHandle);
 \***********************************************************************/
 
 void Database_debugEnable(bool enabled);
+
+/***********************************************************************\
+* Name   : Database_debugPrintInfo
+* Purpose: print debug info
+* Input  : -
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+void Database_debugPrintInfo(void);
 
 /***********************************************************************\
 * Name   : Database_debugPrintQueryInfo
