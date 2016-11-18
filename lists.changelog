@@ -1,3 +1,6 @@
+2016-11-18 0.07
+  * implemented List_findAndRemove()
+
 2016-01-03 0.06
   * implemented LIST_FIND
   * renamed ListFunctionCopyNode -> ListFunctionDuplicateNode

@@ -1,3 +1,13 @@
+2016-11-18 0.13
+  * added ConstString
+  * replaced exit() -> abort()
+  * improved debug code and stack traces
+  * fixed copy when source/destination are same
+  * renamed *_get(FIrst|Last) -> *_remove(Frist|Last)
+  * added warning for extremly long strings
+  * fixed usage of STRING_NO_ASSIGN
+  * fixed string match
+
 2015-01-02 0.12
   * added support for static strings
 

@@ -1,3 +1,13 @@
+2016-11-18 0.04
+  * support PCRE
+  * fixed memory leaks
+  * use ConstString
+  * renamed *_get(FIrst|Last) -> *_remove(Frist|Last)
+  * improved debug code
+  * implemented StringList_initDuplicate()
+  * added from/to node in StringList_copy(), StringList_move()
+  * return list in StringList_clear()
+
 2012-07-07 0.03
   * updated included lists library
 
