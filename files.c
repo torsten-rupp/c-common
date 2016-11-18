@@ -230,8 +230,8 @@ LOCAL void fileCheckValid(const char       *fileName,
       #endif /* HAVE_BACKTRACE */
       HALT_INTERNAL_ERROR_AT(fileName,
                              lineNb,
-                             "File 0x%08lx was closed at %s, line %lu",
-                             (ulong)fileHandle,
+                             "File %p was closed at %s, line %lu",
+                             fileHandle,
                              debugFileNode->closeFileName,
                              debugFileNode->closeLineNb
                             );
@@ -248,8 +248,8 @@ LOCAL void fileCheckValid(const char       *fileName,
       #ifdef HAVE_BACKTRACE
         debugDumpCurrentStackTrace(stderr,0,0);
       #endif /* HAVE_BACKTRACE */
-      HALT_INTERNAL_ERROR("File 0x%08lx is not open",
-                          (ulong)fileHandle
+      HALT_INTERNAL_ERROR("File %p is not open",
+                          fileHandle
                          );
     }
   }
@@ -488,15 +488,19 @@ LOCAL Errors initFileHandle(const char  *__fileName__,
       debugFileNode->lineNb                = __lineNb__;
       #ifdef HAVE_BACKTRACE
         debugFileNode->stackTraceSize      = backtrace((void*)debugFileNode->stackTrace,SIZE_OF_ARRAY(debugFileNode->stackTrace));
+      #else /* not HAVE_BACKTRACE */
+        debugFileNode->stackTraceSize      = 0;
       #endif /* HAVE_BACKTRACE */
       debugFileNode->closeFileName         = NULL;
       debugFileNode->closeLineNb           = 0;
       #ifdef HAVE_BACKTRACE
         debugFileNode->closeStackTraceSize = 0;
+      #else /* not HAVE_BACKTRACE */
+        debugFileNode->closeStackTraceSize = 0;
       #endif /* HAVE_BACKTRACE */
       debugFileNode->fileHandle            = fileHandle;
 
-      // add string to open-list
+      // add file to open-list
       List_append(&debugOpenFileList,debugFileNode);
     }
     pthread_mutex_unlock(&debugFileLock);
@@ -554,10 +558,12 @@ LOCAL void doneFileHandle(const char  *__fileName__,
         List_remove(&debugOpenFileList,debugFileNode);
 
         // add to closed list
-        debugFileNode->closeFileName = __fileName__;
-        debugFileNode->closeLineNb   = __lineNb__;
+        debugFileNode->closeFileName         = __fileName__;
+        debugFileNode->closeLineNb           = __lineNb__;
         #ifdef HAVE_BACKTRACE
           debugFileNode->closeStackTraceSize = backtrace((void*)debugFileNode->closeStackTrace,SIZE_OF_ARRAY(debugFileNode->closeStackTrace));
+        #else /* not HAVE_BACKTRACE */
+          debugFileNode->closeStackTraceSize = 0;
         #endif /* HAVE_BACKTRACE */
         List_append(&debugClosedFileList,debugFileNode);
 
@@ -1265,6 +1271,7 @@ Errors __File_getTmpFileCString(const char  *__fileName__,
 
   if (pattern == NULL) pattern = "tmp-XXXXXX";
 
+  // create directory
   if (!String_isEmpty(directory))
   {
     s = (char*)malloc(String_length(directory)+strlen(FILE_SEPARATOR_STRING)+strlen(pattern)+1);
@@ -1295,6 +1302,7 @@ Errors __File_getTmpFileCString(const char  *__fileName__,
   }
   strcat(s,pattern);
 
+  // create temporary file
   #ifdef HAVE_MKSTEMP
     handle = mkstemp(s);
     if (handle == -1)
@@ -1328,6 +1336,8 @@ Errors __File_getTmpFileCString(const char  *__fileName__,
   #else /* not HAVE_MKSTEMP || HAVE_MKTEMP */
     #error mkstemp() nor mktemp() available
   #endif /* HAVE_MKSTEMP || HAVE_MKTEMP */
+
+  // remove file from directory (finally deleted on close)
   #ifdef NDEBUG
     if (unlink(s) != 0)
     {
@@ -1340,6 +1350,7 @@ Errors __File_getTmpFileCString(const char  *__fileName__,
     fileHandle->name              = String_newCString(s);
     fileHandle->deleteOnCloseFlag = TRUE;
   #endif /* NDEBUG */
+
   fileHandle->index = 0LL;
   fileHandle->size  = 0LL;
   fileHandle->mode  = 0;
@@ -1362,6 +1373,8 @@ Errors __File_getTmpFileCString(const char  *__fileName__,
       {
         #ifdef HAVE_BACKTRACE
           debugDumpStackTrace(stderr,0,debugFileNode->stackTrace,debugFileNode->stackTraceSize,0);
+        #else /* not HAVE_BACKTRACE */
+          debugFileNode->stackTraceSize = 0;
         #endif /* HAVE_BACKTRACE */
         if (debugFileNode->fileHandle->name != NULL)
         {
@@ -1409,15 +1422,19 @@ Errors __File_getTmpFileCString(const char  *__fileName__,
       debugFileNode->lineNb                = __lineNb__;
       #ifdef HAVE_BACKTRACE
         debugFileNode->stackTraceSize      = backtrace((void*)debugFileNode->stackTrace,SIZE_OF_ARRAY(debugFileNode->stackTrace));
+      #else /* not HAVE_BACKTRACE */
+        debugFileNode->stackTraceSize      = 0;
       #endif /* HAVE_BACKTRACE */
       debugFileNode->closeFileName         = NULL;
       debugFileNode->closeLineNb           = 0;
       #ifdef HAVE_BACKTRACE
         debugFileNode->closeStackTraceSize = 0;
+      #else /* not HAVE_BACKTRACE */
+        debugFileNode->closeStackTraceSize = 0;
       #endif /* HAVE_BACKTRACE */
       debugFileNode->fileHandle            = fileHandle;
 
-      // add string to open-list
+      // add file to open-list
       List_append(&debugOpenFileList,debugFileNode);
     }
     pthread_mutex_unlock(&debugFileLock);
@@ -1426,12 +1443,12 @@ Errors __File_getTmpFileCString(const char  *__fileName__,
   return ERROR_NONE;
 }
 
-Errors File_getTmpFileName(String fileName, ConstString pattern, ConstString directory)
+Errors File_getTmpFileName(String fileName, const char *prefix, ConstString directory)
 {
-  return File_getTmpFileNameCString(fileName,String_cString(pattern),String_cString(directory));
+  return File_getTmpFileNameCString(fileName,prefix,String_cString(directory));
 }
 
-Errors File_getTmpFileNameCString(String fileName, const char *pattern, const char *directory)
+Errors File_getTmpFileNameCString(String fileName, const char *prefix, const char *directory)
 {
   char   *s;
   int    handle;
@@ -1439,12 +1456,12 @@ Errors File_getTmpFileNameCString(String fileName, const char *pattern, const ch
 
   assert(fileName != NULL);
 
-  if (pattern == NULL) pattern = "tmp-XXXXXX";
+  if (prefix == NULL) prefix = "tmp";
   if (directory == NULL) directory = File_getSystemTmpDirectory();
 
   if (!stringIsEmpty(directory))
   {
-    s = (char*)malloc(strlen(directory)+strlen(FILE_SEPARATOR_STRING)+strlen(pattern)+1);
+    s = (char*)malloc(strlen(directory)+strlen(FILE_SEPARATOR_STRING)+strlen(prefix)+7+1);
     if (s == NULL)
     {
       HALT_INSUFFICIENT_MEMORY();
@@ -1454,14 +1471,15 @@ Errors File_getTmpFileNameCString(String fileName, const char *pattern, const ch
   }
   else
   {
-    s = (char*)malloc(strlen(pattern)+1);
+    s = (char*)malloc(strlen(prefix)+7+1);
     if (s == NULL)
     {
       HALT_INSUFFICIENT_MEMORY();
     }
     s[0] = '\0';
   }
-  strcat(s,pattern);
+  strcat(s,prefix);
+  strcat(s,"-XXXXXX");
 
   #ifdef HAVE_MKSTEMP
     handle = mkstemp(s);
@@ -1892,14 +1910,18 @@ Errors __File_close(const char *__fileName__,
                    )
 #endif /* NDEBUG */
 {
+  Errors error;
+
   FILE_CHECK_VALID(fileHandle);
+
+  error = ERROR_NONE;
 
   #ifndef NDEBUG
     if (fileHandle->deleteOnCloseFlag && (fileHandle->name != NULL))
     {
       if (unlink(String_cString(fileHandle->name)) != 0)
       {
-        return ERRORX_(IO_ERROR,errno,"%s",String_cString(fileHandle->name));
+        if (error == ERROR_NONE) error = ERRORX_(IO_ERROR,errno,"%s",String_cString(fileHandle->name));
       }
     }
   #endif /* not NDEBUG */
@@ -1915,22 +1937,22 @@ Errors __File_close(const char *__fileName__,
     {
       if (!setAccessTime(fileHandle->handle, &fileHandle->atime))
       {
-        return ERRORX_(IO_ERROR,errno,"%s",String_cString(fileHandle->name));
+        if (error == ERROR_NONE) error = ERRORX_(IO_ERROR,errno,"%s",String_cString(fileHandle->name));
       }
     }
   #endif /* not HAVE_O_NOATIME */
 
   // done stream
-#ifdef NDEBUG
-  doneFileHandle(fileHandle);
-#else /* not NDEBUG */
-  doneFileHandle(__fileName__,
-                 __lineNb__,
-                 fileHandle
-                );
-#endif /* NDEBUG */
+  #ifdef NDEBUG
+    doneFileHandle(fileHandle);
+  #else /* not NDEBUG */
+    doneFileHandle(__fileName__,
+                   __lineNb__,
+                   fileHandle
+                  );
+  #endif /* NDEBUG */
 
-  return ERROR_NONE;
+  return error;
 }
 
 bool File_eof(FileHandle *fileHandle)
@@ -1956,7 +1978,7 @@ bool File_eof(FileHandle *fileHandle)
 
 Errors File_read(FileHandle *fileHandle,
                  void       *buffer,
-                 ulong      bufferLength,
+                 ulong      bufferSize,
                  ulong      *bytesRead
                 )
 {
@@ -1968,22 +1990,25 @@ Errors File_read(FileHandle *fileHandle,
   if (bytesRead != NULL)
   {
     // read as much data as possible
-    n = fread(buffer,1,bufferLength,fileHandle->file);
+//TODO: not valid
+//    assert(((fileHandle->mode & FILE_STREAM) == FILE_STREAM) || (fileHandle->index == (uint64)FTELL(fileHandle->file)));
+    n = fread(buffer,1,bufferSize,fileHandle->file);
     if ((n <= 0) && (ferror(fileHandle->file) != 0))
     {
       return ERRORX_(IO_ERROR,errno,"%s",String_cString(fileHandle->name));
     }
     fileHandle->index += (uint64)n;
-    assert(((fileHandle->mode & FILE_STREAM) == FILE_STREAM) || (fileHandle->index == (uint64)FTELL(fileHandle->file)));
+//TODO: not valid when file changed in the meantime
+//    assert(((fileHandle->mode & FILE_STREAM) == FILE_STREAM) || (fileHandle->index == (uint64)FTELL(fileHandle->file)));
     (*bytesRead) = n;
   }
   else
   {
     // read all requested data
     errno=0;
-    while (bufferLength > 0L)
+    while (bufferSize > 0L)
     {
-      n = fread(buffer,1,bufferLength,fileHandle->file);
+      n = fread(buffer,1,bufferSize,fileHandle->file);
       if (n <= 0)
       {
         if (ferror(fileHandle->file) != 0)
@@ -1996,9 +2021,10 @@ Errors File_read(FileHandle *fileHandle,
         }
       }
       buffer = (byte*)buffer+n;
-      bufferLength -= (ulong)n;
+      bufferSize -= (ulong)n;
       fileHandle->index += (uint64)n;
-      assert(((fileHandle->mode & FILE_STREAM) == FILE_STREAM) || (fileHandle->index == (uint64)FTELL(fileHandle->file)));
+//TODO: not valid when file changed in the meantime
+//      assert(((fileHandle->mode & FILE_STREAM) == FILE_STREAM) || (fileHandle->index == (uint64)FTELL(fileHandle->file)));
     }
   }
 
@@ -2061,7 +2087,8 @@ Errors File_readLine(FileHandle *fileHandle,
       if (ch != EOF)
       {
         fileHandle->index += 1LL;
-        assert(((fileHandle->mode & FILE_STREAM) == FILE_STREAM) || (fileHandle->index == (uint64)FTELL(fileHandle->file)));
+//TODO: not valid when file changed in the meantime
+//        assert(((fileHandle->mode & FILE_STREAM) == FILE_STREAM) || (fileHandle->index == (uint64)FTELL(fileHandle->file)));
         if (((char)ch != '\n') && ((char)ch != '\r'))
         {
           String_appendChar(line,ch);
@@ -2082,11 +2109,13 @@ Errors File_readLine(FileHandle *fileHandle,
       if (ch != EOF)
       {
         fileHandle->index += 1LL;
-        assert(((fileHandle->mode & FILE_STREAM) == FILE_STREAM) || (fileHandle->index == (uint64)FTELL(fileHandle->file)));
+//TODO: not valid when file changed in the meantime
+//        assert(((fileHandle->mode & FILE_STREAM) == FILE_STREAM) || (fileHandle->index == (uint64)FTELL(fileHandle->file)));
         if (ch != '\n')
         {
           fileHandle->index -= 1LL;
-          assert(((fileHandle->mode & FILE_STREAM) == FILE_STREAM) || (fileHandle->index == (uint64)FTELL(fileHandle->file)));
+//TODO: not valid when file changed in the meantime
+//          assert(((fileHandle->mode & FILE_STREAM) == FILE_STREAM) || (fileHandle->index == (uint64)FTELL(fileHandle->file)));
           ungetc(ch,fileHandle->file);
         }
       }
@@ -2322,7 +2351,8 @@ Errors File_seek(FileHandle *fileHandle,
     return ERRORX_(IO_ERROR,errno,"%s",String_cString(fileHandle->name));
   }
   fileHandle->index = offset;
-  assert(fileHandle->index == (uint64)FTELL(fileHandle->file));
+//TODO: not valid when file changed in the meantime
+//  assert(fileHandle->index == (uint64)FTELL(fileHandle->file));
   if (fileHandle->index > fileHandle->size) fileHandle->size = fileHandle->index;
 
   return ERROR_NONE;
@@ -2348,7 +2378,8 @@ Errors File_truncate(FileHandle *fileHandle,
         return ERRORX_(IO_ERROR,errno,"%s",String_cString(fileHandle->name));
       }
       fileHandle->index = size;
-      assert(fileHandle->index == (uint64)FTELL(fileHandle->file));
+//TODO: not valid when file changed in the meantime
+//      assert(fileHandle->index == (uint64)FTELL(fileHandle->file));
     }
     fileHandle->size = size;
   }

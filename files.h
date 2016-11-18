@@ -590,15 +590,15 @@ const char *File_getSystemTmpDirectory(void);
 * Name   : File_getTmpFileName, File_getTmpFileNameCString
 * Purpose: create and get a temporary file name
 * Input  : fileName  - variable for temporary file name
-*          pattern   - pattern with XXXXXX or NULL
+*          prefix    - prefix or NULL
 *          directory - directory to create temporary file (can be NULL)
 * Output : fileName - temporary file name
 * Return : TRUE iff temporary file created, FALSE otherwise
 * Notes  : -
 \***********************************************************************/
 
-Errors File_getTmpFileName(String fileName, ConstString pattern, ConstString directory);
-Errors File_getTmpFileNameCString(String fileName, const char *pattern, const char *directory);
+Errors File_getTmpFileName(String fileName, const char *prefix, ConstString directory);
+Errors File_getTmpFileNameCString(String fileName, const char *prefix, const char *directory);
 
 /***********************************************************************\
 * Name   : File_getTmpDirectoryName, File_getTmpDirectoryNameCString
@@ -711,7 +711,7 @@ bool File_eof(FileHandle *fileHandle);
 * Purpose: read data from file
 * Input  : fileHandle   - file handle
 *          buffer       - buffer for data to read
-*          bufferLength - length of data to read
+*          bufferSize   - max. length of data to read [bytes]
 * Output : bytesRead - bytes read (can be NULL)
 * Return : ERROR_NONE or error code
 * Notes  : if bytesRead is not given (NULL) reading less than
@@ -720,7 +720,7 @@ bool File_eof(FileHandle *fileHandle);
 
 Errors File_read(FileHandle *fileHandle,
                  void       *buffer,
-                 ulong      bufferLength,
+                 ulong      bufferSize,
                  ulong      *bytesRead
                 );
 
@@ -729,7 +729,7 @@ Errors File_read(FileHandle *fileHandle,
 * Purpose: write data into file
 * Input  : fileHandle   - file handle
 *          buffer       - buffer for data to write
-*          bufferLength - length of data to write
+*          bufferLength - length of data to write [bytes]
 * Output : -
 * Return : ERROR_NONE or error code
 * Notes  : -
