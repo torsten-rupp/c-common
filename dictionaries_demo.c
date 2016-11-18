@@ -74,6 +74,7 @@ int main(int argc, char *argv[])
 
   Dictionary_init(&dictionary,
                   CALLBACK_NULL,
+                  CALLBACK_NULL,
                   CALLBACK_NULL
                  );
 
@@ -86,7 +87,7 @@ int main(int argc, char *argv[])
     n++;
 //    if ((n%10000) == 0) printf("Store %lu\n",n);
 
-    Dictionary_add(&dictionary,line,strlen(line)+1,NULL,0,DICTIONARY_BYTE_COPY);
+    Dictionary_add(&dictionary,line,strlen(line)+1,NULL,0);
   }
   t1 = getTimestamp();
   dt = t1-t0;
