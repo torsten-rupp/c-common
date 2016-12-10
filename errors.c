@@ -16,17 +16,17 @@ static const char *NONE = NULL;
 typedef struct
 {
   int  id;
-  char text[512];
+  char text[2048];
 } ErrorText;
 
-static ErrorText errorTexts[63];
-static int       errorTextCount = 0;
-static int       errorTextId    = 0;
+static ErrorText errorTexts[63];   // last error texts
+static uint      errorTextCount = 0;                       // last error text count (=max. when all text entries are used; recycle oldest entry if required)
+static uint      errorTextId    = 0;                       // total number of error texts
 
 int _Error_textToIndex(const char *format, ...)
 {
   va_list arguments;
-  char    text[512];
+  char    text[2048];
   int     index;
   int     minId;
   uint    z,i;
@@ -37,34 +37,56 @@ int _Error_textToIndex(const char *format, ...)
     vsnprintf(text,sizeof(text),format,arguments);
     va_end(arguments);
 
+    // get new error text id
     errorTextId++;
-    if (errorTextCount < 63)
+
+    // get error text index
+    index = -1;
+    z = 0;
+    while ((z < errorTextCount) && (index == -1))
     {
-      index = errorTextCount;
-      errorTextCount++;
-    }
-    else
-    {
-      index = 0;
-      minId = INT_MAX;
-      for (z = 0; z < 63; z++)
+      if (strcmp(errorTexts[z].text,text) == 0)
       {
-        if (errorTexts[z].id < minId)
+        index = z;
+      }
+      z++;
+    }
+    if (index == -1)
+    {
+      if (errorTextCount < 63)
+      {
+        // use next entry
+        index = errorTextCount;
+        errorTextCount++;
+      }
+      else
+      {
+        // recycle oldest entry (entry with smallest id)
+        index = 0;
+        minId = INT_MAX;
+        for (z = 0; z < 63; z++)
         {
-          index = z;
-          minId = errorTexts[z].id;
+          if (errorTexts[z].id < minId)
+          {
+            index = z;
+            minId = errorTexts[z].id;
+          }
         }
       }
     }
+
+
+    // copy error text
     z = 0;
     i = 0;
-    while ((z < strlen(text)) && (i < 512-1))
+    while ((z < strlen(text)) && (i < 2048-1))
     {
       if (!iscntrl(text[z])) { errorTexts[index].text[i] = text[z]; i++; }
       z++;
     }
     errorTexts[index].text[i] = '\0';
-    errorTexts[errorTextCount].id = errorTextId;
+    errorTexts[index].id = errorTextId;
+
     return index+1;
   }
   else
@@ -93,7 +115,7 @@ unsigned int Error_getCode(Errors error)
 
 const char *Error_getCodeText(Errors error)
 {
-  static char codeText[512];
+  static char codeText[2048];
 
   snprintf(codeText,sizeof(codeText)-1,"0x%03x",ERROR_GET_CODE(error));
   codeText[sizeof(codeText)-1] = '\0';
@@ -103,7 +125,7 @@ const char *Error_getCodeText(Errors error)
 
 const char *Error_getErrnoText(Errors error)
 {
-  static char errnoText[512];
+  static char errnoText[2048];
 
   snprintf(errnoText,sizeof(errnoText)-1,"%d",ERROR_GET_ERRNO(error));
   errnoText[sizeof(errnoText)-1] = '\0';
@@ -113,7 +135,7 @@ const char *Error_getErrnoText(Errors error)
 
 const char *Error_getText(Errors error)
 {
-  static char errorText[512];
+  static char errorText[2048];
 
   strcpy(errorText,"unknown");
   switch (ERROR_GET_CODE(error))
