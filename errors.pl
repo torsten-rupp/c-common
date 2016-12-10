@@ -32,6 +32,13 @@ use Getopt::Long;
 
 # ---------------------------- constants/variables ---------------------------
 
+# error code:
+#
+#  b31...b16  b15...b10  b9..b0
+#
+#    errno   text index  code
+#
+
 my $ERROR_CODE_MASK           = "0x000003FF";
 my $ERROR_CODE_SHIFT          = 0;
 my $ERROR_TEXTINDEX_MASK      = "0x0000FC00";
@@ -39,7 +46,7 @@ my $ERROR_TEXTINDEX_SHIFT     = 10;
 my $ERROR_ERRNO_MASK          = "0xFFFF0000";
 my $ERROR_ERRNO_SHIFT         = 16;
 
-my $ERROR_MAX_TEXT_LENGTH     = 512;
+my $ERROR_MAX_TEXT_LENGTH     = 2048;
 my $ERROR_TEXTINDEX_MAX_COUNT = 63;
 
 my $PREFIX                    = "ERROR_";
@@ -51,6 +58,15 @@ my $errorNumber=0;
 
 # -------------------------------- functions ---------------------------------
 
+#***********************************************************************
+# Name   : writeCFile
+# Purpose: write C file
+# Input  : string
+# Output : -
+# Return : -
+# Notes  : -
+#***********************************************************************
+
 sub writeCFile($)
 {
   my $s=shift(@_);
@@ -60,6 +76,15 @@ sub writeCFile($)
     print CFILE_HANDLE $s;
   }
 }
+
+#***********************************************************************
+# Name   : writeHFile
+# Purpose: write header file
+# Input  : string
+# Output : -
+# Return : -
+# Notes  : -
+#***********************************************************************
 
 sub writeHFile($)
 {
@@ -71,6 +96,15 @@ sub writeHFile($)
   }
 }
 
+#***********************************************************************
+# Name   : writeJavaFile
+# Purpose: write Java file
+# Input  : string
+# Output : -
+# Return : -
+# Notes  : -
+#***********************************************************************
+
 sub writeJavaFile($)
 {
   my $s=shift(@_);
@@ -80,6 +114,15 @@ sub writeJavaFile($)
     print JAVAFILE_HANDLE $s;
   }
 }
+
+#***********************************************************************
+# Name   : writeCPrefix
+# Purpose: write C file prefix
+# Input  : -
+# Output : -
+# Return : -
+# Notes  : -
+#***********************************************************************
 
 sub writeCPrefix()
 {
@@ -131,6 +174,15 @@ const char *Error_getText(Errors error)
 ";
 }
 
+#***********************************************************************
+# Name   : writeCPostfix
+# Purpose: write C postfix
+# Input  : -
+# Output : -
+# Return : -
+# Notes  : -
+#***********************************************************************
+
 sub writeCPostfix()
 {
   if ($defaultText ne "")
@@ -145,6 +197,15 @@ sub writeCPostfix()
 ";
 }
 
+#***********************************************************************
+# Name   : writeHPrefix
+# Purpose: write header prefix
+# Input  : -
+# Output : -
+# Return : -
+# Notes  : -
+#***********************************************************************
+
 sub writeHPrefix()
 {
   print HFILE_HANDLE "\
@@ -153,6 +214,15 @@ typedef enum
   ".$PREFIX."NONE = 0,
 ";
 }
+
+#***********************************************************************
+# Name   : writeHPostfix
+# Purpose: write header postfix
+# Input  : -
+# Output : -
+# Return : -
+# Notes  : -
+#***********************************************************************
 
 sub writeHPostfix()
 {
@@ -164,19 +234,78 @@ sub writeHPostfix()
   extern \"C\" {
 #endif
 
-int _Error_textToIndex(const char *text, ...);
+/***********************************************************************\
+* Name   : _Error_textToIndex
+* Purpose: store error text as index
+* Input  : format - format string (like printf)
+*          ...    - optional arguments for format string
+* Output : -
+* Return : index
+* Notes  : internal usage only!
+\***********************************************************************/
+
+int _Error_textToIndex(const char *format, ...);
+
+/***********************************************************************\
+* Name   : Error_getCode
+* Purpose: get error code
+* Input  : error - error
+* Output : -
+* Return : error code
+* Notes  : -
+\***********************************************************************/
+
 unsigned int Error_getCode(Errors error);
+
+/***********************************************************************\
+* Name   : Error_getCodeText
+* Purpose: get error code as text (hex)
+* Input  : error  - error
+* Output : -
+* Return : text
+* Notes  : -
+\***********************************************************************/
+
 const char *Error_getCodeText(Errors error);
+
+/***********************************************************************\
+* Name   : Error_getErrnoText
+* Purpose: get errno text
+* Input  : error  - error
+* Output : -
+* Return : errno text
+* Notes  : -
+\***********************************************************************/
+
 const char *Error_getErrnoText(Errors error);
+
+/***********************************************************************\
+* Name   : Error_getText
+* Purpose: get error text
+* Input  : error  - error
+* Output : -
+* Return : error text
+* Notes  : -
+\***********************************************************************/
+
 const char *Error_getText(Errors error);
 
 #ifdef __cplusplus
   }
 #endif
 
-#endif /* __ARCHIVE_FORMAT__ */
+#endif /* __ERRORS__ */
 ";
 }
+
+#***********************************************************************
+# Name   : writeJavaPrefix
+# Purpose: write Java prefix
+# Input  : -
+# Output : -
+# Return : -
+# Notes  : -
+#***********************************************************************
 
 sub writeJavaPrefix()
 {
@@ -185,9 +314,18 @@ sub writeJavaPrefix()
   print JAVAFILE_HANDLE "  static final int NONE = 0;\n";
 }
 
+#***********************************************************************
+# Name   : writeJavaPostfix
+# Purpose: write Java postfix
+# Input  : -
+# Output : -
+# Return : -
+# Notes  : -
+#***********************************************************************
+
 sub writeJavaPostfix()
 {
-  print JAVAFILE_HANDLE "  static final int UNKNOWN = $errorNumber;\n";
+  print JAVAFILE_HANDLE "  static final int UNKNOWN = ".($errorNumber+1).";\n";
   print JAVAFILE_HANDLE "}\n";
 }
 
@@ -222,9 +360,9 @@ typedef struct
   char text[$ERROR_MAX_TEXT_LENGTH];
 } ErrorText;
 
-static ErrorText errorTexts[$ERROR_TEXTINDEX_MAX_COUNT];
-static int       errorTextCount = 0;
-static int       errorTextId    = 0;
+static ErrorText errorTexts[$ERROR_TEXTINDEX_MAX_COUNT];   // last error texts
+static uint      errorTextCount = 0;                       // last error text count (=max. when all text entries are used; recycle oldest entry if required)
+static uint      errorTextId    = 0;                       // total number of error texts
 
 int _Error_textToIndex(const char *format, ...)
 {
@@ -240,25 +378,46 @@ int _Error_textToIndex(const char *format, ...)
     vsnprintf(text,sizeof(text),format,arguments);
     va_end(arguments);
 
+    // get new error text id
     errorTextId++;
-    if (errorTextCount < $ERROR_TEXTINDEX_MAX_COUNT)
+
+    // get error text index
+    index = -1;
+    z = 0;
+    while ((z < errorTextCount) && (index == -1))
     {
-      index = errorTextCount;
-      errorTextCount++;
-    }
-    else
-    {
-      index = 0;
-      minId = INT_MAX;
-      for (z = 0; z < $ERROR_TEXTINDEX_MAX_COUNT; z++)
+      if (strcmp(errorTexts[z].text,text) == 0)
       {
-        if (errorTexts[z].id < minId)
+        index = z;
+      }
+      z++;
+    }
+    if (index == -1)
+    {
+      if (errorTextCount < $ERROR_TEXTINDEX_MAX_COUNT)
+      {
+        // use next entry
+        index = errorTextCount;
+        errorTextCount++;
+      }
+      else
+      {
+        // recycle oldest entry (entry with smallest id)
+        index = 0;
+        minId = INT_MAX;
+        for (z = 0; z < $ERROR_TEXTINDEX_MAX_COUNT; z++)
         {
-          index = z;
-          minId = errorTexts[z].id;
+          if (errorTexts[z].id < minId)
+          {
+            index = z;
+            minId = errorTexts[z].id;
+          }
         }
       }
     }
+
+
+    // copy error text
     z = 0;
     i = 0;
     while ((z < strlen(text)) && (i < $ERROR_MAX_TEXT_LENGTH-1))
@@ -267,7 +426,8 @@ int _Error_textToIndex(const char *format, ...)
       z++;
     }
     errorTexts[index].text[i] = '\\0';
-    errorTexts[errorTextCount].id = errorTextId;
+    errorTexts[index].id = errorTextId;
+
     return index+1;
   }
   else
@@ -285,13 +445,52 @@ if ($hFileName ne "")
 #ifndef __ERRORS__
 #define __ERRORS__
 
+/***********************************************************************\
+* Name   : ERROR_
+* Purpose: create error
+* Input  : code  - error code; see ERROR_...
+*          errno - errno or 0
+* Output : -
+* Return : error
+* Notes  : -
+\***********************************************************************/
+
 #define ERROR_(code,errno)             ((Errors)(  (((errno) << $ERROR_ERRNO_SHIFT) & $ERROR_ERRNO_MASK) \\
                                                  | (((ERROR_ ## code) << $ERROR_CODE_SHIFT) & $ERROR_CODE_MASK) \\
                                                 ) \\
                                        )
+
+/***********************************************************************\
+* Name   : ERRORX_
+* Purpose: create extended error
+* Input  : code   - error code; see ERROR_...
+*          errno  - errno or 0
+*          format - format string (like printf)
+*          ...    - optional arguments for format string
+* Output : -
+* Return : error
+* Notes  : -
+\***********************************************************************/
+
 #define ERRORX_(code,errno,format,...) ((Errors)(  (((errno) << $ERROR_ERRNO_SHIFT) & $ERROR_ERRNO_MASK) \\
                                                  | ((_Error_textToIndex(format, ## __VA_ARGS__) << $ERROR_TEXTINDEX_SHIFT) & $ERROR_TEXTINDEX_MASK) \\
                                                  | (((ERROR_ ## code) << $ERROR_CODE_SHIFT) & $ERROR_CODE_MASK) \\
+                                                ) \\
+                                       )
+
+/***********************************************************************\
+* Name   : ERRORF_
+* Purpose: format error text
+* Input  : error  - error
+*          format - format string (like printf)
+*          ...    - optional arguments for format string
+* Output : -
+* Return : error
+* Notes  : -
+\***********************************************************************/
+
+#define ERRORF_(error,format,...)      ((Errors)(  ((error) & ($ERROR_CODE_MASK|$ERROR_ERRNO_MASK)) \\
+                                                 | ((_Error_textToIndex(format, ## __VA_ARGS__) << $ERROR_TEXTINDEX_SHIFT) & $ERROR_TEXTINDEX_MASK) \\
                                                 ) \\
                                        )
 
