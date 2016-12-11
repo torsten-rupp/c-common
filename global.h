@@ -284,7 +284,7 @@ typedef struct
 
 /***********************************************************************\
 * Name   : LAMBDA
-* Purpose: define a lambda-function
+* Purpose: define a lambda-function (anonymouse function)
 * Input  : functionReturnType - call-back function return type
 *          functionSignature  - call-back function signature
 *          functionBody       - call-back function body
@@ -293,7 +293,7 @@ typedef struct
 * Notes  : example
 *          List_removeAndFree(list,
 *                             node,
-*                             CALLBACK_INLINE(ListNodeFreeFunction,(...),{ ... },NULL)
+*                             LAMBDA(void,(...),{ ... })
 *                            );
 \***********************************************************************/
 
@@ -305,8 +305,26 @@ typedef struct
   })
 
 /***********************************************************************\
+* Name   : CLOSURE
+* Purpose: define a closure-function call
+* Input  : functionReturnType - closure function return type
+*          functionBody       - closure function body
+* Output : -
+* Return : function result
+* Notes  : example
+*          int a = CLOSURE(int,{ return 123; });
+\***********************************************************************/
+
+#define CLOSURE(functionReturnType,functionBody) \
+  ({ \
+    auto functionReturnType __closure__ (void); \
+    functionReturnType __closure__ (void) functionBody \
+    __closure__(); \
+  })
+
+/***********************************************************************\
 * Name   : CALLBACK_INLINE
-* Purpose: define an inline call-back function (lambda-function)
+* Purpose: define an inline call-back function (anonymouse function)
 * Input  : functionReturnType - call-back function signature
 *          functionSignature  - call-back function signature
 *          functionBody       - call-back function body
@@ -316,7 +334,7 @@ typedef struct
 * Notes  : example
 *          List_removeAndFree(list,
 *                             node,
-*                             CALLBACK_INLINE(ListNodeFreeFunction,(...),{ ... },NULL)
+*                             CALLBACK_INLINE(void,(...),{ ... },NULL)
 *                            );
 \***********************************************************************/
 
@@ -907,21 +925,6 @@ typedef struct
   while (0)
 
 /***********************************************************************\
-* Name   : MEMSET, MEMCLEAR
-* Purpose: set/clear memory macros
-* Input  : p     - pointer
-*          value - value
-*          size  - size (in bytes)
-* Output : -
-* Return : -
-* Notes  : -
-\***********************************************************************/
-
-#define MEMSET(p,value,size) memset(p,value,size)
-
-#define MEMCLEAR(p,size) memset(p,0,size)
-
-/***********************************************************************\
 * Name   : _
 * Purpose: internationalization text macro
 * Input  : text - text
@@ -1103,13 +1106,13 @@ typedef struct
 
 #ifndef NDEBUG
   // 2 macros necessary, because of "string"-construction
-  #define __DEBUG_ADD_RESOURCE_TRACE__STRING1(s) __DEBUG_ADD_RESOURCE_TRACE__STRING2(s)
-  #define __DEBUG_ADD_RESOURCE_TRACE__STRING2(s) #s
+  #define __DEBUG_RESOURCE_TRACE__STRING1(s) __DEBUG_RESOURCE_TRACE__STRING2(s)
+  #define __DEBUG_RESOURCE_TRACE__STRING2(s) #s
 
   #define DEBUG_ADD_RESOURCE_TRACE(resource,size) \
     do \
     { \
-      debugAddResourceTrace(__FILE__,__LINE__,__DEBUG_ADD_RESOURCE_TRACE__STRING1(resource),resource,size); \
+      debugAddResourceTrace(__FILE__,__LINE__,__DEBUG_RESOURCE_TRACE__STRING1(resource),resource,size); \
     } \
     while (0)
 
@@ -1123,7 +1126,7 @@ typedef struct
   #define DEBUG_ADD_RESOURCE_TRACEX(fileName,lineNb,resource,size) \
     do \
     { \
-      debugAddResourceTrace(fileName,lineNb,__DEBUG_ADD_RESOURCE_TRACE__STRING1(resource),resource,size); \
+      debugAddResourceTrace(fileName,lineNb,__DEBUG_RESOURCE_TRACE__STRING1(resource),resource,size); \
     } \
     while (0)
 
@@ -1137,14 +1140,14 @@ typedef struct
   #define DEBUG_CHECK_RESOURCE_TRACE(resource) \
     do \
     { \
-      debugCheckResourceTrace(__FILE__,__LINE__,resource); \
+      debugCheckResourceTrace(__FILE__,__LINE__,__DEBUG_RESOURCE_TRACE__STRING1(resource),resource); \
     } \
     while (0)
 
   #define DEBUG_CHECK_RESOURCE_TRACEX(fileName,lineNb,resource) \
     do \
     { \
-      debugCheckResourceTrace(fileName,lineNb,resource); \
+      debugCheckResourceTrace(fileName,lineNb,__DEBUG_RESOURCE_TRACE__STRING1(resource),resource); \
     } \
     while (0)
 
@@ -1217,6 +1220,30 @@ void __dprintf__(const char *__fileName__,
 /*---------------------------------------------------------------------*/
 
 /***********************************************************************\
+* Name   : gcd
+* Purpose: calculate greatest common divisor
+* Input  : a,b - values
+* Output : -
+* Return : geatest common devisor or 0 if none
+* Notes  : -
+\***********************************************************************/
+
+unsigned long gcd(unsigned long a, unsigned long b);
+
+/***********************************************************************\
+* Name   : lcm
+* Purpose: calculate least common multiple
+* Input  : a,b - value
+* Output : -
+* Return : least common multiple or 0 if a=b=0
+* Notes  : -
+\***********************************************************************/
+
+unsigned long lcm(unsigned long a, unsigned long b);
+
+/*---------------------------------------------------------------------*/
+
+/***********************************************************************\
 * Name   : atomicIncrement
 * Purpose: atomic increment value
 * Input  : n - value
@@ -1263,6 +1290,119 @@ static inline ulong swapLONG(ulong n)
          | ((n & 0x00FF0000) >>  8)
          | ((n & 0x0000FF00) <<  8)
          | ((n & 0x000000FF) << 24);
+}
+
+/***********************************************************************\
+* Name   : memFill
+* Purpose: fill memory
+* Input  : p - memory address
+*          n - size of memory [bytes]
+*          d - fill value
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+static inline void *memFill(void *p, size_t n, byte d)
+{
+  memset(p,d,n);
+
+  return p;
+}
+
+/***********************************************************************\
+* Name   : memClear
+* Purpose: clear memory content (fill with 0)
+* Input  : p - memory address
+*          n - size of memory [bytes]
+* Output : -
+* Return : p
+* Notes  : -
+\***********************************************************************/
+
+static inline void *memClear(void *p, size_t n)
+{
+  memFill(p,n,0);
+
+  return p;
+}
+
+/***********************************************************************\
+* Name   : memCopy
+* Purpose: copy memory (may overlap)
+* Input  : p0,p1 - destination/source memory address
+*          n0,n1 - destination/source size [bytes]
+* Output : -
+* Return : p0
+* Notes  : -
+\***********************************************************************/
+
+static inline void *memCopy(void *p0, size_t n0, const void *p1, size_t n1)
+{
+  size_t n;
+
+  assert(p0 != NULL);
+  assert(p1 != NULL);
+
+  n = MIN(n0,n1);
+  if (   ((p0 > p1) && ((size_t)((byte*)p0-(byte*)p1) < n))
+      || ((p1 > p0) && ((size_t)((byte*)p1-(byte*)p0) < n))
+     )
+  {
+    // memory overlap
+    memmove(p0,p1,n);
+  }
+  else
+  {
+    // memory do not overlap
+    memcpy(p0,p1,n);
+  }
+  memset((byte*)p0+(n0-n),0,n0-n);
+
+  return p0;
+}
+
+/***********************************************************************\
+* Name   : memCopyFast
+* Purpose: copy memory (must not overlap)
+* Input  : p0,p1 - destination/source memory address
+*          n0,n1 - destination/source size [bytes]
+* Output : -
+* Return : p0
+* Notes  : -
+\***********************************************************************/
+
+static inline void *memCopyFast(void *p0, size_t n0, const void *p1, size_t n1)
+{
+  size_t n;
+
+  assert(p0 != NULL);
+  assert(p1 != NULL);
+
+  n = MIN(n0,n1);
+  // memory must not overlap
+  assert(   ((p0 < p1) || ((size_t)((byte*)p0-(byte*)p1)) >= n)
+         && ((p1 < p0) || ((size_t)((byte*)p1-(byte*)p0)) >= n)
+        );
+  memcpy(p0,p1,n);
+  memset((byte*)p0+(n0-n),0,n0-n);
+
+  return p0;
+}
+
+/***********************************************************************\
+* Name   : memEquals
+* Purpose: check if memory content equals
+* Input  : p0,p1 - memory address
+*          n     - size of memory [bytes]
+* Output : -
+* Return : TRUE iff memory content equals
+* Notes  : -
+\***********************************************************************/
+
+static inline bool memEquals(const void *p0, const void *p1, size_t n)
+{
+  return memcmp(p0,p1,n) == 0;
 }
 
 /*---------------------------------------------------------------------*/
@@ -1805,7 +1945,7 @@ void debugLocalResource(const char *__fileName__,
 * Purpose: add resource to debug trace list
 * Input  : __fileName__ - file name
 *          __lineNb__   - line number
-*          typeName     - type name
+*          variableName - variable name
 *          resource     - resource
 * Output : -
 * Return : -
@@ -1814,7 +1954,7 @@ void debugLocalResource(const char *__fileName__,
 
 void debugAddResourceTrace(const char *__fileName__,
                            ulong      __lineNb__,
-                           const char *typeName,
+                           const char *variableName,
                            const void *resource,
                            uint       size
                           );
@@ -1841,6 +1981,7 @@ void debugRemoveResourceTrace(const char *__fileName__,
 * Purpose: check if resource is in debug trace list
 * Input  : __fileName__ - file name
 *          __lineNb__   - line number
+*          variableName - variable name
 *          resource     - resource
 * Output : -
 * Return : -
@@ -1849,6 +1990,7 @@ void debugRemoveResourceTrace(const char *__fileName__,
 
 void debugCheckResourceTrace(const char *__fileName__,
                              ulong      __lineNb__,
+                             const char *variableName,
                              const void *resource
                             );
 
