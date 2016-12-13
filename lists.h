@@ -226,31 +226,39 @@ typedef enum
 \***********************************************************************/
 
 #define LIST_FIND_FIRST(list,variable,condition) \
-  List_findFirst(list,\
-                 LIST_FIND_FORWARD,\
-                 (ListNodeEqualsFunction)CALLBACK_INLINE(bool,\
-                                                         (const typeof(* (list)->head) *variable, void *userData), \
-                                                         { \
-                                                           UNUSED_VARIABLE(userData); \
-                                                           \
-                                                           return condition; \
-                                                         },\
-                                                         NULL \
-                                                        ) \
-                )
+  ({ \
+    auto typeof((list)->head) __closure__ (void); \
+    typeof((list)->head) __closure__ (void) \
+    { \
+      assert((void*)(list) != NULL); \
+      \
+      variable = (list)->head; \
+      while ((variable != NULL) && !(condition)) \
+      { \
+        variable = variable->next; \
+      } \
+      \
+      return variable; \
+    } \
+    __closure__(); \
+  })
 #define LIST_FIND_LAST(list,variable,condition) \
-  List_findFirst(list,\
-                 LIST_FIND_BACKWARD,\
-                 (ListNodeEqualsFunction)CALLBACK_INLINE(bool,\
-                                                         (const typeof(* (list)->tail) *variable, void *userData), \
-                                                         { \
-                                                           UNUSED_VARIABLE(userData); \
-                                                           \
-                                                           return condition; \
-                                                         },\
-                                                         NULL \
-                                                        ) \
-                )
+  ({ \
+    auto typeof((list)->head) __closure__ (void); \
+    typeof((list)->head) __closure__ (void) \
+    { \
+      assert((void*)(list) != NULL); \
+      \
+      variable = (list)->tail; \
+      while ((variable != NULL) && !(condition)) \
+      { \
+        variable = variable->prev; \
+      } \
+      \
+      return variable; \
+    } \
+    __closure__(); \
+  })
 #define LIST_FIND(list,variable,condition) LIST_FIND_FIRST(list,variable,condition)
 
 /***********************************************************************\
@@ -782,6 +790,42 @@ bool List_contains(const void             *list,
                    ListNodeEqualsFunction listNodeEqualsFunction,
                    void                   *listNodeEqualsUserData
                   );
+
+/***********************************************************************\
+* Name   : List_find
+* Purpose: find node in list
+* Input  : list                   - list
+*          listNodeEqualsFunction - equals function
+*          listNodeEqualsUserData - user data for equals function
+* Output : -
+* Return : node or NULL if not found
+* Notes  : -
+\***********************************************************************/
+
+INLINE void *List_find(const void             *list,
+                       ListNodeEqualsFunction listNodeEqualsFunction,
+                       void                   *listNodeEqualsUserData
+                      );
+#if defined(NDEBUG) || defined(__LISTS_IMPLEMENATION__)
+INLINE void *List_find(const void             *list,
+                       ListNodeEqualsFunction listNodeEqualsFunction,
+                       void                   *listNodeEqualsUserData
+                      )
+{
+  Node *node;
+
+  assert(list != NULL);
+  assert(listNodeEqualsFunction != NULL);
+
+  node = ((List*)list)->head;
+  while ((node != NULL) && !listNodeEqualsFunction(node,listNodeEqualsUserData))
+  {
+    node = node->next;
+  }
+
+  return node;
+}
+#endif /* NDEBUG || __LISTS_IMPLEMENATION__ */
 
 /***********************************************************************\
 * Name   : List_findFirst
