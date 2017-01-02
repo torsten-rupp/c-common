@@ -1716,8 +1716,8 @@ static inline bool stringIsEmpty(const char *s)
 }
 
 /***********************************************************************\
-* Name   : stringCopy
-* Purpose: copy string
+* Name   : stringSet
+* Purpose: set string
 * Input  : destination - destination string
 *          source      - source string
 *          n           - size of destination string
@@ -1726,7 +1726,7 @@ static inline bool stringIsEmpty(const char *s)
 * Notes  : string is always NULL or NUL-terminated
 \***********************************************************************/
 
-static inline char* stringCopy(char *destination, const char *source, size_t n)
+static inline char* stringSet(char *destination, const char *source, size_t n)
 {
   assert(n > 0);
 
@@ -1746,8 +1746,8 @@ static inline char* stringCopy(char *destination, const char *source, size_t n)
 }
 
 /***********************************************************************\
-* Name   : stringConcat
-* Purpose: concatenate string
+* Name   : stringAppend
+* Purpose: append string
 * Input  : destination - destination string
 *          source      - source string
 *          n           - size of destination string
@@ -1756,7 +1756,7 @@ static inline char* stringCopy(char *destination, const char *source, size_t n)
 * Notes  : string is always NULL or NUL-terminated
 \***********************************************************************/
 
-static inline char* stringConcat(char *destination, const char *source, size_t n)
+static inline char* stringAppend(char *destination, const char *source, size_t n)
 {
   size_t m;
 
@@ -1818,6 +1818,161 @@ static inline char* stringFormat(char *string, size_t n, const char *format, ...
   va_end(arguments);
 
   return string;
+}
+
+/***********************************************************************\
+* Name   : stringToInt
+* Purpose: convert string to int-value
+* Input  : string - string
+*          i      - value variable
+* Output : i - value
+* Return : TRUE iff no error
+* Notes  :
+\***********************************************************************/
+
+static inline bool stringToInt(const char *string, int *i)
+{
+  long long int n;
+  char          *s;
+
+  assert(string != NULL);
+  assert(i != NULL);
+
+  n = strtoll(string,&s,0);
+  if ((*s) == '\0')
+  {
+    (*i) = (int)n;
+    return TRUE;
+  }
+  else
+  {
+    (*i) = 0;
+    return FALSE;
+  }
+}
+
+/***********************************************************************\
+* Name   : stringToInt
+* Purpose: convert string to uint-value
+* Input  : string - string
+*          i      - value variable
+* Output : i - value
+* Return : TRUE iff no error
+* Notes  :
+\***********************************************************************/
+
+static inline bool stringToUInt(const char *string, uint *i)
+{
+  long long int n;
+  char          *s;
+
+  assert(string != NULL);
+  assert(i != NULL);
+
+  n = strtoll(string,&s,0);
+  if ((*s) == '\0')
+  {
+    (*i) = (uint)n;
+    return TRUE;
+  }
+  else
+  {
+    (*i) = 0;
+    return FALSE;
+  }
+}
+
+/***********************************************************************\
+* Name   : stringToInt
+* Purpose: convert string to int64-value
+* Input  : string - string
+*          l      - value variable
+* Output : l - value
+* Return : TRUE iff no error
+* Notes  :
+\***********************************************************************/
+
+static inline bool stringToInt64(const char *string, int64 *l)
+{
+  long long int n;
+  char          *s;
+
+  assert(string != NULL);
+  assert(l != NULL);
+
+  n = strtoll(string,&s,0);
+  if ((*s) == '\0')
+  {
+    (*l) = (int64)n;
+    return TRUE;
+  }
+  else
+  {
+    (*l) = 0LL;
+    return FALSE;
+  }
+}
+
+/***********************************************************************\
+* Name   : stringToInt
+* Purpose: convert string to uint64-value
+* Input  : string - string
+*          l      - value variable
+* Output : l - value
+* Return : TRUE iff no error
+* Notes  :
+\***********************************************************************/
+
+static inline bool stringToUInt64(const char *string, uint64 *l)
+{
+  long long int n;
+  char          *s;
+
+  assert(string != NULL);
+  assert(l != NULL);
+
+  n = strtoll(string,&s,0);
+  if ((*s) == '\0')
+  {
+    (*l) = (uint64)n;
+    return TRUE;
+  }
+  else
+  {
+    (*l) = 0LL;
+    return FALSE;
+  }
+}
+
+/***********************************************************************\
+* Name   : stringToDouble
+* Purpose: convert string to double value
+* Input  : string - string
+*          d      - value variable
+* Output : d - value
+* Return : TRUE iff no error
+* Notes  :
+\***********************************************************************/
+
+static inline bool stringToDouble(const char *string, double *d)
+{
+  double n;
+  char   *s;
+
+  assert(string != NULL);
+  assert(d != NULL);
+
+  n = strtod(string,&s);
+  if ((*s) == '\0')
+  {
+    (*d) = n;
+    return TRUE;
+  }
+  else
+  {
+    (*d) = 0.0;
+    return FALSE;
+  }
 }
 
 /*---------------------------------------------------------------------*/
