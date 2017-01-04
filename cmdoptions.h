@@ -26,7 +26,7 @@
 /**************************** Constants *******************************/
 
 #define CMD_HELP_LEVEL_ALL -1
-#define CMD_PRIORITY_ANY   -1
+#define CMD_PRIORITY_ANY   MAX_UINT
 
 /***************************** Datatypes ******************************/
 typedef enum
@@ -190,10 +190,12 @@ CMD_OPTION_DOUBLE_RANGE   (<long name>,<short name>,<help level>,<priority>,<var
 CMD_OPTION_BOOLEAN        (<long name>,<short name>,<help level>,<priority>,<variable>,                    <description>                       )
 CMD_OPTION_BOOLEAN_YESNO  (<long name>,<short name>,<help level>,<priority>,<variable>,                    <description>                       )
 CMD_OPTION_ENUM           (<long name>,<short name>,<help level>,<priority>,<variable>,<value>,            <description>                       )
+CMD_OPTION_SELECT         (<long name>,<short name>,<help level>,<priority>,<variable>,<selects>,          <description>                       )
+CMD_OPTION_SET            (<long name>,<short name>,<help level>,<priority>,<variable>,<set>,              <description>                       )
 CMD_OPTION_CSTRING        (<long name>,<short name>,<help level>,<priority>,<variable>,                    <description>,<description argument>)
 CMD_OPTION_STRING         (<long name>,<short name>,<help level>,<priority>,<variable>,                    <description>,<description argument>)
-CMD_OPTION_SPECIAL        (<long name>,<short name>,<help level>,<priority>,<function>,                    <description>,<description argument>)
-CMD_OPTION_DEPRECATED     (<long name>,<short name>,<help level>,<priority>,<function>)
+CMD_OPTION_SPECIAL        (<long name>,<short name>,<help level>,<priority>,<function>,<user data>         <description>,<description argument>)
+CMD_OPTION_DEPRECATED     (<long name>,<short name>,<help level>,<priority>,<function>,<user data>         <description>,<new option name>     )
 
 const CommandLineUnit COMMAND_LINE_UNITS[] =
 {
@@ -243,7 +245,7 @@ const CommandLineOption COMMAND_LINE_OPTIONS[] =
 
   CMD_OPTION_BOOLEAN      ("help",     'h',0,0,helpFlag,   FALSE,                                        "output this help"),
 
-  CMD_OPTION_DEPRECATED   ("deprecated",0,0,1,deprecatedValue,parseDeprecated,NULL),
+  CMD_OPTION_DEPRECATED   ("deprecated",0,0,1,deprecatedValue,parseDeprecated,NULL,"new name"),
 };
 
 */
@@ -833,7 +835,7 @@ extern "C" {
                      );
 #else /* not NDEBUG */
   bool __CmdOption_init(const char        *__fileName__,
-                        uint              __lineNb__,
+                        ulong             __lineNb__,
                         CommandLineOption commandLineOptions[],
                         uint              commandLineOptionCount
                        );
@@ -856,7 +858,7 @@ extern "C" {
                      );
 #else /* not NDEBUG */
   void __CmdOption_done(const char        *__fileName__,
-                        uint              __lineNb__,
+                        ulong             __lineNb__,
                         CommandLineOption commandLineOptions[],
                         uint              commandLineOptionCount
                        );
@@ -865,14 +867,17 @@ extern "C" {
 /***********************************************************************
 * Name   : CmdOption_parse
 * Purpose: parse command line options
-* Input  : argv                   - command line arguments
-*          argc                   - number of command line arguments
-*          commandLineOptions     - array with command line options
-*                                   spezification
-*          commandLineOptionCount - size of command line options array
-*          outputHandle           - error/warning output handle or NULL
-*          errorPrefix            - error prefix or NULL
-*          warningPrefix          - warning prefix or NULL
+* Input  : argv                    - command line arguments
+*          argc                    - number of command line arguments
+*          commandLineOptions      - array with command line options
+*                                    spezification
+*          commandLineOptionCount  - size of command line options array
+*          minPriority,maxPriority - min./max. command line option
+*                                    priority or
+*          outputHandle            - error/warning output handle or NULL
+*          commandPrioritySet      - priority setCMD_PRIORITY_ANY
+*          errorPrefix             - error prefix or NULL
+*          warningPrefix           - warning prefix or NULL
 * Output : arguments
 *          argumentsCount
 * Return : TRUE if command line parsed, FALSE on error
@@ -883,7 +888,8 @@ bool CmdOption_parse(const char              *argv[],
                      int                     *argc,
                      const CommandLineOption commandLineOptions[],
                      uint                    commandLineOptionCount,
-                     int                     commandPriority,
+                     uint                    minPriority,
+                     uint                    maxPriority,
                      FILE                    *outputHandle,
                      const char              *errorPrefix,
                      const char              *warningPrefix

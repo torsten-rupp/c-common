@@ -196,7 +196,7 @@ LOCAL const CommandLineOptionSelect *findSelect(const CommandLineOptionSelect *s
   {
     select = selects;
     while (   (select->name != NULL)
-           && !stringEquals(select->name,selectName)
+           && !stringEqualsIgnoreCase(select->name,selectName)
           )
     {
       select++;
@@ -261,7 +261,7 @@ LOCAL const CommandLineOptionSet *findSet(const CommandLineOptionSet *sets, cons
   {
     set = sets;
     while (   (set->name != NULL)
-           && !stringEquals(set->name,setName)
+           && !stringEqualsIgnoreCase(set->name,setName)
           )
     {
       set++;
@@ -1013,7 +1013,7 @@ LOCAL void printSpaces(FILE *outputHandle, uint n)
                      )
 #else /* not NDEBUG */
   bool __CmdOption_init(const char        *__fileName__,
-                        uint              __lineNb__,
+                        ulong             __lineNb__,
                         CommandLineOption commandLineOptions[],
                         uint              commandLineOptionCount
                        )
@@ -1144,7 +1144,7 @@ LOCAL void printSpaces(FILE *outputHandle, uint n)
                      )
 #else /* not NDEBUG */
   void __CmdOption_done(const char        *__fileName__,
-                        uint              __lineNb__,
+                        ulong             __lineNb__,
                         CommandLineOption commandLineOptions[],
                         uint              commandLineOptionCount
                        )
@@ -1212,14 +1212,15 @@ bool CmdOption_parse(const char              *argv[],
                      int                     *argc,
                      const CommandLineOption commandLineOptions[],
                      uint                    commandLineOptionCount,
-                     int                     commandPriority,
+                     uint                    minPriority,
+                     uint                    maxPriority,
                      FILE                    *outputHandle,
                      const char              *errorPrefix,
                      const char              *warningPrefix
                     )
 {
+  bool       collectArgumentsFlag;
   uint       z;
-  uint       minPriority,maxPriority;
   uint       priority;
   bool       endOfOptionsFlag;
   const char *s;
@@ -1235,20 +1236,24 @@ bool CmdOption_parse(const char              *argv[],
   assert((*argc) >= 1);
   assert(commandLineOptions != NULL);
 
-  // get min./max. option priority
-  if (commandPriority != CMD_PRIORITY_ANY)
-  {
-    minPriority = commandPriority;
-    maxPriority = commandPriority;
-  }
-  else
+  // get min./max. option priority, set arguments collect flag
+  collectArgumentsFlag = FALSE;
+  if (minPriority == CMD_PRIORITY_ANY)
   {
     minPriority = 0;
+    for (z = 0; z < commandLineOptionCount; z++)
+    {
+      minPriority = MAX(minPriority,commandLineOptions[z].priority);
+    }
+  }
+  if (maxPriority == CMD_PRIORITY_ANY)
+  {
     maxPriority = 0;
     for (z = 0; z < commandLineOptionCount; z++)
     {
       maxPriority = MAX(maxPriority,commandLineOptions[z].priority);
     }
+    collectArgumentsFlag = TRUE;
   }
 
   // parse options
@@ -1436,7 +1441,7 @@ bool CmdOption_parse(const char              *argv[],
       }
       else
       {
-        if ((commandPriority == CMD_PRIORITY_ANY) && (priority >= maxPriority))
+        if (collectArgumentsFlag && (priority >= maxPriority))
         {
           // add argument
           argv[argumentsCount] = argv[z];
@@ -1447,7 +1452,7 @@ bool CmdOption_parse(const char              *argv[],
       z++;
     }
   }
-  if (commandPriority == CMD_PRIORITY_ANY)
+  if (collectArgumentsFlag)
   {
     (*argc) = argumentsCount;
   }
