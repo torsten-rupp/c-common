@@ -227,7 +227,7 @@ StringMap __StringMap_new(const char *__fileName__,
 \***********************************************************************/
 
 #ifdef NDEBUG
-StringMap stringMap_duplicate(const StringMap stringMap);
+StringMap StringMap_duplicate(const StringMap stringMap);
 #else /* not NDEBUG */
 StringMap __StringMap_duplicate(const char      *__fileName__,
                                 ulong           __lineNb__,
@@ -309,14 +309,14 @@ uint StringMap_count(const StringMap stringMap);
 \***********************************************************************/
 
 INLINE bool StringMap_isEmpty(const StringMap stringMap);
-#if defined(NDEBUG) || defined(__STRINGLISTS_IMPLEMENATION__)
+#if defined(NDEBUG) || defined(__STRINGLISTS_IMPLEMENTATION__)
 INLINE bool StringMap_isEmpty(const StringMap stringMap)
 {
   assert(stringMap != NULL);
 
   return StringMap_count(stringMap) == 0;
 }
-#endif /* NDEBUG || __STRINGLISTS_IMPLEMENATION__ */
+#endif /* NDEBUG || __STRINGLISTS_IMPLEMENTATION__ */
 
 /***********************************************************************\
 * Name   : StringMap_index
