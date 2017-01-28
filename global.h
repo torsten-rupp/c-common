@@ -74,6 +74,13 @@
 #define BITS_TO_BYTES(n) ((n)/8LL)
 
 // time constants, time conversions
+#define NS_PER_US     1000LL
+#define NS_PER_MS     (1000LL*NS_PER_US)
+#define NS_PER_SECOND (1000LL*NS_PER_MS)
+#define NS_PER_MINUTE (1000LL*NS_PER_SECOND)
+#define NS_PER_HOUR   (60LL*NS_PER_MINUTE)
+#define NS_PER_DAY    (24LL*NS_PER_HOUR)
+
 #define US_PER_MS     1000LL
 #define US_PER_SECOND (1000LL*US_PER_MS)
 #define US_PER_MINUTE (60LL*US_PER_SECOND)
@@ -804,10 +811,10 @@ typedef struct
   } \
   while (0)
 
-#define HALT_INSUFFICIENT_MEMORY(args...) \
+#define HALT_INSUFFICIENT_MEMORY() \
   do \
   { \
-     __abort(HALT_PREFIX_FATAL_ERROR,"Insufficient memory", ## args); \
+     __abort(HALT_PREFIX_FATAL_ERROR,"Insufficient memory"); \
   } \
  while (0)
 
@@ -1357,7 +1364,6 @@ static inline void *memCopy(void *p0, size_t n0, const void *p1, size_t n1)
     // memory do not overlap
     memcpy(p0,p1,n);
   }
-  memset((byte*)p0+(n0-n),0,n0-n);
 
   return p0;
 }
@@ -1687,7 +1693,7 @@ static inline bool stringStartsWith(const char *s, const char *prefix)
 }
 
 /***********************************************************************\
-* Name   : stringEqualsIgnoreCase
+* Name   : stringStartsWithIgnoreCase
 * Purpose: check if string starts with prefix
 * Input  : s      - string
 *          prefix - prefix
@@ -1814,7 +1820,7 @@ static inline char* stringFormat(char *string, size_t n, const char *format, ...
   assert(format != NULL);
 
   va_start(arguments,format);
-  vsnprintf(string,n-1,format,arguments); string[n-1] = '\0';
+  vsnprintf(string,n,format,arguments);
   va_end(arguments);
 
   return string;
