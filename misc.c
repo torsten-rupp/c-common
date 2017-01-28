@@ -8,7 +8,7 @@
 *
 \***********************************************************************/
 
-#define __MISC_IMPLEMENATION__
+#define __MISC_IMPLEMENTATION__
 
 /****************************** Includes *******************************/
 #include <config.h>  // use <...> to support separated build directory
@@ -1167,19 +1167,19 @@ String Misc_expandMacros(String           string,
                 switch (macros[j].type)
                 {
                   case TEXT_MACRO_TYPE_INTEGER:
-                    stringCopy(format,"%d",sizeof(format));
+                    stringSet(format,"%d",sizeof(format));
                     break;
                   case TEXT_MACRO_TYPE_INTEGER64:
-                    stringCopy(format,"%lld",sizeof(format));
+                    stringSet(format,"%lld",sizeof(format));
                     break;
                   case TEXT_MACRO_TYPE_DOUBLE:
-                    stringCopy(format,"%lf",sizeof(format));
+                    stringSet(format,"%lf",sizeof(format));
                     break;
                   case TEXT_MACRO_TYPE_CSTRING:
-                    stringCopy(format,"%s",sizeof(format));
+                    stringSet(format,"%s",sizeof(format));
                     break;
                   case TEXT_MACRO_TYPE_STRING:
-                    stringCopy(format,"%S",sizeof(format));
+                    stringSet(format,"%S",sizeof(format));
                     break;
                   #ifndef NDEBUG
                     default:
@@ -1240,7 +1240,7 @@ String Misc_expandMacros(String           string,
             // get default format if no format given
             if (stringIsEmpty(format))
             {
-              stringCopy(format,"%s",sizeof(format));
+              stringSet(format,"%s",sizeof(format));
             }
 
             // expand macro into string
