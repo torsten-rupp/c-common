@@ -771,7 +771,7 @@ LOCAL bool processValue(const ConfigValue *configValue,
 
         // calculate value
         if      (   (value == NULL)
-                 || stringEqualsIgnoreCase(value,"1")
+                 || stringEquals(value,"1")
                  || stringEqualsIgnoreCase(value,"true")
                  || stringEqualsIgnoreCase(value,"on")
                  || stringEqualsIgnoreCase(value,"yes")
@@ -779,7 +779,7 @@ LOCAL bool processValue(const ConfigValue *configValue,
         {
           data = TRUE;
         }
-        else if (   stringEqualsIgnoreCase(value,"0")
+        else if (   stringEquals(value,"0")
                  || stringEqualsIgnoreCase(value,"false")
                  || stringEqualsIgnoreCase(value,"off")
                  || stringEqualsIgnoreCase(value,"no")
