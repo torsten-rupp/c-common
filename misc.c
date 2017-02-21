@@ -469,11 +469,11 @@ HANDLE hOutputReadTmp,hOutputRead,hOutputWrite;
 *          s          - base64 data
 *          n          - length of base64 data
 * Output : -
-* Return : length of decoded data or -1 on error
+* Return : length of decoded data
 * Notes  : -
 \***********************************************************************/
 
-LOCAL int base64Decode(byte *data, uint dataLength, const char *s, uint n)
+LOCAL ulong base64Decode(byte *data, ulong dataLength, const char *s, ulong n)
 {
   #define VALID_BASE64_CHAR(ch) (   (((ch) >= 'A') && ((ch) <= 'Z')) \
                                  || (((ch) >= 'a') && ((ch) <= 'z')) \
@@ -519,13 +519,13 @@ LOCAL int base64Decode(byte *data, uint dataLength, const char *s, uint n)
     0,0,0,0,0,0,0,0,
   };
 
-  uint length;
-  char x0,x1,x2,x3;
-  uint i0,i1,i2,i3;
-  uint i;
-  char b0,b1,b2;
+  ulong length;
+  char  x0,x1,x2,x3;
+  uint  i0,i1,i2,i3;
+  ulong i;
+  char  b0,b1,b2;
 
-  length = 0;
+  length = 0L;
 
   x0 = 0;
   x1 = 0;
@@ -1736,7 +1736,7 @@ double Misc_performanceFilterGetAverageValue(PerformanceFilter *performanceFilte
 
 /*---------------------------------------------------------------------*/
 
-String Misc_base64Encode(String string, const byte *data, uint dataLength)
+String Misc_base64Encode(String string, const byte *data, ulong dataLength)
 {
   const char BASE64_ENCODING_TABLE[] =
   {
@@ -1750,9 +1750,11 @@ String Misc_base64Encode(String string, const byte *data, uint dataLength)
     '4','5','6','7','8','9','+','/'
   };
 
-  uint i;
-  char b0,b1,b2;
-  uint i0,i1,i2,i3;
+  ulong i;
+  char  b0,b1,b2;
+  uint  i0,i1,i2,i3;
+
+  String_clear(string);
 
   i = 0;
   while (i < dataLength)
@@ -1781,15 +1783,16 @@ String Misc_base64Encode(String string, const byte *data, uint dataLength)
   return string;
 }
 
-bool Misc_base64Decode(byte *data, uint dataLength, ConstString string, ulong index)
+bool Misc_base64Decode(byte *data, ulong dataLength, ConstString string, ulong index)
 {
   if (String_length(string) >= index)
   {
-    return base64Decode(data,dataLength,String_cString(string)+index,String_length(string)-index);
+    base64Decode(data,dataLength,String_cString(string)+index,String_length(string)-index);
+    return TRUE;
   }
   else
   {
-    return 0;
+    return FALSE;
   }
 }
 
@@ -1798,12 +1801,12 @@ bool Misc_base64DecodeCString(byte *data, uint dataLength, const char *s)
   return base64Decode(data,dataLength,s,strlen(s));
 }
 
-uint Misc_base64DecodeLength(ConstString string, ulong index)
+ulong Misc_base64DecodeLength(ConstString string, ulong index)
 {
   return ((String_length(string)-index)/4)*3;
 }
 
-uint Misc_base64DecodeLengthCString(const char *s)
+ulong Misc_base64DecodeLengthCString(const char *s)
 {
   return (strlen(s)/4)*3;
 }
