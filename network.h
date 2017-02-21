@@ -38,6 +38,8 @@
 
 #define SOCKET_FLAG_NONE         0
 #define SOCKET_FLAG_NON_BLOCKING (1 << 0)
+#define SOCKET_FLAG_NO_DELAY     (1 << 1)
+#define SOCKET_FLAG_KEEP_ALIVE   (1 << 2)
 
 /***************************** Datatypes *******************************/
 typedef enum
@@ -52,6 +54,7 @@ typedef struct
   SocketTypes type;
   int         handle;
   uint        flags;
+  bool        isConnected;                   // TRUE iff connected
   union
   {
     #ifdef HAVE_FTP
@@ -89,12 +92,12 @@ typedef struct
   ServerSocketTypes socketType;
   int               handle;
   #ifdef HAVE_GNU_TLS
-    void *caData;
-    uint caLength;
-    void *certData;
-    uint certLength;
-    void *keyData;
-    uint keyLength;
+    const void *caData;
+    uint       caLength;
+    const void *certData;
+    uint       certLength;
+    const void *keyData;
+    uint       keyLength;
   #endif /* HAVE_GNU_TLS */
 } ServerSocketHandle;
 
@@ -192,7 +195,7 @@ bool Network_hostExistsCString(const char *hostName);
 *          hostName            - host name
 *          hostPort            - host port (host byte order)
 *          loginName           - login user name
-*          password            - SSH private key password
+*          password            - SSH private key password or NULL
 *          sshPublicKeyData    - SSH public key data for login or NULL
 *          sshPublicKeyLength  - SSH public key data length
 *          sshPrivateKeyData   - SSH private key data for login or NULL
@@ -217,6 +220,38 @@ Errors Network_connect(SocketHandle *socketHandle,
                       );
 
 /***********************************************************************\
+* Name   : Network_connectDescriptor
+* Purpose: connect to host by descriptor
+* Input  : socketType          - socket type; see SOCKET_TYPE_*
+*          hostName            - host name
+*          hostPort            - host port (host byte order)
+*          loginName           - login user name
+*          password            - SSH private key password or NULL
+*          sshPublicKeyData    - SSH public key data for login or NULL
+*          sshPublicKeyLength  - SSH public key data length
+*          sshPrivateKeyData   - SSH private key data for login or NULL
+*          sshPrivateKeyLength - SSH private key data length
+*          flags               - socket flags; see SOCKET_FLAG_*
+* Output : socketHandle - socket handle
+* Return : ERROR_NONE or errorcode
+* Notes  : -
+\***********************************************************************/
+
+Errors Network_connectDescriptor(SocketHandle *socketHandle,
+                                 int          socketDescriptor,
+                                 SocketTypes  socketType,
+                                 ConstString  hostName,
+                                 uint         hostPort,
+                                 ConstString  loginName,
+                                 Password     *password,
+                                 const void   *sshPublicKeyData,
+                                 uint         sshPublicKeyLength,
+                                 const void   *sshPrivateKeyData,
+                                 uint         sshPrivateKeyLength,
+                                 uint         flags
+                                );
+
+/***********************************************************************\
 * Name   : Network_disconnect
 * Purpose: disconnect from host
 * Input  : socketHandle - socket handle
@@ -228,6 +263,25 @@ Errors Network_connect(SocketHandle *socketHandle,
 void Network_disconnect(SocketHandle *socketHandle);
 
 /***********************************************************************\
+* Name   : Network_isConnected
+* Purpose: check if connected
+* Input  : socketHandle - socket handle
+* Output : -
+* Return : TRUE iff connected
+* Notes  : connection state is only updated by calling Network_receive()!
+\***********************************************************************/
+
+INLINE bool Network_isConnected(SocketHandle *socketHandle);
+#if defined(NDEBUG) || defined(__NETWORK_IMPLEMENTATION__)
+INLINE bool Network_isConnected(SocketHandle *socketHandle)
+{
+  assert(socketHandle != NULL);
+
+  return socketHandle->isConnected;
+}
+#endif /* NDEBUG || __NETWORK_IMPLEMENTATION__ */
+
+/***********************************************************************\
 * Name   : Network_getSocket
 * Purpose: get socket from socket handle
 * Input  : socketHandle - socket handle
@@ -237,14 +291,14 @@ void Network_disconnect(SocketHandle *socketHandle);
 \***********************************************************************/
 
 INLINE int Network_getSocket(const SocketHandle *socketHandle);
-#if defined(NDEBUG) || defined(__NETWORK_IMPLEMENATION__)
+#if defined(NDEBUG) || defined(__NETWORK_IMPLEMENTATION__)
 INLINE int Network_getSocket(const SocketHandle *socketHandle)
 {
   assert(socketHandle != NULL);
 
   return socketHandle->handle;
 }
-#endif /* NDEBUG || __NETWORK_IMPLEMENATION__ */
+#endif /* NDEBUG || __NETWORK_IMPLEMENTATION__ */
 
 /***********************************************************************\
 * Name   : Network_getSSHSession
@@ -257,7 +311,7 @@ INLINE int Network_getSocket(const SocketHandle *socketHandle)
 
 #ifdef HAVE_SSH2
 INLINE LIBSSH2_SESSION *Network_getSSHSession(SocketHandle *socketHandle);
-#if defined(NDEBUG) || defined(__NETWORK_IMPLEMENATION__)
+#if defined(NDEBUG) || defined(__NETWORK_IMPLEMENTATION__)
 INLINE LIBSSH2_SESSION *Network_getSSHSession(SocketHandle *socketHandle)
 {
   assert(socketHandle != NULL);
@@ -265,7 +319,7 @@ INLINE LIBSSH2_SESSION *Network_getSSHSession(SocketHandle *socketHandle)
 
   return socketHandle->ssh2.session;
 }
-#endif /* NDEBUG || __NETWORK_IMPLEMENATION__ */
+#endif /* NDEBUG || __NETWORK_IMPLEMENTATION__ */
 #endif /* HAVE_SSH2 */
 
 /***********************************************************************\
@@ -362,6 +416,12 @@ Errors Network_writeLine(SocketHandle *socketHandle,
 * Input  : serverPort        - server port (host byte order)
 *          ServerSocketTypes - server socket type; see
 *                              SERVER_SOCKET_TYPE_*
+*          caData            - TLS CA data or NULL
+*          caLength          - TLS CA data length
+*          cert              - TLS cerificate or NULL
+*          certLength        - TLS cerificate data length
+*          key               - TLS private key or NULL
+*          keyLength         - TLS private key data length
 * Output : serverSocketHandle - server socket handle
 * Return : ERROR_NONE or errorcode
 * Notes  : -
@@ -369,7 +429,13 @@ Errors Network_writeLine(SocketHandle *socketHandle,
 
 Errors Network_initServer(ServerSocketHandle *serverSocketHandle,
                           uint               serverPort,
-                          ServerSocketTypes  serverSocketType
+                          ServerSocketTypes  serverSocketType,
+                          const void         *caData,
+                          uint               caLength,
+                          const void         *certData,
+                          uint               certLength,
+                          const void         *keyData,
+                          uint               keyLength
                          );
 
 /***********************************************************************\
@@ -410,7 +476,7 @@ Errors Network_accept(SocketHandle             *socketHandle,
                      );
 
 /***********************************************************************\
-* Name   : Network_startServerSSL
+* Name   : Network_startSSL
 * Purpose: start SSL/TLS encryption on socket connection
 * Input  : socketHandle - socket handle
 *          caData       - TLS CA data or NULL
