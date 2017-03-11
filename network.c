@@ -1294,8 +1294,9 @@ Errors Network_receive(SocketHandle *socketHandle,
         // wait for data
         pollTimeout.tv_sec  = timeout/1000L;
         pollTimeout.tv_nsec = (timeout%1000L)*1000000L;
-        pollfds[0].fd     = socketHandle->handle;
-        pollfds[0].events = POLLIN|POLLERR|POLLNVAL;
+        pollfds[0].fd      = socketHandle->handle;
+        pollfds[0].events  = POLLIN|POLLERR|POLLNVAL;
+        pollfds[0].revents = 0;
         if (   (ppoll(pollfds,1,&pollTimeout,&signalMask) >= 0)
             && ((pollfds[0].revents & POLLIN) != 0)
            )
@@ -1326,8 +1327,11 @@ Errors Network_receive(SocketHandle *socketHandle,
           sigaddset(&signalMask,SIGALRM);
 
           // wait for data
-          pollfds[0].fd     = socketHandle->handle;
-          pollfds[0].events = POLLIN|POLLERR|POLLNVAL;
+          pollTimeout.tv_sec  = timeout/1000L;
+          pollTimeout.tv_nsec = (timeout%1000L)*1000000L;
+          pollfds[0].fd       = socketHandle->handle;
+          pollfds[0].events   = POLLIN|POLLERR|POLLNVAL;
+          pollfds[0].revents  = 0;
           if (   (ppoll(pollfds,1,&pollTimeout,&signalMask) >= 0)
               && ((pollfds[0].revents & (POLLERR|POLLNVAL)) == 0)
              )
@@ -1393,8 +1397,9 @@ Errors Network_send(SocketHandle *socketHandle,
           // wait until space in buffer is available
           pollTimeout.tv_sec  = SEND_TIMEOUT/1000L;
           pollTimeout.tv_nsec = (SEND_TIMEOUT%1000L)*1000000L;
-          pollfds[0].fd     = socketHandle->handle;
-          pollfds[0].events = POLLOUT|POLLERR|POLLNVAL;
+          pollfds[0].fd      = socketHandle->handle;
+          pollfds[0].events  = POLLOUT|POLLERR|POLLNVAL;
+          pollfds[0].revents = 0;
           if (   (ppoll(pollfds,1,&pollTimeout,&signalMask) >= 0)
               && ((pollfds[0].revents & POLLOUT) != 0)
              )
@@ -1422,8 +1427,9 @@ Errors Network_send(SocketHandle *socketHandle,
             // wait until space in buffer is available
             pollTimeout.tv_sec  = SEND_TIMEOUT/1000L;
             pollTimeout.tv_nsec = (SEND_TIMEOUT%1000L)*1000000L;
-            pollfds[0].fd     = socketHandle->handle;
-            pollfds[0].events = POLLOUT|POLLERR|POLLNVAL;
+            pollfds[0].fd      = socketHandle->handle;
+            pollfds[0].events  = POLLOUT|POLLERR|POLLNVAL;
+            pollfds[0].revents = 0;
             if (   (ppoll(pollfds,1,&pollTimeout,&signalMask) >= 0)
                 && ((pollfds[0].revents & POLLOUT) != 0)
                )
@@ -1763,10 +1769,10 @@ Errors Network_startSSL(SocketHandle *socketHandle,
     {
       #if  defined(PLATFORM_LINUX)
         socketFlags = fcntl(socketHandle->handle,F_GETFL,0);
-        fcntl(socketHandle->handle,F_SETFL,socketFlags & ~O_NONBLOCK);
+        (void)fcntl(socketHandle->handle,F_SETFL,socketFlags & ~O_NONBLOCK);
       #elif defined(PLATFORM_WINDOWS)
         n = 0;
-        ioctlsocket(socketHandle->handle,FIONBIO,&n);
+        (void)ioctlsocket(socketHandle->handle,FIONBIO,&n);
       #endif /* PLATFORM_... */
     }
 
@@ -1782,10 +1788,10 @@ Errors Network_startSSL(SocketHandle *socketHandle,
     {
       #if  defined(PLATFORM_LINUX)
         socketFlags = fcntl(socketHandle->handle,F_GETFL,0);
-        fcntl(socketHandle->handle,F_SETFL,socketFlags | O_NONBLOCK);
+        (void)fcntl(socketHandle->handle,F_SETFL,socketFlags | O_NONBLOCK);
       #elif defined(PLATFORM_WINDOWS)
         n = 1;
-        ioctlsocket(socketHandle->handle,FIONBIO,&n);
+        (void)ioctlsocket(socketHandle->handle,FIONBIO,&n);
       #endif /* PLATFORM_... */
     }
 
@@ -1856,7 +1862,6 @@ Errors Network_accept(SocketHandle             *socketHandle,
       break;
     case SERVER_SOCKET_TYPE_TLS:
       #ifdef HAVE_GNU_TLS
-fprintf(stderr,"%s, %d: call initSSL\n",__FILE__,__LINE__);
         // init SSL
         error = initSSL(socketHandle,
                         serverSocketHandle->caData,
@@ -1866,8 +1871,6 @@ fprintf(stderr,"%s, %d: call initSSL\n",__FILE__,__LINE__);
                         serverSocketHandle->keyData,
                         serverSocketHandle->keyLength
                        );
-fprintf(stderr,"%s, %d: \n",__FILE__,__LINE__);
-asm("int3");
         if (error != ERROR_NONE)
         {
           return error;
