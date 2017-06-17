@@ -113,7 +113,7 @@ void *Password_allocSecure(size_t size)
     #endif
     memset(p,0,size);
   #else /* not HAVE_GCRYPT */
-    memoryHeader = (MemoryHeader*)cmalloc(1,sizeof(MemoryHeader)+size);
+    memoryHeader = (MemoryHeader*)calloc(1,sizeof(MemoryHeader)+size);
     if (memoryHeader == NULL)
     {
       return NULL;
@@ -445,7 +445,7 @@ void Password_random(Password *password, uint length)
     srandom((unsigned int)time(NULL));
     for (i = 0; i < password->dataLength; i++)
     {
-      password->data[z] = (char)(random()%256)^obfuscator[i];
+      password->data[i] = (char)(random()%256)^obfuscator[i];
     }
   #endif /* HAVE_GCRYPT */
 }
@@ -467,8 +467,7 @@ char Password_getChar(const Password *password, uint index)
     #ifdef HAVE_GCRYPT
       return password->data[index];
     #else /* not HAVE_GCRYPT */
-      return password->data[index]^obfuscator[inde      memoryHeader = gcry_malloc_secure(sizeof(MemoryHeader)+size);
-x];
+      return password->data[index]^obfuscator[index];
     #endif /* HAVE_GCRYPT */
   }
   else
@@ -553,7 +552,7 @@ const char *Password_deploy(const Password *password)
       }
       for (i = 0; i < password->dataLength; i++)
       {
-        plain[i] = password->data[i]^obfuscator[z];
+        plain[i] = password->data[i]^obfuscator[i];
       }
       plain[password->dataLength] = '\0';
       return plain;
@@ -573,7 +572,7 @@ void Password_undeploy(const Password *password, const char *plain)
       UNUSED_VARIABLE(password);
       UNUSED_VARIABLE(plain);
     #else /* not HAVE_GCRYPT */
-      memset(plain,0,MAX_PASSWORD_LENGTH);
+      memset((char*)plain,0,MAX_PASSWORD_LENGTH);
       Password_freeSecure(plain);
     #endif /* HAVE_GCRYPT */
   }
@@ -583,7 +582,7 @@ bool Password_equals(const Password *password0, const Password *password1)
 {
   #ifdef HAVE_GCRYPT
   #else /* not HAVE_GCRYPT */
-    uint z;
+    uint i;
   #endif /* HAVE_GCRYPT */
 
   if (   (password0 != NULL)
@@ -840,16 +839,16 @@ void Password_dump(Password *password)
     #ifdef HAVE_GCRYPT
       fprintf(stderr,"%02x",(byte)password->data[i]);
     #else /* not HAVE_GCRYPT */
-      fprintf(stderr,"%02x",(byte)(password->data[i]^obfuscator[z]));
+      fprintf(stderr,"%02x",(byte)(password->data[i]^obfuscator[i]));
     #endif /* HAVE_GCRYPT */
   }
   fputs("\n",stderr);
   for (i = 0; i < password->dataLength; i++)
   {
     #ifdef HAVE_GCRYPT
-      fprintf(stderr,"%c ",isprint(password->data[i]) ? password->data[i] : "");
+      fprintf(stderr,"%c ",isprint(password->data[i]) ? password->data[i] : '.');
     #else /* not HAVE_GCRYPT */
-      fprintf(stderr,"%c ",isprint(password->data[i]^obfuscator[z]) ? password->data[i]^obfuscator[z] : "");
+      fprintf(stderr,"%c ",isprint(password->data[i]^obfuscator[i]) ? password->data[i]^obfuscator[i] : '.');
     #endif /* HAVE_GCRYPT */
   }
   fputs("\n",stderr);
