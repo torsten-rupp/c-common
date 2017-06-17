@@ -48,9 +48,11 @@
 #define _DATABASE_DEBUG_COPY_TABLE
 
 /***************************** Constants *******************************/
+#define MAX_FORCE_CHECKPOINT_TIME (10LL*60LL*1000LL) // timeout for force execution of a checkpoint [ms]
+
 #if 1
-  #define DEBUG_WARNING_LOCK_TIME  2ULL*1000ULL    // DEBUG only: warning lock time [ms]
-  #define DEBUG_MAX_LOCK_TIME     60ULL*1000ULL    // DEBUG only: max. lock time [ms]
+  #define DEBUG_WARNING_LOCK_TIME  2ULL*1000ULL      // DEBUG only: warning lock time [ms]
+  #define DEBUG_MAX_LOCK_TIME     60ULL*1000ULL      // DEBUG only: max. lock time [ms]
 #else
   #define DEBUG_WARNING_LOCK_TIME MAX_UINT64
   #define DEBUG_MAX_LOCK_TIME     MAX_UINT64
@@ -801,7 +803,7 @@ LOCAL void dirname(sqlite3_context *context, int argc, sqlite3_value *argv[])
   string = (const char*)sqlite3_value_text(argv[0]);
 
   // get directory
-  directoryName = File_getFilePathNameCString(String_new(),string);
+  directoryName = File_getDirectoryNameCString(String_new(),string);
 
   // store result
   sqlite3_result_text(context,String_cString(directoryName),-1,SQLITE_TRANSIENT);
@@ -842,6 +844,26 @@ LOCAL void delay(ulong time)
   #else
     #error usleep()/nanosleep() not available nor Windows system!
   #endif
+}
+
+/***********************************************************************\
+* Name   : executeCheckpoint
+* Purpose: force execute a checkpoint if timeout expired
+* Input  : databaseHandle - database handle
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+LOCAL void executeCheckpoint(DatabaseHandle *databaseHandle)
+{
+  assert(databaseHandle != NULL);
+
+  if (Misc_getTimestamp() > (databaseHandle->lastCheckpointTimestamp+MAX_FORCE_CHECKPOINT_TIME*US_PER_MS))
+  {
+    (void)sqlite3_wal_checkpoint_v2(databaseHandle->handle,NULL,SQLITE_CHECKPOINT_RESTART,NULL,NULL);
+    databaseHandle->lastCheckpointTimestamp = Misc_getTimestamp();
+  }
 }
 
 #if 0
@@ -1055,8 +1077,11 @@ LOCAL Errors sqliteExecute(DatabaseHandle      *databaseHandle,
 
   if (changedRowCount != NULL) (*changedRowCount) = 0L;
 
+  // execute checkpoint (if needed)
+  executeCheckpoint(databaseHandle);
+
   maxRetryCount = (timeout != WAIT_FOREVER) ? (uint)((timeout+SLEEP_TIME-1L)/SLEEP_TIME) : 0;
-  sqlCommand    = stringTrim(sqlString);
+  sqlCommand    = stringTrimBegin(sqlString);
   error         = ERROR_NONE;
   retryCount    = 0;
   while (   (error == ERROR_NONE)
@@ -1174,7 +1199,7 @@ LOCAL Errors sqliteExecute(DatabaseHandle      *databaseHandle,
     else
     {
       // next SQL command part
-      sqlCommand = stringTrim(nextSqlCommand);
+      sqlCommand = stringTrimBegin(nextSqlCommand);
     }
   }
 
@@ -1514,7 +1539,7 @@ void Database_doneAll(void)
                         )
 #endif /* NDEBUG */
 {
-  String directory;
+  String directoryName;
   Errors error;
   int    sqliteMode;
   int    sqliteResult;
@@ -1527,11 +1552,12 @@ void Database_doneAll(void)
   // init variables
 //TODO
 #if 0
-  databaseHandle->lock     = NULL;
+  databaseHandle->lock                    = NULL;
 #else
 #endif
-  databaseHandle->handle   = NULL;
-  databaseHandle->timeout  = timeout;
+  databaseHandle->handle                  = NULL;
+  databaseHandle->timeout                 = timeout;
+  databaseHandle->lastCheckpointTimestamp = Misc_getTimestamp();
   sem_init(&databaseHandle->wakeUp,0,0);
 
   // create lock
@@ -1550,25 +1576,25 @@ void Database_doneAll(void)
   // create directory if needed
   if (fileName != NULL)
   {
-    directory = File_getFilePathNameCString(String_new(),fileName);
-    if (   !String_isEmpty(directory)
-        && !File_isDirectory(directory)
+    directoryName = File_getDirectoryNameCString(String_new(),fileName);
+    if (   !String_isEmpty(directoryName)
+        && !File_isDirectory(directoryName)
        )
     {
-      error = File_makeDirectory(directory,
+      error = File_makeDirectory(directoryName,
                                  FILE_DEFAULT_USER_ID,
                                  FILE_DEFAULT_GROUP_ID,
                                  FILE_DEFAULT_PERMISSION
                                 );
       if (error != ERROR_NONE)
       {
-        File_deleteFileName(directory);
+        File_deleteFileName(directoryName);
         Semaphore_done(&databaseHandle->lock);
         sem_destroy(&databaseHandle->wakeUp);
         return error;
       }
     }
-    String_delete(directory);
+    String_delete(directoryName);
   }
 
   // get mode
@@ -1999,7 +2025,7 @@ Errors Database_copyTable(DatabaseHandle                *fromDatabaseHandle,
   va_list            arguments;
   sqlite3_stmt       *fromStatementHandle,*toStatementHandle;
   int                sqliteResult;
-  uint               n;
+  uint               i;
   DatabaseColumnNode *toColumnNode;
   DatabaseId         lastRowId;
   #ifdef DATABASE_DEBUG_COPY_TABLE
@@ -2045,12 +2071,12 @@ Errors Database_copyTable(DatabaseHandle                *fromDatabaseHandle,
 
   // create SQL select statement string
   sqlSelectString = formatSQLString(String_new(),"SELECT ");
-  n = 0;
+  i = 0;
   LIST_ITERATE(&fromColumnList,columnNode)
   {
-    if (n > 0) String_appendChar(sqlSelectString,',');
+    if (i > 0) String_appendChar(sqlSelectString,',');
     String_appendCString(sqlSelectString,columnNode->name);
-    n++;
+    i++;
   }
   formatSQLString(sqlSelectString," FROM %s",fromTableName);
   if (fromAdditional != NULL)
@@ -2134,13 +2160,13 @@ Errors Database_copyTable(DatabaseHandle                *fromDatabaseHandle,
       }
 
       // get from values, set in toColumnList
-      n = 0;
+      i = 0;
       LIST_ITERATE(&fromColumnList,columnNode)
       {
         switch (columnNode->type)
         {
           case DATABASE_TYPE_PRIMARY_KEY:
-            columnNode->value.id = sqlite3_column_int64(fromStatementHandle,n);
+            columnNode->value.id = sqlite3_column_int64(fromStatementHandle,i);
 //fprintf(stderr,"%s, %d: DATABASE_TYPE_PRIMARY_KEY %d %s: %lld\n",__FILE__,__LINE__,n,columnNode->name,columnNode->value.id);
             toColumnNode = findTableColumnNode(&toColumnList,columnNode->name);
             if (toColumnNode != NULL)
@@ -2150,7 +2176,7 @@ Errors Database_copyTable(DatabaseHandle                *fromDatabaseHandle,
             }
             break;
           case DATABASE_TYPE_INT64:
-            String_setCString(columnNode->value.i,(const char*)sqlite3_column_text(fromStatementHandle,n));
+            String_setCString(columnNode->value.i,(const char*)sqlite3_column_text(fromStatementHandle,i));
 //fprintf(stderr,"%s, %d: DATABASE_TYPE_INT64 %d %s: %s\n",__FILE__,__LINE__,n,columnNode->name,String_cString(columnNode->value.text));
             toColumnNode = findTableColumnNode(&toColumnList,columnNode->name);
             if (toColumnNode != NULL)
@@ -2160,7 +2186,7 @@ Errors Database_copyTable(DatabaseHandle                *fromDatabaseHandle,
             }
             break;
           case DATABASE_TYPE_DOUBLE:
-            String_setCString(columnNode->value.d,(const char*)sqlite3_column_text(fromStatementHandle,n));
+            String_setCString(columnNode->value.d,(const char*)sqlite3_column_text(fromStatementHandle,i));
 //fprintf(stderr,"%s, %d: DATABASE_TYPE_DOUBLE %d %s: %s\n",__FILE__,__LINE__,n,columnNode->name,String_cString(columnNode->value.text));
             toColumnNode = findTableColumnNode(&toColumnList,columnNode->name);
             if (toColumnNode != NULL)
@@ -2170,7 +2196,7 @@ Errors Database_copyTable(DatabaseHandle                *fromDatabaseHandle,
             }
             break;
           case DATABASE_TYPE_DATETIME:
-            String_setCString(columnNode->value.i,(const char*)sqlite3_column_text(fromStatementHandle,n));
+            String_setCString(columnNode->value.i,(const char*)sqlite3_column_text(fromStatementHandle,i));
 //fprintf(stderr,"%s, %d: DATABASE_TYPE_DATETIME %d %s: %s\n",__FILE__,__LINE__,n,columnNode->name,String_cString(columnNode->value.text));
             toColumnNode = findTableColumnNode(&toColumnList,columnNode->name);
             if (toColumnNode != NULL)
@@ -2180,7 +2206,7 @@ Errors Database_copyTable(DatabaseHandle                *fromDatabaseHandle,
             }
             break;
           case DATABASE_TYPE_TEXT:
-            String_setCString(columnNode->value.text,(const char*)sqlite3_column_text(fromStatementHandle,n));
+            String_setCString(columnNode->value.text,(const char*)sqlite3_column_text(fromStatementHandle,i));
 //fprintf(stderr,"%s, %d: DATABASE_TYPE_TEXT %d %s: %s\n",__FILE__,__LINE__,n,columnNode->name,String_cString(columnNode->value.text));
             toColumnNode = findTableColumnNode(&toColumnList,columnNode->name);
             if (toColumnNode != NULL)
@@ -2198,7 +2224,7 @@ Errors Database_copyTable(DatabaseHandle                *fromDatabaseHandle,
             #endif /* NDEBUG */
             break; // not reached
         }
-        n++;
+        i++;
       }
 
       // call pre-copy callback (if defined)
@@ -2224,25 +2250,25 @@ Errors Database_copyTable(DatabaseHandle                *fromDatabaseHandle,
 
       // create SQL insert statement string
       formatSQLString(String_clear(sqlInsertString),"INSERT INTO %s (",toTableName);
-      n = 0;
+      i = 0;
       LIST_ITERATE(&toColumnList,columnNode)
       {
         if (columnNode->usedFlag && (columnNode->type != DATABASE_TYPE_PRIMARY_KEY))
         {
-          if (n > 0) String_appendChar(sqlInsertString,',');
+          if (i > 0) String_appendChar(sqlInsertString,',');
           String_appendCString(sqlInsertString,columnNode->name);
-          n++;
+          i++;
         }
       }
       String_appendCString(sqlInsertString,") VALUES (");
-      n = 0;
+      i = 0;
       LIST_ITERATE(&toColumnList,columnNode)
       {
         if (columnNode->usedFlag && (columnNode->type != DATABASE_TYPE_PRIMARY_KEY))
         {
-          if (n > 0) String_appendChar(sqlInsertString,',');
+          if (i > 0) String_appendChar(sqlInsertString,',');
           String_appendChar(sqlInsertString,'?');
-          n++;
+          i++;
         }
       }
       String_appendCString(sqlInsertString,");");
@@ -2282,7 +2308,7 @@ Errors Database_copyTable(DatabaseHandle                *fromDatabaseHandle,
       #endif /* not NDEBUG */
 
       // set to value
-      n = 0;
+      i = 1;
       LIST_ITERATE(&toColumnList,columnNode)
       {
         if (columnNode->usedFlag)
@@ -2294,19 +2320,24 @@ Errors Database_copyTable(DatabaseHandle                *fromDatabaseHandle,
               break;
             case DATABASE_TYPE_INT64:
 //fprintf(stderr,"%s, %d: DATABASE_TYPE_INT64 %d %s: %s %d\n",__FILE__,__LINE__,n,columnNode->name,String_cString(columnNode->value.i),sqlite3_column_type(fromStatementHandle,n));
-              sqlite3_bind_text(toStatementHandle,n,String_cString(columnNode->value.i),-1,NULL);
+              sqlite3_bind_text(toStatementHandle,i,String_cString(columnNode->value.i),-1,NULL);
+              i++;
               break;
             case DATABASE_TYPE_DOUBLE:
-              sqlite3_bind_text(toStatementHandle,n,String_cString(columnNode->value.d),-1,NULL);
+              sqlite3_bind_text(toStatementHandle,i,String_cString(columnNode->value.d),-1,NULL);
+              i++;
               break;
             case DATABASE_TYPE_DATETIME:
-              sqlite3_bind_text(toStatementHandle,n,String_cString(columnNode->value.i),-1,NULL);
+              sqlite3_bind_text(toStatementHandle,i,String_cString(columnNode->value.i),-1,NULL);
+              i++;
               break;
             case DATABASE_TYPE_TEXT:
 //fprintf(stderr,"%s, %d: DATABASE_TYPE_TEXT %d %s: %s\n",__FILE__,__LINE__,n,columnNode->name,String_cString(columnNode->value.text));
-              sqlite3_bind_text(toStatementHandle,n,String_cString(columnNode->value.text),-1,NULL);
+              sqlite3_bind_text(toStatementHandle,i,String_cString(columnNode->value.text),-1,NULL);
+              i++;
               break;
             case DATABASE_TYPE_BLOB:
+              i++;
               HALT_INTERNAL_ERROR_STILL_NOT_IMPLEMENTED();
               break;
             default:
@@ -2315,7 +2346,6 @@ Errors Database_copyTable(DatabaseHandle                *fromDatabaseHandle,
               #endif /* NDEBUG */
               break; // not reached
           }
-          n++;
         }
       }
 
@@ -3188,6 +3218,16 @@ Errors Database_rollbackTransaction(DatabaseHandle *databaseHandle)
   return ERROR_NONE;
 }
 
+Errors Database_flush(DatabaseHandle *databaseHandle)
+{
+  assert(databaseHandle != NULL);
+  assert(databaseHandle->handle != NULL);
+
+  sqlite3_wal_checkpoint(databaseHandle->handle,NULL);
+
+  return ERROR_NONE;
+}
+
 Errors Database_execute(DatabaseHandle      *databaseHandle,
                         DatabaseRowFunction databaseRowFunction,
                         void                *databaseRowUserData,
@@ -3275,6 +3315,9 @@ Errors Database_execute(DatabaseHandle      *databaseHandle,
     databaseQueryHandle->sqlString = String_duplicate(sqlString);
     databaseQueryHandle->dt        = 0LL;
   #endif /* not NDEBUG */
+
+  // execute checkpoint (if needed)
+  executeCheckpoint(databaseHandle);
 
   // prepare SQL command execution
   DATABASE_DEBUG_SQL(databaseHandle,sqlString);
@@ -3670,6 +3713,9 @@ bool Database_exists(DatabaseHandle *databaseHandle,
   }
   String_appendCString(sqlString," LIMIT 0,1");
 
+  // execute checkpoint (if needed)
+  executeCheckpoint(databaseHandle);
+
   // execute SQL command
   existsFlag = FALSE;
   DATABASE_DEBUG_SQLX(databaseHandle,"get int64",sqlString);
@@ -3767,6 +3813,9 @@ Errors Database_vgetId(DatabaseHandle *databaseHandle,
                     );
   }
   String_appendCString(sqlString," LIMIT 0,1");
+
+  // execute checkpoint (if needed)
+  executeCheckpoint(databaseHandle);
 
   // execute SQL command
   DATABASE_DEBUG_SQLX(databaseHandle,"get id",sqlString);
@@ -3873,6 +3922,9 @@ Errors Database_vgetInteger64(DatabaseHandle *databaseHandle,
                     );
   }
   String_appendCString(sqlString," LIMIT 0,1");
+
+  // execute checkpoint (if needed)
+  executeCheckpoint(databaseHandle);
 
   // execute SQL command
   DATABASE_DEBUG_SQLX(databaseHandle,"get int64",sqlString);
@@ -4078,6 +4130,9 @@ Errors Database_vgetDouble(DatabaseHandle *databaseHandle,
   }
   String_appendCString(sqlString," LIMIT 0,1");
 
+  // execute checkpoint (if needed)
+  executeCheckpoint(databaseHandle);
+
   // execute SQL command
   DATABASE_DEBUG_SQLX(databaseHandle,"get double",sqlString);
   sqliteResult = sqlite3_prepare_v2(databaseHandle->handle,
@@ -4281,6 +4336,9 @@ Errors Database_vgetString(DatabaseHandle *databaseHandle,
                     );
   }
   String_appendCString(sqlString," LIMIT 0,1");
+
+  // execute checkpoint (if needed)
+  executeCheckpoint(databaseHandle);
 
   // execute SQL command
   DATABASE_DEBUG_SQLX(databaseHandle,"get string",sqlString);
