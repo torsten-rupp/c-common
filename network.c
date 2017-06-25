@@ -883,8 +883,6 @@ Errors Network_connect(SocketHandle *socketHandle,
 Errors Network_connectDescriptor(SocketHandle *socketHandle,
                                  int          socketDescriptor,
                                  SocketTypes  socketType,
-                                 ConstString  hostName,
-                                 uint         hostPort,
                                  ConstString  loginName,
                                  Password     *password,
                                  const void   *sshPublicKeyData,
@@ -901,7 +899,6 @@ Errors Network_connectDescriptor(SocketHandle *socketHandle,
   Errors             error;
 
   assert(socketHandle != NULL);
-  assert(hostName != NULL);
 
   // initialize variables
   socketHandle->type        = socketType;
