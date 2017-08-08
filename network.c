@@ -84,10 +84,6 @@
   LOCAL long*            cryptoLockCounters;
 #endif /* HAVE_SSH2 */
 
-#ifdef HAVE_GCRYPT
-  GCRY_THREAD_OPTION_PTHREAD_IMPL;
-#endif /* HAVE_GCRYPT */
-
 /****************************** Macros *********************************/
 
 /***************************** Forwards ********************************/
@@ -265,8 +261,11 @@ LOCAL Errors initSSL(SocketHandle *socketHandle,
 
   assert(socketHandle != NULL);
   assert(caData != NULL);
+  assert(caLength > 0);
   assert(certData != NULL);
+  assert(certLength > 0);
   assert(keyData != NULL);
+  assert(keyLength > 0);
 
 //TODO
 UNUSED_VARIABLE(caDatum);
@@ -280,9 +279,9 @@ UNUSED_VARIABLE(caLength);
   }
 
   #ifdef GNUTLS_DEBUG
-    fprintf(stderr,"DEBUG GNU TLS: CA: "); write(STDERR_FILENO,caData,caLength); fprintf(stderr,"\n");
-    fprintf(stderr,"DEBUG GNU TLS: certificate: "); write(STDERR_FILENO,certData,certLength); fprintf(stderr,"\n");
-    fprintf(stderr,"DEBUG GNU TLS: key:"); write(STDERR_FILENO,keyData,keyLength); fprintf(stderr,"\n");
+    fprintf(stderr,"DEBUG GNU TLS: CA:\n"); write(STDERR_FILENO,caData,caLength); fprintf(stderr,"\n");
+    fprintf(stderr,"DEBUG GNU TLS: certificate:\n"); write(STDERR_FILENO,certData,certLength); fprintf(stderr,"\n");
+    fprintf(stderr,"DEBUG GNU TLS: key %d:\n",keyLength); write(STDERR_FILENO,keyData,keyLength); fprintf(stderr,"\n");
   #endif /* GNUTLS_DEBUG */
 
   certDatum.data = (void*)certData;
@@ -414,9 +413,6 @@ Errors Network_initAll(void)
   #else /* not HAVE_SSH2 */
   #endif /* HAVE_SSH2 */
 
-  #ifdef HAVE_GCRYPT
-    gcry_control(GCRYCTL_SET_THREAD_CBS,&gcry_threads_pthread);
-  #endif /* HAVE_GCRYPT */
   #ifdef HAVE_GNU_TLS
     gnutls_global_init();
     #ifdef GNUTLS_DEBUG
