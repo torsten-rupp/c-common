@@ -244,19 +244,19 @@ void Pattern_doneAll(void)
 
 const char *Pattern_patternTypeToString(PatternTypes patternType, const char *defaultValue)
 {
-  uint       z;
+  uint       i;
   const char *name;
 
-  z = 0;
-  while (   (z < SIZE_OF_ARRAY(PATTERN_TYPES))
-         && (PATTERN_TYPES[z].patternType != patternType)
+  i = 0;
+  while (   (i < SIZE_OF_ARRAY(PATTERN_TYPES))
+         && (PATTERN_TYPES[i].patternType != patternType)
         )
   {
-    z++;
+    i++;
   }
-  if (z < SIZE_OF_ARRAY(PATTERN_TYPES))
+  if (i < SIZE_OF_ARRAY(PATTERN_TYPES))
   {
-    name = PATTERN_TYPES[z].name;
+    name = PATTERN_TYPES[i].name;
   }
   else
   {
@@ -266,23 +266,25 @@ const char *Pattern_patternTypeToString(PatternTypes patternType, const char *de
   return name;
 }
 
-bool Pattern_parsePatternType(const char *name, PatternTypes *patternType)
+bool Pattern_parsePatternType(const char *name, PatternTypes *patternType, void *userData)
 {
-  uint z;
+  uint i;
 
   assert(name != NULL);
   assert(patternType != NULL);
 
-  z = 0;
-  while (   (z < SIZE_OF_ARRAY(PATTERN_TYPES))
-         && !stringEqualsIgnoreCase(PATTERN_TYPES[z].name,name)
+  UNUSED_VARIABLE(userData);
+
+  i = 0;
+  while (   (i < SIZE_OF_ARRAY(PATTERN_TYPES))
+         && !stringEqualsIgnoreCase(PATTERN_TYPES[i].name,name)
         )
   {
-    z++;
+    i++;
   }
-  if (z < SIZE_OF_ARRAY(PATTERN_TYPES))
+  if (i < SIZE_OF_ARRAY(PATTERN_TYPES))
   {
-    (*patternType) = PATTERN_TYPES[z].patternType;
+    (*patternType) = PATTERN_TYPES[i].patternType;
     return TRUE;
   }
   else
@@ -325,8 +327,11 @@ Errors Pattern_initCString(Pattern *pattern, const char *string, PatternTypes pa
                         );
   if (error != ERROR_NONE)
   {
+    String_delete(pattern->regexString);
     return error;
   }
+
+  DEBUG_ADD_RESOURCE_TRACE(pattern,sizeof(Pattern));
 
   return ERROR_NONE;
 }
@@ -334,6 +339,8 @@ Errors Pattern_initCString(Pattern *pattern, const char *string, PatternTypes pa
 void Pattern_done(Pattern *pattern)
 {
   assert(pattern != NULL);
+
+  DEBUG_REMOVE_RESOURCE_TRACE(pattern,sizeof(Pattern));
 
   regfree(&pattern->regexAny);
   regfree(&pattern->regexExact);
@@ -368,6 +375,7 @@ Pattern *Pattern_new(ConstString string, PatternTypes patternType, uint patternF
 void Pattern_delete(Pattern *pattern)
 {
   assert(pattern != NULL);
+  DEBUG_CHECK_RESOURCE_TRACE(pattern);
 
   Pattern_done(pattern);
   free(pattern);
@@ -378,6 +386,7 @@ Pattern *Pattern_duplicate(const Pattern *fromPattern)
   Pattern *pattern;
 
   assert(fromPattern != NULL);
+  DEBUG_CHECK_RESOURCE_TRACE(fromPattern);
 
   // allocate pattern
   pattern = (Pattern*)malloc(sizeof(Pattern));
@@ -402,6 +411,7 @@ Errors Pattern_copy(Pattern *pattern, const Pattern *fromPattern)
 
   assert(pattern != NULL);
   assert(fromPattern != NULL);
+  DEBUG_CHECK_RESOURCE_TRACE(fromPattern);
 
   // initialize variables
   pattern->type        = fromPattern->type;
@@ -422,6 +432,8 @@ Errors Pattern_copy(Pattern *pattern, const Pattern *fromPattern)
     return error;
   }
 
+  DEBUG_ADD_RESOURCE_TRACE(pattern,sizeof(Pattern));
+
   return ERROR_NONE;
 }
 
@@ -433,6 +445,7 @@ bool Pattern_match(const Pattern     *pattern,
   bool matchFlag;
 
   assert(pattern != NULL);
+  DEBUG_CHECK_RESOURCE_TRACE(pattern);
   assert(string != NULL);
 
   matchFlag = FALSE;
