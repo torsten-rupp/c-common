@@ -323,13 +323,8 @@ error = ERROR_NONE;
     if      (WIFEXITED(status))
     {
       exitcode = WEXITSTATUS(status);
-      if (exitcode == 0)
+      if (exitcode != 0)
       {
-        printInfo(3,"OK\n");
-      }
-      else
-      {
-        printInfo(3,"FAIL (exitcode %d)\n",exitcode);
         error = ERRORX_(EXEC_FAIL,exitcode,"%s",String_cString(text));
         String_delete(text);
         return error;
@@ -339,13 +334,11 @@ error = ERROR_NONE;
     {
       terminateSignal = WTERMSIG(status);
       error = ERRORX_(EXEC_FAIL,terminateSignal,"%s",String_cString(text));
-      printInfo(3,"FAIL (signal %d)\n",terminateSignal);
       String_delete(text);
       return error;
     }
     else
     {
-      printInfo(3,"FAIL (unknown exit)\n");
       String_delete(text);
       return ERROR_UNKNOWN;
     }
