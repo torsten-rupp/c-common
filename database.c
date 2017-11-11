@@ -1702,7 +1702,9 @@ void Database_doneAll(void)
       stringSet(databaseHandle->name,fileName,sizeof(databaseHandle->name));
       databaseHandle->fileName                   = __fileName__;
       databaseHandle->lineNb                     = __lineNb__;
-      databaseHandle->stackTraceSize             = 0;
+      #ifdef HAVE_BACKTRACE
+        databaseHandle->stackTraceSize             = 0;
+      #endif /* HAVE_BACKTRACE */
       databaseHandle->locked.threadId            = THREAD_ID_NONE;
       databaseHandle->locked.lineNb              = 0;
       databaseHandle->locked.t0                  = 0ULL;
