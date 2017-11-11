@@ -195,7 +195,6 @@ void __AutoFree_remove(const char   *__fileName__,
     if (!foundFlag)
     {
       #ifndef NDEBUG
-        fprintf(stderr,"DEBUG WARNING: auto resource %p not found in auto resource list at %s, line %u\n",
         fprintf(stderr,"DEBUG WARNING: auto resource %p not found in auto resource list at %s, line %lu\n",
                 resource,
                 __fileName__,
