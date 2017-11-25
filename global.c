@@ -41,6 +41,8 @@
 /****************** Conditional compilation switches *******************/
 
 /***************************** Constants *******************************/
+#define MAX_SECURE_MEMORY (64*1024)
+
 #define DEBUG_MAX_FREE_LIST 4000
 
 #define DEBUG_TESTCODE_NAME          "TESTCODE"       // testcode to execute
@@ -162,6 +164,32 @@ unsigned long lcm(unsigned long a, unsigned long b)
 
 // ----------------------------------------------------------------------
 
+Errors initSecure(void)
+{
+  #ifdef HAVE_GCRYPT
+    // check version and do internal library init
+    assert(GCRYPT_VERSION_NUMBER >= 0x010600);
+    if (!gcry_check_version(GCRYPT_VERSION))
+    {
+      return ERRORX_(INIT_CRYPT,0,"Wrong gcrypt version (needed: %d)",GCRYPT_VERSION);
+    }
+
+    gcry_control(GCRYCTL_SUSPEND_SECMEM_WARN);
+    gcry_control(GCRYCTL_INIT_SECMEM,MAX_SECURE_MEMORY,0);
+    #ifdef NDEBUG
+      gcry_control(GCRYCTL_RESUME_SECMEM_WARN);
+    #endif
+
+    gcry_control(GCRYCTL_INITIALIZATION_FINISHED,0);
+  #endif /* HAVE_GCRYPT */
+
+  return ERROR_NONE;
+}
+
+void doneSecure(void)
+{
+}
+
 void *allocSecure(size_t size)
 {
   void *p;
@@ -217,14 +245,14 @@ void freeSecure(void *p)
 
   #ifdef HAVE_GCRYPT
     #ifndef NDEBUG
-      memoryHeader = (MemoryHeader*)((byte*)p - sizeof(MemoryHeader));
+      memoryHeader = (MemoryHeader*)((byte*)p-sizeof(MemoryHeader));
       gcry_free(memoryHeader);
     #else
       gcry_free(p);
     #endif
   #else /* not HAVE_GCRYPT */
-    memoryHeader = (MemoryHeader*)((byte*)p - sizeof(MemoryHeader));
-    memset(memoryHeader,0,sizeof(memoryHeader) + memoryHeader->size);
+    memoryHeader = (MemoryHeader*)((byte*)p-sizeof(MemoryHeader));
+    memset(memoryHeader,0,sizeof(MemoryHeader)+memoryHeader->size);
     free(memoryHeader);
   #endif /* HAVE_GCRYPT */
 }
@@ -764,7 +792,7 @@ void debugRemoveResourceTrace(const char *__fileName__,
     debugResourceNode = LIST_FIND(&debugResourceFreeList,debugResourceNode,(debugResourceNode->resource == resource) && (debugResourceNode->size == size));
     if (debugResourceNode != NULL)
     {
-      fprintf(stderr,"DEBUG ERROR: multiple free of resource '%s' 0x%016"PRIxPTR" (%d bytes) at %s, %lu and previously at %s, %lu which was allocated at %s, %lu!\n",
+      fprintf(stderr,"DEBUG ERROR: multiple free of resource '%s' 0x%016"PRIxPTR" (%ld bytes) at %s, %lu and previously at %s, %lu which was allocated at %s, %lu!\n",
               debugResourceNode->variableName,
               (uintptr_t)debugResourceNode->resource,
               debugResourceNode->size,
@@ -843,7 +871,7 @@ void debugCheckResourceTrace(const char *__fileName__,
       debugResourceNode = LIST_FIND(&debugResourceFreeList,debugResourceNode,debugResourceNode->resource == resource);
       if (debugResourceNode != NULL)
       {
-        fprintf(stderr,"DEBUG ERROR: resource '%s' 0x%016"PRIxPTR" (%d bytes) invalid at %s, %lu which was allocated at %s, %lu and freed at %s, %lu!\n",
+        fprintf(stderr,"DEBUG ERROR: resource '%s' 0x%016"PRIxPTR" (%ld bytes) invalid at %s, %lu which was allocated at %s, %lu and freed at %s, %lu!\n",
                 debugResourceNode->variableName,
                 (uintptr_t)debugResourceNode->resource,
                 debugResourceNode->size,
@@ -903,7 +931,7 @@ void debugResourceDumpInfo(FILE *handle)
   {
     LIST_ITERATE(&debugResourceAllocList,debugResourceNode)
     {
-      fprintf(handle,"DEBUG: resource '%s' 0x%016"PRIxPTR" (%d bytes) allocated at %s, line %lu\n",
+      fprintf(handle,"DEBUG: resource '%s' 0x%016"PRIxPTR" (%ld bytes) allocated at %s, line %lu\n",
               debugResourceNode->variableName,
               (uintptr_t)debugResourceNode->resource,
               debugResourceNode->size,
@@ -946,7 +974,7 @@ void debugResourceCheck(void)
     {
       LIST_ITERATE(&debugResourceAllocList,debugResourceNode)
       {
-        fprintf(stderr,"DEBUG: lost resource '%s' 0x%016"PRIxPTR" (%d bytes) allocated at %s, line %lu\n",
+        fprintf(stderr,"DEBUG: lost resource '%s' 0x%016"PRIxPTR" (%ld bytes) allocated at %s, line %lu\n",
                 debugResourceNode->variableName,
                 (uintptr_t)debugResourceNode->resource,
                 debugResourceNode->size,
@@ -975,6 +1003,20 @@ typedef struct
   uint count;
 } StackTraceOutputInfo;
 
+#ifdef HAVE_BFD_INIT
+/***********************************************************************\
+* Name   : debugDumpStackTraceOutputSymbol
+* Purpose: output stack trace symbol
+* Input  : address    - address
+*          fileName   - file name
+*          symbolName - symbol name
+*          lineNb     - line number
+*          userData   - user data
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
 LOCAL void debugDumpStackTraceOutputSymbol(const void *address,
                                            const char *fileName,
                                            const char *symbolName,
@@ -998,6 +1040,7 @@ LOCAL void debugDumpStackTraceOutputSymbol(const void *address,
   }
   stackTraceOutputInfo->count++;
 }
+#endif // HAVE_BFD_INIT
 
 void debugDumpStackTrace(FILE       *handle,
                          uint       indent,
