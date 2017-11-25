@@ -236,11 +236,11 @@ or
 * Name   : initSSL
 * Purpose: init SSL encryption on socket
 * Input  : socketHandle - socket handle
-*          caData       - TLS CA data or NULL
+*          caData       - TLS CA data or NULL (PEM encoded)
 *          caLength     - TSL CA data length
-*          cert         - TLS cerificate or NULL
+*          cert         - TLS cerificate or NULL (PEM encoded)
 *          certLength   - TSL cerificate data length
-*          key          - TLS key or NULL
+*          key          - TLS key or NULL (PEM encoded)
 *          keyLength    - TSL key data length
 * Output : -
 * Return : ERROR_NONE or error code
@@ -603,6 +603,7 @@ Errors Network_connect(SocketHandle *socketHandle,
            )
         {
           error = ERROR_(CONNECT_FAIL,errno);
+          shutdown(socketHandle->handle,SHUT_RDWR);
           close(socketHandle->handle);
           return error;
         }
@@ -726,6 +727,7 @@ Errors Network_connect(SocketHandle *socketHandle,
            )
         {
           error = ERRORX_(CONNECT_FAIL,errno,"%s",strerror(errno));
+          shutdown(socketHandle->handle,SHUT_RDWR);
           close(socketHandle->handle);
           return error;
         }
@@ -734,6 +736,7 @@ Errors Network_connect(SocketHandle *socketHandle,
         socketHandle->ssh2.session = libssh2_session_init();
         if (socketHandle->ssh2.session == NULL)
         {
+          shutdown(socketHandle->handle,SHUT_RDWR);
           close(socketHandle->handle);
           return ERROR_SSH_SESSION_FAIL;
         }
@@ -763,6 +766,7 @@ Errors Network_connect(SocketHandle *socketHandle,
         {
           libssh2_session_disconnect(socketHandle->ssh2.session,"");
           libssh2_session_free(socketHandle->ssh2.session);
+          shutdown(socketHandle->handle,SHUT_RDWR);
           close(socketHandle->handle);
           return ERROR_SSH_SESSION_FAIL;
         }
@@ -774,6 +778,10 @@ Errors Network_connect(SocketHandle *socketHandle,
 #if 1
         // authorize with key
         plainPassword = Password_deploy(password);
+//fprintf(stderr,"%s, %d: sshPublicKeyLength=%d\n",__FILE__,__LINE__,sshPublicKeyLength); debugDumpMemory(sshPublicKeyData,sshPublicKeyLength,0);
+//fprintf(stderr,"%s, %d: sshPrivateKeyLength=%d\n",__FILE__,__LINE__,sshPrivateKeyLength); debugDumpMemory(sshPrivateKeyData,sshPrivateKeyLength,0);
+//fprintf(stderr,"%s, %d: loginName=%s\n",__FILE__,__LINE__,String_cString(loginName));
+//fprintf(stderr,"%s, %d: plainPassword=%s\n",__FILE__,__LINE__,plainPassword);
         result = libssh2_userauth_publickey_frommemory(socketHandle->ssh2.session,
                                                        String_cString(loginName),
                                                        String_length(loginName),
@@ -783,6 +791,17 @@ Errors Network_connect(SocketHandle *socketHandle,
                                                        sshPrivateKeyLength,
                                                        plainPassword
                                                       );
+        if (result != 0)
+        {
+          // authorize with password only
+          result = libssh2_userauth_password_ex(socketHandle->ssh2.session,
+                                                String_cString(loginName),
+                                                String_length(loginName),
+                                                plainPassword,
+                                                Password_length(password),
+                                                NULL
+                                               );
+        }  
         if (result != 0)
         {
           ssh2Error = libssh2_session_last_error(socketHandle->ssh2.session,&ssh2ErrorText,NULL,0);
@@ -798,6 +817,7 @@ Errors Network_connect(SocketHandle *socketHandle,
           Password_undeploy(password,plainPassword);
           libssh2_session_disconnect(socketHandle->ssh2.session,"");
           libssh2_session_free(socketHandle->ssh2.session);
+          shutdown(socketHandle->handle,SHUT_RDWR);
           close(socketHandle->handle);
           return error;
         }
@@ -822,6 +842,7 @@ Errors Network_connect(SocketHandle *socketHandle,
           }
           libssh2_session_disconnect(socketHandle->ssh2.session,"");
           libssh2_session_free(socketHandle->ssh2.session);
+          shutdown(socketHandle->handle,SHUT_RDWR);
           close(socketHandle->handle);
           return error;
         }
@@ -862,6 +883,7 @@ Errors Network_connect(SocketHandle *socketHandle,
         UNUSED_VARIABLE(sshPrivateKeyData);
         UNUSED_VARIABLE(sshPrivateKeyLength);
 
+        shutdown(socketHandle->handle,SHUT_RDWR);
         close(socketHandle->handle);
         return ERROR_FUNCTION_NOT_SUPPORTED;
       #endif /* HAVE_SSH2 */
@@ -889,10 +911,10 @@ Errors Network_connectDescriptor(SocketHandle *socketHandle,
                                 )
 {
   #ifdef HAVE_SSH2
-    int                ssh2Error;
-    char               *ssh2ErrorText;
+    int    ssh2Error;
+    char   *ssh2ErrorText;
+    Errors error;
   #endif /* HAVE_SSH2 */
-  Errors             error;
 
   assert(socketHandle != NULL);
 
@@ -1105,6 +1127,7 @@ Errors Network_connectDescriptor(SocketHandle *socketHandle,
         UNUSED_VARIABLE(sshPrivateKeyData);
         UNUSED_VARIABLE(sshPrivateKeyLength);
 
+        shutdown(socketHandle->handle,SHUT_RDWR);
         close(socketHandle->handle);
         return ERROR_FUNCTION_NOT_SUPPORTED;
       #endif /* HAVE_SSH2 */
@@ -1153,6 +1176,7 @@ void Network_disconnect(SocketHandle *socketHandle)
         break; /* not reached */
     #endif /* NDEBUG */
   }
+  shutdown(socketHandle->handle,SHUT_RDWR);
   close(socketHandle->handle);
 }
 
@@ -1561,6 +1585,7 @@ Errors Network_initServer(ServerSocketHandle *serverSocketHandle,
   if (setsockopt(serverSocketHandle->handle,SOL_SOCKET,SO_REUSEADDR,(void*)&n,sizeof(int)) != 0)
   {
     error = ERROR_(CONNECT_FAIL,errno);
+    shutdown(serverSocketHandle->handle,SHUT_RDWR);
     close(serverSocketHandle->handle);
     return error;
   }
@@ -1576,6 +1601,7 @@ Errors Network_initServer(ServerSocketHandle *serverSocketHandle,
      )
   {
     error = ERROR_(CONNECT_FAIL,errno);
+    shutdown(serverSocketHandle->handle,SHUT_RDWR);
     close(serverSocketHandle->handle);
     return error;
   }
@@ -1596,16 +1622,19 @@ Errors Network_initServer(ServerSocketHandle *serverSocketHandle,
         // check if all key files exists
         if (caData == NULL)
         {
+          shutdown(serverSocketHandle->handle,SHUT_RDWR);
           close(serverSocketHandle->handle);
           return ERROR_NO_TLS_CA;
         }
         if (certData == NULL)
         {
+          shutdown(serverSocketHandle->handle,SHUT_RDWR);
           close(serverSocketHandle->handle);
           return ERROR_NO_TLS_CERTIFICATE;
         }
         if (keyData == NULL)
         {
+          shutdown(serverSocketHandle->handle,SHUT_RDWR);
           close(serverSocketHandle->handle);
           return ERROR_NO_TLS_KEY;
         }
@@ -1613,6 +1642,7 @@ Errors Network_initServer(ServerSocketHandle *serverSocketHandle,
         // check if certificate is valid
         if (gnutls_x509_crt_init(&cert) != GNUTLS_E_SUCCESS)
         {
+          shutdown(serverSocketHandle->handle,SHUT_RDWR);
           close(serverSocketHandle->handle);
           return ERROR_INVALID_TLS_CERTIFICATE;
         }
@@ -1621,6 +1651,7 @@ Errors Network_initServer(ServerSocketHandle *serverSocketHandle,
         if (gnutls_x509_crt_import(cert,&datum,GNUTLS_X509_FMT_PEM) != GNUTLS_E_SUCCESS)
         {
           gnutls_x509_crt_deinit(cert);
+          shutdown(serverSocketHandle->handle,SHUT_RDWR);
           close(serverSocketHandle->handle);
           return ERROR_INVALID_TLS_CERTIFICATE;
         }
@@ -1630,6 +1661,7 @@ Errors Network_initServer(ServerSocketHandle *serverSocketHandle,
           if (time(NULL) < certActivationTime)
           {
             gnutls_x509_crt_deinit(cert);
+            shutdown(serverSocketHandle->handle,SHUT_RDWR);
             close(serverSocketHandle->handle);
             return ERRORX_(TLS_CERTIFICATE_NOT_ACTIVE,0,"%s",Misc_formatDateTimeCString(buffer,sizeof(buffer),(uint64)certActivationTime,DATE_TIME_FORMAT_LOCALE));
           }
@@ -1640,6 +1672,7 @@ Errors Network_initServer(ServerSocketHandle *serverSocketHandle,
           if (time(NULL) > certExpireTime)
           {
             gnutls_x509_crt_deinit(cert);
+            shutdown(serverSocketHandle->handle,SHUT_RDWR);
             close(serverSocketHandle->handle);
             return ERRORX_(TLS_CERTIFICATE_EXPIRED,0,"%s",Misc_formatDateTimeCString(buffer,sizeof(buffer),(uint64)certExpireTime,DATE_TIME_FORMAT_LOCALE));
           }
@@ -1663,6 +1696,7 @@ or
         if (result < 0)
         {
           gnutls_certificate_free_credentials(serverSocketHandle->gnuTLSCredentials);
+          shutdown(socketHandle->handle,SHUT_RDWR);
           close(serverSocketHandle->handle);
           return ERROR_INVALID_TLS_CA;
         }
@@ -1715,6 +1749,7 @@ void Network_doneServer(ServerSocketHandle *serverSocketHandle)
         break; /* not reached */
     #endif /* NDEBUG */
   }
+  shutdown(serverSocketHandle->handle,SHUT_RDWR);
   close(serverSocketHandle->handle);
 }
 
@@ -1847,6 +1882,7 @@ Errors Network_accept(SocketHandle             *socketHandle,
   if (socketHandle->handle == -1)
   {
     error = ERROR_(CONNECT_FAIL,errno);
+    shutdown(socketHandle->handle,SHUT_RDWR);
     close(socketHandle->handle);
     return error;
   }
@@ -1903,16 +1939,17 @@ Errors Network_accept(SocketHandle             *socketHandle,
   return ERROR_NONE;
 }
 
-void Network_getLocalInfo(SocketHandle *socketHandle,
-                          String       name,
-                          uint         *port
+void Network_getLocalInfo(SocketHandle  *socketHandle,
+                          String        name,
+                          uint          *port,
+                          SocketAddress *socketAddress
                          )
 {
-  struct sockaddr_in   socketAddress;
+  struct sockaddr_in   sockAddrIn;
   #if   defined(PLATFORM_LINUX)
-    socklen_t            socketAddressLength;
+    socklen_t            sockAddrInLength;
   #elif defined(PLATFORM_WINDOWS)
-    int                  socketAddressLength;
+    int                  sockAddrInLength;
   #endif /* PLATFORM_... */
   #ifdef HAVE_GETHOSTBYADDR
     const struct hostent *hostEntry;
@@ -1922,48 +1959,70 @@ void Network_getLocalInfo(SocketHandle *socketHandle,
   assert(name != NULL);
   assert(port != NULL);
 
-  socketAddressLength = sizeof(socketAddress);
+  sockAddrInLength = sizeof(sockAddrIn);
   if (getsockname(socketHandle->handle,
-                  (struct sockaddr*)&socketAddress,
-                  &socketAddressLength
+                  (struct sockaddr*)&sockAddrIn,
+                  &sockAddrInLength
                  ) == 0
      )
   {
-    #ifdef HAVE_GETHOSTBYADDR
-      hostEntry = gethostbyaddr((const char*)&socketAddress.sin_addr,
-                                sizeof(socketAddress.sin_addr),
-                                AF_INET
-                               );
-      if (hostEntry != NULL)
+    if (name != NULL)
+    {
+      #ifdef HAVE_GETHOSTBYADDR
+        hostEntry = gethostbyaddr((const char*)&sockAddrIn.sin_addr,
+                                  sizeof(sockAddrIn.sin_addr),
+                                  AF_INET
+                                 );
+        if (hostEntry != NULL)
+        {
+          String_setCString(name,hostEntry->h_name);
+        }
+        else
+        {
+          String_setCString(name,inet_ntoa(sockAddrIn.sin_addr));
+        }
+      #else /* not HAVE_GETHOSTBYADDR */
+        String_setCString(name,inet_ntoa(sockAddrIn.sin_addr));
+      #endif /* HAVE_GETHOSTBYADDR */
+    }
+    if (port != NULL) (*port) = ntohs(sockAddrIn.sin_port);
+    if (socketAddress != NULL)
+    {
+      if      (sockAddrIn.sin_family == AF_INET)
       {
-        String_setCString(name,hostEntry->h_name);
+        socketAddress->type = SOCKET_ADDRESS_TYPE_V4;
+        memcpy(&socketAddress->address.v4,&sockAddrIn.sin_addr,sizeof(sockAddrIn.sin_addr));
+      }
+      else if (sockAddrIn.sin_family == AF_INET6)
+      {
+        socketAddress->type = SOCKET_ADDRESS_TYPE_V6;
+        memcpy(&socketAddress->address.v6,&sockAddrIn.sin_addr,sizeof(sockAddrIn.sin_addr));
       }
       else
       {
-        String_setCString(name,inet_ntoa(socketAddress.sin_addr));
+        socketAddress->type = SOCKET_ADDRESS_TYPE_NONE;
       }
-    #else /* not HAVE_GETHOSTBYADDR */
-      String_setCString(name,inet_ntoa(socketAddress.sin_addr));
-    #endif /* HAVE_GETHOSTBYADDR */
-    (*port) = ntohs(socketAddress.sin_port);
+    }
   }
   else
   {
-    String_setCString(name,"unknown");
-    (*port) = 0;
+    if (name != NULL) String_setCString(name,"unknown");
+    if (port != NULL) (*port) = 0;
+    if (socketAddress != NULL) socketAddress->type = SOCKET_ADDRESS_TYPE_NONE;
   }
 }
 
-void Network_getRemoteInfo(SocketHandle *socketHandle,
-                           String       name,
-                           uint         *port
+void Network_getRemoteInfo(SocketHandle  *socketHandle,
+                           String        name,
+                           uint          *port,
+                           SocketAddress *socketAddress
                           )
 {
-  struct sockaddr_in   socketAddress;
+  struct sockaddr_in   sockAddrIn;
   #if   defined(PLATFORM_LINUX)
-    socklen_t            socketAddressLength;
+    socklen_t            sockAddrInLength;
   #elif defined(PLATFORM_WINDOWS)
-    int                  socketAddressLength;
+    int                  sockAddrInLength;
   #endif /* PLATFORM_... */
   #ifdef HAVE_GETHOSTBYADDR_R
     const struct hostent *hostEntry;
@@ -1973,36 +2032,86 @@ void Network_getRemoteInfo(SocketHandle *socketHandle,
   assert(name != NULL);
   assert(port != NULL);
 
-  socketAddressLength = sizeof(socketAddress);
+  sockAddrInLength = sizeof(sockAddrIn);
   if (getpeername(socketHandle->handle,
-                  (struct sockaddr*)&socketAddress,
-                  &socketAddressLength
+                  (struct sockaddr*)&sockAddrIn,
+                  &sockAddrInLength
                  ) == 0
      )
   {
-    #ifdef HAVE_GETHOSTBYADDR_R
-      hostEntry = gethostbyaddr(&socketAddress.sin_addr,
-                                sizeof(socketAddress.sin_addr),
-                                AF_INET
-                               );
-      if (hostEntry != NULL)
+    if (name != NULL)
+    {
+      #ifdef HAVE_GETHOSTBYADDR_R
+        hostEntry = gethostbyaddr(&sockAddrIn.sin_addr,
+                                  sizeof(sockAddrIn.sin_addr),
+                                  AF_INET
+                                 );
+        if (hostEntry != NULL)
+        {
+          String_setCString(name,hostEntry->h_name);
+        }
+        else
+        {
+          String_setCString(name,inet_ntoa(sockAddrIn.sin_addr));
+        }
+      #else /* not HAVE_GETHOSTBYADDR_R */
+        String_setCString(name,inet_ntoa(sockAddrIn.sin_addr));
+      #endif /* HAVE_GETHOSTBYADDR_R */
+    }
+    if (port != NULL) (*port) = ntohs(sockAddrIn.sin_port);
+    if (socketAddress != NULL)
+    {
+      if      (sockAddrIn.sin_family == AF_INET)
       {
-        String_setCString(name,hostEntry->h_name);
+        socketAddress->type = SOCKET_ADDRESS_TYPE_V4;
+        memcpy(&socketAddress->address.v4,&sockAddrIn.sin_addr,sizeof(sockAddrIn.sin_addr));
+      }
+      else if (sockAddrIn.sin_family == AF_INET6)
+      {
+        socketAddress->type = SOCKET_ADDRESS_TYPE_V6;
+        memcpy(&socketAddress->address.v6,&sockAddrIn.sin_addr,sizeof(sockAddrIn.sin_addr));
       }
       else
       {
-        String_setCString(name,inet_ntoa(socketAddress.sin_addr));
+        socketAddress->type = SOCKET_ADDRESS_TYPE_NONE;
       }
-    #else /* not HAVE_GETHOSTBYADDR_R */
-      String_setCString(name,inet_ntoa(socketAddress.sin_addr));
-    #endif /* HAVE_GETHOSTBYADDR_R */
-    (*port) = ntohs(socketAddress.sin_port);
+    }
   }
   else
   {
-    String_setCString(name,"unknown");
-    (*port) = 0;
+    if (name != NULL) String_setCString(name,"unknown");
+    if (port != NULL) (*port) = 0;
+    if (socketAddress != NULL) socketAddress->type = SOCKET_ADDRESS_TYPE_NONE;
   }
+}
+
+bool Network_isLocalHost(const SocketAddress *socketAddress)
+{
+  bool isLocalHost;
+  union
+  {
+    struct in_addr v4;
+    struct in6_addr v6;
+  } address;
+
+  assert(socketAddress != NULL);
+
+  switch (socketAddress->type)
+  {
+    case SOCKET_ADDRESS_TYPE_NONE:
+      isLocalHost = FALSE;
+      break;
+    case SOCKET_ADDRESS_TYPE_V4:
+      inet_pton(AF_INET,"127.0.0.1",&address.v4);
+      isLocalHost = (memcmp(&socketAddress->address.v4,&address.v4,sizeof(socketAddress->address.v4)) == 0);
+      break;
+    case SOCKET_ADDRESS_TYPE_V6:
+      inet_pton(AF_INET,"::1",&address.v6);
+      isLocalHost = (memcmp(&socketAddress->address.v6,&address.v6,sizeof(socketAddress->address.v6)) == 0);
+      break;
+  }
+
+  return isLocalHost;
 }
 
 /*---------------------------------------------------------------------*/
