@@ -457,23 +457,24 @@ HANDLE hOutputReadTmp,hOutputRead,hOutputWrite;
 /***********************************************************************\
 * Name   : base64Decode
 * Purpose: decode base64
-* Input  : data       - data variable
-*          dataLength - length of data
-*          s          - base64 data
-*          n          - length of base64 data
-* Output : -
-* Return : length of decoded data
+* Input  : data          - data variable
+*          dataLength    - length of data
+*          s             - base64 encoded string
+*          n             - length of base64 encoded string
+*          maxDataLength - max. data length
+* Output : data       - data
+*          dataLength - length of decoded data (can be NULL)
+* Return : TRUE iff decoded
 * Notes  : -
 \***********************************************************************/
 
-LOCAL ulong base64Decode(byte *data, ulong dataLength, const char *s, ulong n)
+LOCAL bool base64Decode(byte *data, uint *dataLength, const char *s, ulong n, uint maxDataLength)
 {
   #define VALID_BASE64_CHAR(ch) (   (((ch) >= 'A') && ((ch) <= 'Z')) \
                                  || (((ch) >= 'a') && ((ch) <= 'z')) \
                                  || (((ch) >= '0') && ((ch) <= '9')) \
                                  || ((ch) == '+') \
                                  || ((ch) == '/') \
-                                 || ((ch) == '=') \
                                 )
 
   const byte BASE64_DECODING_TABLE[] =
@@ -512,61 +513,129 @@ LOCAL ulong base64Decode(byte *data, ulong dataLength, const char *s, ulong n)
     0,0,0,0,0,0,0,0,
   };
 
-  ulong length;
-  char  x0,x1,x2,x3;
+  uint  length;
+  char  c0,c1,c2,c3;
   uint  i0,i1,i2,i3;
   ulong i;
-  char  b0,b1,b2;
+  byte  b0,b1,b2;
 
-  length = 0L;
+  length = 0;
 
-  x0 = 0;
-  x1 = 0;
-  x2 = 0;
-  x3 = 0;
+  c0 = 0;
+  c1 = 0;
+  c2 = 0;
+  c3 = 0;
   i0 = 0;
   i1 = 0;
   i2 = 0;
   i3 = 0;
   i  = 0;
-  while (i < n)
+  while ((i+4) <= n)
   {
-    if ((i+0) < n)
-    {
-      x0 = s[i+0]; if (!VALID_BASE64_CHAR(x0)) return -1;
-    }
-    if ((i+1) < n)
-    {
-      x1 = s[i+1]; if (!VALID_BASE64_CHAR(x1)) return -1;
-    }
-    if ((i+2) < n)
-    {
-      x2 = s[i+2]; if (!VALID_BASE64_CHAR(x2)) return -1;
-    }
-    if ((i+3) < n)
-    {
-      x3 = s[i+3]; if (!VALID_BASE64_CHAR(x3)) return -1;
-    }
+    c0 = s[i+0];
+    c1 = s[i+1];
+    c2 = s[i+2];
+    c3 = s[i+3];
 
-    i0 = ((i+0) < n) ? BASE64_DECODING_TABLE[(byte)x0] : 0;
-    i1 = ((i+1) < n) ? BASE64_DECODING_TABLE[(byte)x1] : 0;
-    i2 = ((i+2) < n) ? BASE64_DECODING_TABLE[(byte)x2] : 0;
-    i3 = ((i+3) < n) ? BASE64_DECODING_TABLE[(byte)x3] : 0;
+    if (!VALID_BASE64_CHAR(c0)) return FALSE;
+    if (!VALID_BASE64_CHAR(c1)) return FALSE;
 
-    b0 = (char)((i0 << 2) | ((i1 & 0x30) >> 4));
-    b1 = (char)(((i1 & 0x0F) << 4) | ((i2 & 0x3C) >> 2));
-    b2 = (char)(((i2 & 0x03) << 6) | i3);
+    if      ((c2 == '=') && (c3 == '='))
+    {
+      // 1 byte
+      i0 = BASE64_DECODING_TABLE[(byte)c0];
+      i1 = BASE64_DECODING_TABLE[(byte)c1];
 
-    if (length < dataLength) { data[length] = b0; length++; }
-    if (length < dataLength) { data[length] = b1; length++; }
-    if (length < dataLength) { data[length] = b2; length++; }
+      b0 = (byte)((i0 << 2) | ((i1 & 0x30) >> 4));
+
+      if (length < maxDataLength) { data[length] = b0; length++; }
+    }
+    else if (c3 == '=')
+    {
+      // 2 bytes
+      if (!VALID_BASE64_CHAR(c2)) return FALSE;
+
+      i0 = BASE64_DECODING_TABLE[(byte)c0];
+      i1 = BASE64_DECODING_TABLE[(byte)c1];
+      i2 = BASE64_DECODING_TABLE[(byte)c2];
+
+      b0 = (byte)((i0 << 2) | ((i1 & 0x30) >> 4));
+      b1 = (byte)(((i1 & 0x0F) << 4) | ((i2 & 0x3C) >> 2));
+
+      if (length < maxDataLength) { data[length] = b0; length++; }
+      if (length < maxDataLength) { data[length] = b1; length++; }
+    }
+    else
+    {
+      // 3 bytes
+      if (!VALID_BASE64_CHAR(c2)) return FALSE;
+      if (!VALID_BASE64_CHAR(c3)) return FALSE;
+
+      i0 = BASE64_DECODING_TABLE[(byte)c0];
+      i1 = BASE64_DECODING_TABLE[(byte)c1];
+      i2 = BASE64_DECODING_TABLE[(byte)c2];
+      i3 = BASE64_DECODING_TABLE[(byte)c3];
+
+      b0 = (byte)((i0 << 2) | ((i1 & 0x30) >> 4));
+      b1 = (byte)(((i1 & 0x0F) << 4) | ((i2 & 0x3C) >> 2));
+      b2 = (byte)(((i2 & 0x03) << 6) | i3);
+
+      if (length < maxDataLength) { data[length] = b0; length++; }
+      if (length < maxDataLength) { data[length] = b1; length++; }
+      if (length < maxDataLength) { data[length] = b2; length++; }
+    }
 
     i += 4;
   }
+  if (dataLength != NULL) (*dataLength) = length;
 
-  return length;
+  return TRUE;
 
   #undef VALID_BASE64_CHAR
+}
+
+/***********************************************************************\
+* Name   : hexDecode
+* Purpose: decode hex-string into data
+* Input  : data          - data variable
+*          dataLength    - length of data
+*          s             - hex encoded string
+*          n             - length of hex encoded string
+*          maxDataLength - max. data length
+* Output : data - data
+* Return : length of decoded data
+* Notes  : -
+\***********************************************************************/
+
+LOCAL bool hexDecode(byte *data, uint *dataLength, const char *s, ulong n, uint maxDataLength)
+{
+  uint length;
+  char t[3];
+  char *w;
+
+  assert(s != NULL);
+  assert(data != NULL);
+
+  length = 0;
+
+  while (((*s) != '\0') && (length < n))
+  {
+    t[0] = (*s); s++;
+    if ((*s) != '\0')
+    {
+      t[1] = (*s); s++;
+      t[2] = '\0';
+
+      if (length < maxDataLength) { data[length] = (byte)strtol(t,&w,16); if ((*w) != '\0') break; length++; }
+    }
+    else
+    {
+      break;
+    }
+  }
+  if (dataLength != NULL) (*dataLength) = length;
+
+  return TRUE;
 }
 
 /*---------------------------------------------------------------------*/
@@ -1744,44 +1813,83 @@ String Misc_base64Encode(String string, const byte *data, ulong dataLength)
   };
 
   ulong i;
-  char  b0,b1,b2;
+  byte  b0,b1,b2;
   uint  i0,i1,i2,i3;
 
-  String_clear(string);
-
-  i = 0;
-  while (i < dataLength)
+  if (dataLength > 0)
   {
-    b0 = ((i+0) < dataLength) ? data[i+0] : 0;
-    b1 = ((i+1) < dataLength) ? data[i+1] : 0;
-    b2 = ((i+2) < dataLength) ? data[i+2] : 0;
+    // encode 3-byte tupels
+    i = 0;
+    while ((i+2) < dataLength)
+    {
+      b0 = ((i+0) < dataLength) ? data[i+0] : 0;
+      b1 = ((i+1) < dataLength) ? data[i+1] : 0;
+      b2 = ((i+2) < dataLength) ? data[i+2] : 0;
 
-    i0 = (uint)(b0 & 0xFC) >> 2;
-    assert(i0 < 64);
-    i1 = (uint)((b0 & 0x03) << 4) | (uint)((b1 & 0xF0) >> 4);
-    assert(i1 < 64);
-    i2 = (uint)((b1 & 0x0F) << 2) | (uint)((b2 & 0xC0) >> 6);
-    assert(i2 < 64);
-    i3 = (uint)(b2 & 0x3F);
-    assert(i3 < 64);
+      i0 = (uint)(b0 & 0xFC) >> 2;
+      assert(i0 < 64);
+      i1 = (uint)((b0 & 0x03) << 4) | (uint)((b1 & 0xF0) >> 4);
+      assert(i1 < 64);
+      i2 = (uint)((b1 & 0x0F) << 2) | (uint)((b2 & 0xC0) >> 6);
+      assert(i2 < 64);
+      i3 = (uint)(b2 & 0x3F);
+      assert(i3 < 64);
 
-    String_appendChar(string,BASE64_ENCODING_TABLE[i0]);
-    String_appendChar(string,BASE64_ENCODING_TABLE[i1]);
-    String_appendChar(string,BASE64_ENCODING_TABLE[i2]);
-    String_appendChar(string,BASE64_ENCODING_TABLE[i3]);
+      String_appendChar(string,BASE64_ENCODING_TABLE[i0]);
+      String_appendChar(string,BASE64_ENCODING_TABLE[i1]);
+      String_appendChar(string,BASE64_ENCODING_TABLE[i2]);
+      String_appendChar(string,BASE64_ENCODING_TABLE[i3]);
 
-    i += 3;
+      i += 3;
+    }
+
+    // encode last 1,2 bytes
+    if      ((i+1) >= dataLength)
+    {
+      // 1 byte => XY==
+      b0 = data[i+0];
+
+      i0 = (uint)(b0 & 0xFC) >> 2;
+      assert(i0 < 64);
+      i1 = (uint)((b0 & 0x03) << 4);
+      assert(i1 < 64);
+
+      String_appendChar(string,BASE64_ENCODING_TABLE[i0]);
+      String_appendChar(string,BASE64_ENCODING_TABLE[i1]);
+      String_appendChar(string,'=');
+      String_appendChar(string,'=');
+    }
+    else if  ((i+2) >= dataLength)
+    {
+      // 2 byte => XYZ=
+      b0 = data[i+0];
+      b1 = data[i+1];
+
+      i0 = (uint)(b0 & 0xFC) >> 2;
+      assert(i0 < 64);
+      i1 = (uint)((b0 & 0x03) << 4) | (uint)((b1 & 0xF0) >> 4);
+      assert(i1 < 64);
+      i2 = (uint)((b1 & 0x0F) << 2);
+      assert(i2 < 64);
+
+      String_appendChar(string,BASE64_ENCODING_TABLE[i0]);
+      String_appendChar(string,BASE64_ENCODING_TABLE[i1]);
+      String_appendChar(string,BASE64_ENCODING_TABLE[i2]);
+      String_appendChar(string,'=');
+    }
   }
 
   return string;
 }
 
-bool Misc_base64Decode(byte *data, ulong dataLength, ConstString string, ulong index)
+bool Misc_base64Decode(byte *data, uint *dataLength, ConstString string, ulong index, uint maxDataLength)
 {
+  assert(data != NULL);
+  assert(string != NULL);
+
   if (String_length(string) >= index)
   {
-    base64Decode(data,dataLength,String_cString(string)+index,String_length(string)-index);
-    return TRUE;
+    return base64Decode(data,dataLength,String_cString(string)+index,String_length(string)-index,maxDataLength);
   }
   else
   {
@@ -1789,19 +1897,107 @@ bool Misc_base64Decode(byte *data, ulong dataLength, ConstString string, ulong i
   }
 }
 
-bool Misc_base64DecodeCString(byte *data, uint dataLength, const char *s)
+bool Misc_base64DecodeCString(byte *data, uint *dataLength, const char *s, uint maxDataLength)
 {
-  return base64Decode(data,dataLength,s,strlen(s));
+  assert(data != NULL);
+  assert(s != NULL);
+
+  return base64Decode(data,dataLength,s,strlen(s),maxDataLength);
 }
 
-ulong Misc_base64DecodeLength(ConstString string, ulong index)
+uint Misc_base64DecodeLength(ConstString string, ulong index)
 {
-  return ((String_length(string)-index)/4)*3;
+  size_t n;
+  uint   length;
+
+  assert(string != NULL);
+
+  if (String_length(string) > index)
+  {
+    n = String_length(string)-index;
+  }
+  else
+  {
+    n = 0;
+  }
+  length = (n/4)*3;
+  if ((n >= 1) && (String_index(string,index+n-1) == '=')) length--;
+  if ((n >= 2) && (String_index(string,index+n-2) == '=')) length--;
+
+  return length;
 }
 
-ulong Misc_base64DecodeLengthCString(const char *s)
+uint Misc_base64DecodeLengthCString(const char *s)
 {
-  return (strlen(s)/4)*3;
+  size_t n;
+  uint   length;
+
+  assert(s != NULL);
+
+  n = strlen(s);
+  length = (n/4)*3;
+  if ((n >= 1) && (s[n-1] == '=')) length--;
+  if ((n >= 2) && (s[n-2] == '=')) length--;
+
+  return length;
+}
+
+String Misc_hexEncode(String string, const byte *data, uint dataLength)
+{
+  uint i;
+
+  assert(string != NULL);
+
+  for (i = 0; i < dataLength; i++)
+  {
+    String_format(string,"%02x",data[i]);
+  }
+
+  return string;
+}
+
+bool Misc_hexDecode(byte *data, uint *dataLength, ConstString string, ulong index, uint maxDataLength)
+{
+  assert(data != NULL);
+  assert(string != NULL);
+
+  if (String_length(string) >= index)
+  {
+    return hexDecode(data,dataLength,String_cString(string)+index,String_length(string)-index,maxDataLength);
+  }
+  else
+  {
+    return FALSE;
+  }
+}
+
+bool Misc_hexDecodeCString(byte *data, uint *dataLength, const char *s, uint maxDataLength)
+{
+  assert(data != NULL);
+  assert(s != NULL);
+
+  return hexDecode(data,dataLength,s,strlen(s),maxDataLength);
+}
+
+uint Misc_hexDecodeLength(ConstString string, ulong index)
+{
+  assert(string != NULL);
+
+  if (String_length(string) > index)
+  {
+    return (String_length(string)-index)/2;
+  }
+  else
+  {
+    return 0;
+  }
+}
+
+uint Misc_hexDecodeLengthCString(const char *s)
+{
+  assert(s != NULL);
+
+  return strlen(s)/2;
 }
 
 #ifdef __cplusplus
