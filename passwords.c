@@ -88,73 +88,6 @@ void Password_doneAll(void)
 {
 }
 
-void *Password_allocSecure(size_t size)
-{
-  void *p;
-  #if !defined(NDEBUG) || !defined(HAVE_GCRYPT)
-    MemoryHeader *memoryHeader;
-  #endif
-
-  #ifdef HAVE_GCRYPT
-    #ifndef NDEBUG
-      memoryHeader = gcry_malloc_secure(sizeof(MemoryHeader)+size);
-      if (memoryHeader == NULL)
-      {
-        return NULL;
-      }
-      memoryHeader->size = size;
-      p = (byte*)memoryHeader+sizeof(MemoryHeader);
-    #else
-      p = gcry_malloc_secure(size);
-      if (p == NULL)
-      {
-        return NULL;
-      }
-    #endif
-    memset(p,0,size);
-  #else /* not HAVE_GCRYPT */
-    memoryHeader = (MemoryHeader*)calloc(1,sizeof(MemoryHeader)+size);
-    if (memoryHeader == NULL)
-    {
-      return NULL;
-    }
-    memoryHeader->size = size;
-    p = (byte*)memoryHeader+sizeof(MemoryHeader);
-  #endif /* HAVE_GCRYPT */
-
-  #ifndef NDEBUG
-    DEBUG_ADD_RESOURCE_TRACE(p,sizeof(MemoryHeader));
-  #endif
-
-  return p;
-}
-
-void Password_freeSecure(void *p)
-{
-  #if !defined(NDEBUG) || !defined(HAVE_GCRYPT)
-    MemoryHeader *memoryHeader;
-  #endif
-
-  assert(p != NULL);
-
-  #ifndef NDEBUG
-    DEBUG_REMOVE_RESOURCE_TRACE(p,sizeof(MemoryHeader));
-  #endif
-
-  #ifdef HAVE_GCRYPT
-    #ifndef NDEBUG
-      memoryHeader = (MemoryHeader*)((byte*)p - sizeof(MemoryHeader));
-      gcry_free(memoryHeader);
-    #else
-      gcry_free(p);
-    #endif
-  #else /* not HAVE_GCRYPT */
-    memoryHeader = (MemoryHeader*)((byte*)p - sizeof(MemoryHeader));
-    memset(memoryHeader,0,sizeof(memoryHeader) + memoryHeader->size);
-    free(memoryHeader);
-  #endif /* HAVE_GCRYPT */
-}
-
 #ifdef NDEBUG
   void Password_init(Password *password)
 #else /* not NDEBUG */
@@ -166,7 +99,7 @@ void Password_freeSecure(void *p)
 {
   assert(password != NULL);
 
-  password->data = Password_allocSecure(MAX_PASSWORD_LENGTH+1);
+  password->data = allocSecure(MAX_PASSWORD_LENGTH+1);
   if (password->data == NULL)
   {
     HALT_INSUFFICIENT_MEMORY();
@@ -195,7 +128,7 @@ void Password_freeSecure(void *p)
     DEBUG_REMOVE_RESOURCE_TRACEX(__fileName__,__lineNb__,password,sizeof(Password));
   #endif
 
-  Password_freeSecure(password->data);
+  freeSecure(password->data);
 }
 
 #ifdef NDEBUG
@@ -545,7 +478,7 @@ const char *Password_deploy(const Password *password)
     #ifdef HAVE_GCRYPT
       return password->data;
     #else /* not HAVE_GCRYPT */
-      plain = Password_allocSecure(password->dataLength+1);
+      plain = allocSecure(password->dataLength+1);
       if (plain == NULL)
       {
         return NULL;
@@ -572,8 +505,8 @@ void Password_undeploy(const Password *password, const char *plain)
       UNUSED_VARIABLE(password);
       UNUSED_VARIABLE(plain);
     #else /* not HAVE_GCRYPT */
-      memset((char*)plain,0,MAX_PASSWORD_LENGTH);
-      Password_freeSecure(plain);
+      memset((char*)plain,0,password->dataLength);
+      freeSecure((char*)plain);
     #endif /* HAVE_GCRYPT */
   }
 }
@@ -607,8 +540,10 @@ bool Password_equals(const Password *password0, const Password *password1)
   return TRUE;
 }
 
+#if (__GNUC__ >= 4) && (__GNUC_MINOR__ >= 6)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-result"
+#endif
 bool Password_input(Password   *password,
                     const char *message,
                     uint       modes
@@ -798,7 +733,9 @@ bool Password_input(Password   *password,
 
   return okFlag;
 }
+#if (__GNUC__ >= 4) && (__GNUC_MINOR__ >= 6)
 #pragma GCC diagnostic pop
+#endif
 
 bool Password_inputVerify(const Password *password,
                           const char     *message,
@@ -828,7 +765,7 @@ bool Password_inputVerify(const Password *password,
 }
 
 #ifndef NDEBUG
-void Password_dump(Password *password)
+void Password_dump(const Password *password)
 {
   uint i;
 
