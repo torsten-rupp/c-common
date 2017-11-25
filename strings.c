@@ -1174,6 +1174,12 @@ LOCAL void formatString(struct __String *string,
                     String_appendChar(string,STRING_ESCAPE_CHARACTER);
                     String_appendChar(string,STRING_ESCAPE_CHARACTERS_MAP_TO[j]);
                   }
+                  else if (ch == STRING_ESCAPE_CHARACTER)
+                  {
+                    // escape character
+                    String_appendChar(string,STRING_ESCAPE_CHARACTER);
+                    String_appendChar(string,STRING_ESCAPE_CHARACTER);
+                  }
                   else
                   {
                     // non-mapped character
@@ -1253,13 +1259,19 @@ LOCAL void formatString(struct __String *string,
                   j++;
                 }
 
-                if (j < STRING_ESCAPE_CHARACTER_MAP_LENGTH)
+                if      (j < STRING_ESCAPE_CHARACTER_MAP_LENGTH)
                 {
                   // mapped character
                   assert(j < SIZE_OF_ARRAY(STRING_ESCAPE_CHARACTERS_MAP_TO));
 
                   String_appendChar(string,STRING_ESCAPE_CHARACTER);
                   String_appendChar(string,STRING_ESCAPE_CHARACTERS_MAP_TO[j]);
+                }
+                else if (ch == STRING_ESCAPE_CHARACTER)
+                {
+                  // escape character
+                  String_appendChar(string,STRING_ESCAPE_CHARACTER);
+                  String_appendChar(string,STRING_ESCAPE_CHARACTER);
                 }
                 else
                 {
@@ -4365,31 +4377,6 @@ String String_trim(String string, const char *chars)
 
 String String_trimBegin(String string, const char *chars)
 {
-  ulong n;
-
-  STRING_CHECK_VALID(string);
-  STRING_CHECK_ASSIGNABLE(string);
-
-  if (string != NULL)
-  {
-    assert(string->data != NULL);
-
-    n = string->length;
-    while ((n > 0) && (strchr(chars,string->data[n - 1]) != NULL))
-    {
-      n--;
-    }
-    string->data[n] = '\0';
-    string->length = n;
-
-    STRING_UPDATE_VALID(string);
-  }
-
-  return string;
-}
-
-String String_trimEnd(String string, const char *chars)
-{
   ulong i,n;
 
   STRING_CHECK_VALID(string);
@@ -4406,11 +4393,36 @@ String String_trimEnd(String string, const char *chars)
     }
     if (i > 0)
     {
-      n = string->length - i;
+      n = string->length-i;
       memmove(&string->data[0],&string->data[i],n);
       string->data[n] = '\0';
       string->length = n;
     }
+
+    STRING_UPDATE_VALID(string);
+  }
+
+  return string;
+}
+
+String String_trimEnd(String string, const char *chars)
+{
+  ulong n;
+
+  STRING_CHECK_VALID(string);
+  STRING_CHECK_ASSIGNABLE(string);
+
+  if (string != NULL)
+  {
+    assert(string->data != NULL);
+
+    n = string->length;
+    while ((n > 0) && (strchr(chars,string->data[n-1]) != NULL))
+    {
+      n--;
+    }
+    string->data[n] = '\0';
+    string->length = n;
 
     STRING_UPDATE_VALID(string);
   }
@@ -5280,6 +5292,48 @@ char* String_toCString(ConstString string)
   return cString;
 }
 
+#if 0
+//TODO
+String Misc_toUtf8(String string, ConstString fromString)
+{
+  return Misc_toUtf8CString(string,String_cString(fromString),String_length(fromString));
+}
+
+String Misc_toUtf8(String string, const char *fromString, uint fromStringLength)
+{
+  String_clear(string);
+
+      ucnv_convertEx(uConverterTo,
+                     uConverterFrom,
+                     &to,toBuffer+256,
+                     &from,from+strlen(dir->d_name),
+                     NULL,NULL,NULL,NULL,
+                     TRUE,TRUE,
+                     &uError
+                    );
+      assert(U_SUCCESS(uError));
+
+
+  return string;
+}
+
+//  uConverterFrom = ucnv_open("ISO-8859-1", &uError);
+//  uConverterFrom = ucnv_open("windows-1251", &uError);
+//  uConverterFrom = ucnv_open("windows-1252", &uError);
+  uConverterFrom = ucnv_open(NULL, &uError);
+//  uConverterFrom = ucnv_open("UTF-8", &uError);
+  assert(U_SUCCESS(uError));
+
+//  uConvertTo = ucnv_open("ISO-8859-1", &uError);
+//  uConvertTo = ucnv_open("windows-1251", &uError);
+  uConverterTo = ucnv_open("UTF-8", &uError);
+  assert(U_SUCCESS(uError));
+
+  fromName = ucnv_getName(uConverterFrom, &uError);
+  assert(U_SUCCESS(uError));
+}
+#endif
+
 #ifndef NDEBUG
 
 void String_debugDone(void)
@@ -5342,10 +5396,12 @@ void String_debugCheckValid(const char *__fileName__, ulong __lineNb__, ConstStr
               debugStringNode = debugFindString(&debugStringFreeList,string);
               if (debugStringNode != NULL)
               {
-                fprintf(stderr,"DEBUG WARNING: string %p is not allocated at %s, %lu!\n",
+                fprintf(stderr,"DEBUG WARNING: string %p at %s, %lu was already freed at %s, %lu!\n",
                         string,
                         __fileName__,
-                        __lineNb__
+                        __lineNb__,
+                        debugStringNode->deleteFileName,
+                        debugStringNode->deleteLineNb
                        );
               }
               else
