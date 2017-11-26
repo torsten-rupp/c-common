@@ -95,6 +95,11 @@ typedef struct
 // debug info function
 
 #ifndef NDEBUG
+
+// string dump info type
+#define STRING_DUMP_INFO_TYPE_ALLOCATED (1 << 0)
+#define STRING_DUMP_INFO_TYPE_HISTOGRAM (1 << 1)
+
 /***********************************************************************\
 * Name   : StringDumpInfoFunction
 * Purpose: string dump info call-back function
@@ -212,7 +217,7 @@ typedef bool(*StringDumpInfoFunction)(ConstString string,
 * Return : -
 * Notes  : variable will contain all characters in string
 *          usage:
-*            STRING_CHAR_ITERATE(list,iteratorVariable,variable)
+*            STRING_CHAR_ITERATE(string,iteratorVariable,variable)
 *            {
 *              ... = variable->...
 *            }
@@ -235,7 +240,7 @@ typedef bool(*StringDumpInfoFunction)(ConstString string,
 * Return : -
 * Notes  : variable will contain all characters in string
 *          usage:
-*            STRING_CHAR_ITERATEX(list,iteratorVariable,variable,TRUE)
+*            STRING_CHAR_ITERATEX(string,iteratorVariable,variable,TRUE)
 *            {
 *              ... = variable->...
 *            }
@@ -1064,6 +1069,8 @@ void String_debugDone(void);
 * Input  : handle                 - output channel
 *          stringDumpInfoFunction - string dump info call-back or NULL
 *          stringDumpInfoUserData - string dump info user data
+*          stringDumpInfoTypes    - string dump info types; see
+*                                   STRING_DUMP_INFO_TYPE_*
 * Output : -
 * Return : -
 * Notes  : -
@@ -1071,10 +1078,13 @@ void String_debugDone(void);
 
 void String_debugDumpInfo(FILE                   *handle,
                           StringDumpInfoFunction stringDumpInfoFunction,
-                          void                   *stringDumpInfoUserData
+                          void                   *stringDumpInfoUserData,
+                          uint                   stringDumpInfoTypes
+
                          );
 void String_debugPrintInfo(StringDumpInfoFunction stringDumpInfoFunction,
-                           void                   *stringDumpInfoUserData
+                           void                   *stringDumpInfoUserData,
+                           uint                   stringDumpInfoTypes
                           );
 
 /***********************************************************************\
