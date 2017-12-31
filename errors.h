@@ -12,10 +12,7 @@
 * Notes  : -
 ***********************************************************************/
 
-#define ERROR_(code,errno)             ((Errors)(  (((errno) << 16) & 0xFFFF0000) \
-                                                 | (((ERROR_ ## code) << 0) & 0x000003FF) \
-                                                ) \
-                                       )
+#define ERROR_(code,errno) Error_((ERROR_ ## code),errno)
 
 /***********************************************************************
 * Name   : ERRORX_
@@ -29,15 +26,11 @@
 * Notes  : -
 ***********************************************************************/
 
-#define ERRORX_(code,errno,format,...) ((Errors)(  (((errno) << 16) & 0xFFFF0000) \
-                                                 | ((_Error_textToIndex(format, ## __VA_ARGS__) << 10) & 0x0000FC00) \
-                                                 | (((ERROR_ ## code) << 0) & 0x000003FF) \
-                                                ) \
-                                       )
+#define ERRORX_(code,errno,format,...) Errorx_((ERROR_ ## code),errno,format, ## __VA_ARGS__)
 
 /***********************************************************************
 * Name   : ERRORF_
-* Purpose: format error text
+* Purpose: create error from existing error (update text)
 * Input  : error  - error
 *          format - format string (like printf)
 *          ...    - optional arguments for format string
@@ -46,11 +39,67 @@
 * Notes  : -
 ***********************************************************************/
 
-#define ERRORF_(error,format,...)      ((Errors)(  ((error) & (0x000003FF|0xFFFF0000)) \
-                                                 | ((_Error_textToIndex(format, ## __VA_ARGS__) << 10) & 0x0000FC00) \
-                                                ) \
-                                       )
+#ifndef NDEBUG
+  #define ERRORF_(error,format,...)      ((Errors)(  ((error) & (0x000003FF|0xFFFF0000)) \
+                                                   | ((_Error_dataToIndex(__FILE__,__LINE__,format, ## __VA_ARGS__) << 10) & 0x0000FC00) \
+                                                  ) \
+                                         )
+#else
+  #define ERRORF_(error,format,...)      ((Errors)(  ((error) & (0x000003FF|0xFFFF0000)) \
+                                                   | ((_Error_dataToIndex(format, ## __VA_ARGS__) << 10) & 0x0000FC00) \
+                                                  ) \
+                                         )
+#endif
 
+/***********************************************************************
+* Name   : Error_
+* Purpose: create error
+* Input  : code  - error code; see ERROR_...
+*          errno - errno or 0
+* Output : -
+* Return : error
+* Notes  : -
+***********************************************************************/
+
+#ifndef NDEBUG
+  #define Error_(code,errno)             ((Errors)(  (((errno) << 16) & 0xFFFF0000) \
+                                                   | ((_Error_dataToIndex(__FILE__,__LINE__,NULL) << 10) & 0x0000FC00) \
+                                                   | (((code) << 0) & 0x000003FF) \
+                                                  ) \
+                                         )
+#else
+  #define Error_(code,errno)             ((Errors)(  (((errno) << 16) & 0xFFFF0000) \
+                                                   | ((_Error_dataToIndex(NULL) << 10) & 0x0000FC00) \
+                                                   | (((code) << 0) & 0x000003FF) \
+                                                  ) \
+                                         )
+#endif
+
+/***********************************************************************
+* Name   : Errorx_
+* Purpose: create extended error
+* Input  : code   - error code; see ERROR_...
+*          errno  - errno or 0
+*          format - format string (like printf)
+*          ...    - optional arguments for format string
+* Output : -
+* Return : error
+* Notes  : -
+***********************************************************************/
+
+#ifndef NDEBUG
+  #define Errorx_(code,errno,format,...) ((Errors)(  (((errno) << 16) & 0xFFFF0000) \
+                                                   | ((_Error_dataToIndex(__FILE__,__LINE__,format, ## __VA_ARGS__) << 10) & 0x0000FC00) \
+                                                   | (((code) << 0) & 0x000003FF) \
+                                                  ) \
+                                         )
+#else
+  #define Errorx_(code,errno,format,...) ((Errors)(  (((errno) << 16) & 0xFFFF0000) \
+                                                   | ((_Error_dataToIndex(format, ## __VA_ARGS__) << 10) & 0x0000FC00) \
+                                                   | (((code) << 0) & 0x000003FF) \
+                                                  ) \
+                                         )
+#endif
 
 typedef enum
 {
@@ -130,16 +179,22 @@ typedef enum
 #endif
 
 /***********************************************************************
-* Name   : _Error_textToIndex
-* Purpose: store error text as index
-* Input  : format - format string (like printf)
-*          ...    - optional arguments for format string
+* Name   : _Error_dataToIndex
+* Purpose: store error data as index
+* Input  : fileName - file name
+*          lineNb   - line number
+*          format   - format string (like printf)
+*          ...      - optional arguments for format string
 * Output : -
 * Return : index
 * Notes  : internal usage only!
 ***********************************************************************/
 
-int _Error_textToIndex(const char *format, ...);
+#ifndef NDEBUG
+int _Error_dataToIndex(const char *fileName, ulong lineNb, const char *format, ...);
+#else
+int _Error_dataToIndex(const char *format, ...);
+#endif
 
 /***********************************************************************
 * Name   : Error_getCode
@@ -155,7 +210,7 @@ unsigned int Error_getCode(Errors error);
 /***********************************************************************
 * Name   : Error_getCodeText
 * Purpose: get error code as text (hex)
-* Input  : error  - error
+* Input  : error - error
 * Output : -
 * Return : text
 * Notes  : -
@@ -164,9 +219,53 @@ unsigned int Error_getCode(Errors error);
 const char *Error_getCodeText(Errors error);
 
 /***********************************************************************
+* Name   : Error_getData
+* Purpose: get data
+* Input  : error - error
+* Output : -
+* Return : data
+* Notes  : -
+***********************************************************************/
+
+const char *Error_getData(Errors error);
+
+/***********************************************************************
+* Name   : Error_getFileName
+* Purpose: get filename
+* Input  : error - error
+* Output : -
+* Return : filename
+* Notes  : -
+***********************************************************************/
+
+const char *Error_getFileName(Errors error);
+
+/***********************************************************************
+* Name   : Error_getLineNbText
+* Purpose: get line number text
+* Input  : error - error
+* Output : -
+* Return : line number text
+* Notes  : -
+***********************************************************************/
+
+const char *Error_getLineNbText(Errors error);
+
+/***********************************************************************
+* Name   : Error_getLocationText
+* Purpose: get location text (filename+line number)
+* Input  : error - error
+* Output : -
+* Return : location text
+* Notes  : -
+***********************************************************************/
+
+const char *Error_getLocationText(Errors error);
+
+/***********************************************************************
 * Name   : Error_getErrnoText
 * Purpose: get errno text
-* Input  : error  - error
+* Input  : error - error
 * Output : -
 * Return : errno text
 * Notes  : -
@@ -177,7 +276,7 @@ const char *Error_getErrnoText(Errors error);
 /***********************************************************************
 * Name   : Error_getText
 * Purpose: get error text
-* Input  : error  - error
+* Input  : error - error
 * Output : -
 * Return : error text
 * Notes  : -
