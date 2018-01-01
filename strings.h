@@ -129,7 +129,7 @@ typedef bool(*StringDumpInfoFunction)(ConstString string,
 #define __STATIC_STRING_IDENTIFIER2(name,suffix) __##name##suffix
 #ifndef NDEBUG
   #define StaticString(name,length) \
-    char __STATIC_STRING_IDENTIFIER1(name,_data)[(length)+1] = { [0] = '\0' }; \
+    char __STATIC_STRING_IDENTIFIER1(name,_data)[(length)+1] = { [0] = NUL }; \
     struct __String __STATIC_STRING_IDENTIFIER1(name,_string) = \
     { \
       0, \
@@ -141,7 +141,7 @@ typedef bool(*StringDumpInfoFunction)(ConstString string,
     String const name = &(__STATIC_STRING_IDENTIFIER1(name,_string))
 #else /* NDEBUG */
   #define StaticString(name,length) \
-    char __STATIC_STRING_IDENTIFIER1(name,_data)[(length)+1] = { [0] = '\0' }; \
+    char __STATIC_STRING_IDENTIFIER1(name,_data)[(length)+1] = { [0] = NUL }; \
     struct __String __STATIC_STRING_IDENTIFIER1(name,_string) = \
     { \
       0, \
@@ -214,6 +214,8 @@ typedef bool(*StringDumpInfoFunction)(ConstString string,
 * Return : -
 * Notes  : variable will contain all characters in string
 *          usage:
+*            ulong iteratorVariable;
+*            char  variable;
 *            STRING_CHAR_ITERATE(string,iteratorVariable,variable)
 *            {
 *              ... = variable->...
@@ -237,6 +239,8 @@ typedef bool(*StringDumpInfoFunction)(ConstString string,
 * Return : -
 * Notes  : variable will contain all characters in string
 *          usage:
+*            ulong iteratorVariable;
+*            char  variable;
 *            STRING_CHAR_ITERATEX(string,iteratorVariable,variable,TRUE)
 *            {
 *              ... = variable->...
@@ -247,6 +251,30 @@ typedef bool(*StringDumpInfoFunction)(ConstString string,
   for (iteratorVariable = 0, variable = String_index(string,0L); \
        ((iteratorVariable) < String_length(string)) && (condition); \
        iteratorVariable++, variable = String_index(string,iteratorVariable) \
+      )
+
+/***********************************************************************\
+* Name   : STRING_CHAR_ITERATE_UTF8
+* Purpose: iterated over characters of string and execute block
+* Input  : string           - string
+*          iteratorVariable - iterator variable (type long)
+*          variable         - iteration variable
+* Output : -
+* Return : -
+* Notes  : variable will contain all characters in string
+*          usage:
+*            const char *iteratorVariable;
+*            long       variable;
+*            STRING_CHAR_ITERATE_UTF8(string,iteratorVariable,variable)
+*            {
+*              ... = variable->...
+*            }
+\***********************************************************************/
+
+#define STRING_CHAR_ITERATE_UTF8(string,iteratorVariable,variable) \
+  for (iteratorVariable = 0, variable = stringAtUTF8(string->data,0,NULL); \
+       (iteratorVariable) < String_length(string); \
+       (iteratorVariable) = stringNextUTF8(string->data,iteratorVariable), variable = stringAtUTF8(string->data,iteratorVariable,NULL) \
       )
 
 /***************************** Forwards ********************************/
@@ -343,7 +371,7 @@ String String_clear(String string);
 
 /***********************************************************************\
 * Name   : String_erase
-* Purpose: erase string content
+* Purpose: erase string content (clear content and string)
 * Input  : string - string to erase
 * Output : -
 * Return : erased string (empty)
@@ -373,24 +401,26 @@ String String_setChar(String string, char ch);
 String String_setBuffer(String string, const void *buffer, ulong bufferLength);
 
 /***********************************************************************\
-* Name   : String_sub, String_subCString, String_subBuffer
-* Purpose: get sub-string from string
-* Input  : string/buffer - string/buffer to set
-*          fromString    - string to get sub-string from
-*          index         - start index (0..n-1)
-*          length        - length of sub-string (0..n) or STRING_END
+* Name   : String_format, String String_vformat
+* Purpose: format string
+* Input  : string - string
+*          format - printf-like format string
+*          ...    - arguments
 * Output : -
-* Return : new sub-string/buffer
-* Notes  : -
+* Return : format string
+* Notes  : additional format characters
+*           %S   String
+*           %cS  String with quoting char c
+*           %b   binary value
+*           %y   bool value
 \***********************************************************************/
 
-String String_sub(String string, ConstString fromString, ulong index, long length);
-char *String_subCString(char *s, ConstString fromString, ulong index, long length);
-char *String_subBuffer(char *buffer, ConstString fromString, ulong index, long length);
+String String_format(String string, const char *format, ...);
+String String_vformat(String string, const char *format, va_list arguments);
 
 /***********************************************************************\
 * Name   : String_append, String_appendSub, String_appendCString,
-*          String_appendChar, String_appendBuffer
+*          String_appendChar, String_appendCharUTF, String_appendBuffer
 * Purpose: append to string
 * Input  : string         - string
 *          appendString/s - string to append
@@ -406,7 +436,26 @@ String String_append(String string, ConstString appendString);
 String String_appendSub(String string, ConstString fromString, ulong fromIndex, long fromLength);
 String String_appendCString(String string, const char *s);
 String String_appendChar(String string, char ch);
+String String_appendCharUTF8(String string, Codepoint codepoint);
 String String_appendBuffer(String string, const char *buffer, ulong bufferLength);
+
+/***********************************************************************\
+* Name   : String_appendFormat, String String_appendVformat
+* Purpose: format string and append
+* Input  : string - string
+*          format - printf-like format string
+*          ...    - arguments
+* Output : -
+* Return : format string
+* Notes  : additional format characters
+*           %S   String
+*           %cS  String with quoting char c
+*           %b   binary value
+*           %y   bool value
+\***********************************************************************/
+
+String String_appendFormat(String string, const char *format, ...);
+String String_appendVformat(String string, const char *format, va_list arguments);
 
 /***********************************************************************\
 * Name   : String_insert, String_insertSub, String_insertCString,
@@ -499,6 +548,22 @@ String String_mapCString(String string, ulong index, const char* from[], const c
 String String_mapChar(String string, ulong index, const char from[], const char to[], uint count);
 
 /***********************************************************************\
+* Name   : String_sub, String_subCString, String_subBuffer
+* Purpose: get sub-string from string
+* Input  : string/buffer - string/buffer to set
+*          fromString    - string to get sub-string from
+*          index         - start index (0..n-1)
+*          length        - length of sub-string (0..n) or STRING_END
+* Output : -
+* Return : new sub-string/buffer
+* Notes  : -
+\***********************************************************************/
+
+String String_sub(String string, ConstString fromString, ulong index, long length);
+char *String_subCString(char *s, ConstString fromString, ulong index, long length);
+char *String_subBuffer(char *buffer, ConstString fromString, ulong index, long length);
+
+/***********************************************************************\
 * Name   : String_join, String_joinCString, String_joinChar,
 *          String_joinBuffer
 * Purpose: join strings with separator char
@@ -579,7 +644,7 @@ INLINE char String_index(ConstString string, ulong index)
   {
     if      (index == STRING_END)
     {
-      ch = (string->length > 0L) ? string->data[string->length-1] : '\0';
+      ch = (string->length > 0L) ? string->data[string->length-1] : NUL;
     }
     else if (index < string->length)
     {
@@ -587,15 +652,37 @@ INLINE char String_index(ConstString string, ulong index)
     }
     else
     {
-      ch = '\0';
+      ch = NUL;
     }
   }
   else
   {
-    ch = '\0';
+    ch = NUL;
   }
 
   return ch;
+}
+#endif /* NDEBUG || __STRINGS_IMPLEMENTATION__ */
+
+INLINE Codepoint String_atUTF8(ConstString string, ulong index, ulong *nextIndex);
+#if defined(NDEBUG) || defined(__STRINGS_IMPLEMENTATION__)
+INLINE Codepoint String_atUTF8(ConstString string, ulong index, ulong *nextIndex)
+{
+  Codepoint codepoint;
+  
+
+  STRING_CHECK_VALID(string);
+
+  if (string != NULL)
+  {
+    codepoint = stringAtUTF8(string->data,index,nextIndex);
+  }
+  else
+  {
+    codepoint = 0x00000000;
+  }
+
+  return codepoint;
 }
 #endif /* NDEBUG || __STRINGS_IMPLEMENTATION__ */
 
@@ -763,6 +850,110 @@ String String_iterate(String                string,
                      );
 
 /***********************************************************************\
+* Name   : String_iterateBegin,String_iterateEnd
+* Purpose: iterate over string
+* Input  : string                - string
+*          stringIterateFunction - iterator function
+*          stringIterateUserData - user data for iterator function
+* Output : -
+* Return : string iterator
+* Notes  : Note: returned string of iterate function replaces character
+*          in string
+\***********************************************************************/
+
+INLINE void *String_iterateBegin(String string);
+#if defined(NDEBUG) || defined(__STRINGS_IMPLEMENTATION__)
+INLINE void *String_iterateBegin(String string)
+{
+  STRING_CHECK_VALID(string);
+
+  if (string != NULL)
+  {
+    return &string->data[0];
+  }
+  else
+  {
+    return NULL;
+  }
+}
+#endif /* NDEBUG || __STRINGS_IMPLEMENTATION__ */
+
+INLINE void *String_iterateEnd(String string);
+#if defined(NDEBUG) || defined(__STRINGS_IMPLEMENTATION__)
+INLINE void *String_iterateEnd(String string)
+{
+  STRING_CHECK_VALID(string);
+
+  if (string != NULL)
+  {
+    return &string->data[string->length];
+  }
+  else
+  {
+    return NULL;
+  }
+}
+#endif /* NDEBUG || __STRINGS_IMPLEMENTATION__ */
+
+/***********************************************************************\
+* Name   : String_iterateNext, String_iterateNextUTF8
+* Purpose: get next character from string iterator
+* Input  : string         - string
+*          stringIterator - string iterator
+* Output : stringIterator - string iterator
+* Return : character
+* Notes  : -
+\***********************************************************************/
+
+INLINE char String_iterateNext(String string, void **stringIterator);
+#if defined(NDEBUG) || defined(__STRINGS_IMPLEMENTATION__)
+INLINE char String_iterateNext(String string, void **stringIterator)
+{
+  char ch;
+
+  STRING_CHECK_VALID(string);
+  assert(stringIterator != NULL);
+
+  if ((string != NULL) && ((*stringIterator) < String_iterateEnd(string)))
+  {
+    ch = (*((char*)(*stringIterator)));
+    (*stringIterator) = (byte*)(*stringIterator)+1;
+  }
+  else
+  {
+    ch = NUL;
+  }
+
+  return ch;
+}
+#endif /* NDEBUG || __STRINGS_IMPLEMENTATION__ */
+
+INLINE Codepoint String_iterateNextUTF8(String string, void **stringIterator);
+#if defined(NDEBUG) || defined(__STRINGS_IMPLEMENTATION__)
+INLINE Codepoint String_iterateNextUTF8(String string, void **stringIterator)
+{
+  size_t    index,nextIndex;
+  Codepoint codepoint;
+
+  STRING_CHECK_VALID(string);
+  assert(stringIterator != NULL);
+
+  if ((string != NULL) && ((*stringIterator) < String_iterateEnd(string)))
+  {
+    index = (byte*)(*stringIterator)-(byte*)&string->data[0];
+    codepoint = stringAtUTF8(string->data,index,&nextIndex);
+    (*stringIterator) = (byte*)(*stringIterator)+(nextIndex-index);
+  }
+  else
+  {
+    codepoint = 0x00000000;
+  }
+
+  return codepoint;
+}
+#endif /* NDEBUG || __STRINGS_IMPLEMENTATION__ */
+
+/***********************************************************************\
 * Name   : String_toLower, String_toUpper
 * Purpose: convert string to lower/upper case
 * Input  : string - string
@@ -871,24 +1062,6 @@ String String_padLeft(String string, ulong length, char ch);
 \***********************************************************************/
 
 String String_fillChar(String string, ulong length, char ch);
-
-/***********************************************************************\
-* Name   : String_format, String String_vformat
-* Purpose: format string and append
-* Input  : string - string
-*          format - printf-like format string
-*          ...    - arguments
-* Output : -
-* Return : format string
-* Notes  : additional format characters
-*           %S   String
-*           %cS  String with quoting char c
-*           %b   binary value
-*           %y   bool value
-\***********************************************************************/
-
-String String_format(String string, const char *format, ...);
-String String_vformat(String string, const char *format, va_list arguments);
 
 /***********************************************************************\
 * Name   : String_initTokenizer, String_initTokenizerCString,

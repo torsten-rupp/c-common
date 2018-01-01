@@ -131,14 +131,14 @@ typedef struct
     const char      *allocFileName;
     ulong           allocLineNb;
     #ifdef HAVE_BACKTRACE
-      void const *stackTrace[16];
+      const void *stackTrace[16];
       int        stackTraceSize;
     #endif /* HAVE_BACKTRACE */
 
     const char      *deleteFileName;
     ulong           deleteLineNb;
     #ifdef HAVE_BACKTRACE
-      void const *deleteStackTrace[16];
+      const void *deleteStackTrace[16];
       int        deleteStackTraceSize;
     #endif /* HAVE_BACKTRACE */
 
@@ -484,7 +484,7 @@ LOCAL_INLINE struct __String* allocString(void)
   string->length    = 0L;
   string->maxLength = STRING_START_LENGTH;
   string->type      = STRING_TYPE_DYNAMIC;
-  string->data[0]   = '\0';
+  string->data[0]   = NUL;
   #ifndef NDEBUG
     #ifdef FILL_MEMORY
       memset(&string->data[1],DEBUG_FILL_BYTE,STRING_START_LENGTH-1);
@@ -720,8 +720,8 @@ LOCAL const char *parseNextFormatToken(const char *format, FormatToken *formatTo
   formatToken->width            = 0;
   formatToken->precision        = 0;
   formatToken->lengthType       = FORMAT_LENGTH_TYPE_INTEGER;
-  formatToken->quoteChar        = '\0';
-  formatToken->conversionChar   = '\0';
+  formatToken->quoteChar        = NUL;
+  formatToken->conversionChar   = NUL;
 
   // format start character
   assert((*format) == '%');
@@ -729,7 +729,7 @@ LOCAL const char *parseNextFormatToken(const char *format, FormatToken *formatTo
   format++;
 
   // flags
-  while (   ((*format) != '\0')
+  while (   ((*format) != NUL)
          && (   ((*format) == '#')
              || ((*format) == '0')
              || ((*format) == '-')
@@ -756,7 +756,7 @@ LOCAL const char *parseNextFormatToken(const char *format, FormatToken *formatTo
   }
 
   // width, precision
-  while (   ((*format) != '\0')
+  while (   ((*format) != NUL)
          && isdigit((int)(*format))
         )
   {
@@ -767,7 +767,7 @@ LOCAL const char *parseNextFormatToken(const char *format, FormatToken *formatTo
   }
 
   // precision
-  if (   ((*format) != '\0')
+  if (   ((*format) != NUL)
       && ((*format) == '.')
      )
   {
@@ -783,7 +783,7 @@ LOCAL const char *parseNextFormatToken(const char *format, FormatToken *formatTo
   }
 
   // quoting character
-  if (   ((*format) != '\0')
+  if (   ((*format) != NUL)
       && !isalpha(*format)
       && ((*format) != '%')
       && (   (*(format+1) == 's')
@@ -796,7 +796,7 @@ LOCAL const char *parseNextFormatToken(const char *format, FormatToken *formatTo
   }
 
   // length modifier
-  if ((*format) != '\0')
+  if ((*format) != NUL)
   {
     if      (((*format) == 'h') && (*((format+1)) == 'h'))
     {
@@ -859,7 +859,7 @@ LOCAL const char *parseNextFormatToken(const char *format, FormatToken *formatTo
   }
 
   // conversion character
-  if ((*format) != '\0')
+  if ((*format) != NUL)
   {
     switch (*format)
     {
@@ -875,7 +875,7 @@ LOCAL const char *parseNextFormatToken(const char *format, FormatToken *formatTo
     format++;
   }
 
-  ADD_CHAR(formatToken,'\0');
+  ADD_CHAR(formatToken,NUL);
 
   return format;
 
@@ -941,7 +941,7 @@ LOCAL void formatString(struct __String *string,
   STRING_CHECK_VALID(string);
   STRING_CHECK_ASSIGNABLE(string);
 
-  while ((*format) != '\0')
+  while ((*format) != NUL)
   {
     if ((*format) == '%')
     {
@@ -1143,14 +1143,14 @@ LOCAL void formatString(struct __String *string,
         case 's':
           data.s = va_arg(arguments,const char*);
 
-          if (formatToken.quoteChar != '\0')
+          if (formatToken.quoteChar != NUL)
           {
             // quoted string
             String_appendChar(string,formatToken.quoteChar);
             if (data.s != NULL)
             {
               s = data.s;
-              while ((ch = (*s)) != '\0')
+              while ((ch = (*s)) != NUL)
               {
                 if (ch == formatToken.quoteChar)
                 {
@@ -1237,7 +1237,7 @@ LOCAL void formatString(struct __String *string,
           STRING_CHECK_VALID(data.string);
           STRING_CHECK_ASSIGNABLE(string);
 
-          if (formatToken.quoteChar != '\0')
+          if (formatToken.quoteChar != NUL)
           {
             // quoted string
             String_appendChar(string,formatToken.quoteChar);
@@ -1447,10 +1447,10 @@ LOCAL bool parseString(const char *string,
   const char  *stringQuote;
   bool        foundFlag;
 
-  while ((*format) != '\0')
+  while ((*format) != NUL)
   {
     // skip white spaces in format
-    while (((*format) != '\0') && isspace(*format))
+    while (((*format) != NUL) && isspace(*format))
     {
       format++;
     }
@@ -1461,7 +1461,7 @@ LOCAL bool parseString(const char *string,
       index++;
     }
 
-    if ((*format) != '\0')
+    if ((*format) != NUL)
     {
       if ((*format) == '%')
       {
@@ -1473,14 +1473,17 @@ LOCAL bool parseString(const char *string,
         {
           case 'i':
           case 'd':
-            // get data
             i = 0L;
+
+            // get +,-
             if ((index < length) && ((string[index] == '+') || (string[index] == '-')))
             {
               buffer[i] = string[index];
               i++;
               index++;
             }
+
+            // get data
             while (   (index < length)
                    && (i < sizeof(buffer)-1)
                    && isdigit(string[index])
@@ -1490,7 +1493,7 @@ LOCAL bool parseString(const char *string,
               i++;
               index++;
             }
-            buffer[i] = '\0';
+            buffer[i] = NUL;
 
             // convert
             if (i > 0)
@@ -1522,12 +1525,14 @@ LOCAL bool parseString(const char *string,
             }
             break;
           case 'u':
-            // get data
-            i = 0L;
+            // skip +
             if ((index < length) && (string[index] == '+'))
             {
               index++;
             }
+
+            // get data
+            i = 0L;
             while (   (index < length)
                    && (i < sizeof(buffer)-1)
                    && isdigit(string[index])
@@ -1537,7 +1542,7 @@ LOCAL bool parseString(const char *string,
               i++;
               index++;
             }
-            buffer[i] = '\0';
+            buffer[i] = NUL;
 
             // convert
             if (i > 0)
@@ -1594,7 +1599,7 @@ LOCAL bool parseString(const char *string,
               i++;
               index++;
             }
-            buffer[i] = '\0';
+            buffer[i] = NUL;
 
             // convert
             if (i > 0)
@@ -1627,11 +1632,13 @@ LOCAL bool parseString(const char *string,
             break;
           case 'x':
           case 'X':
-            // get data
-            if (((index+1) < length) && (string[index+0] == '0') && (string[index+0] == 'x'))
+            // skip prefix 0x
+            if (((index+1) < length) && (string[index+0] == '0') && (string[index+1] == 'x'))
             {
               index += 2;
             }
+
+            // get data
             i = 0L;
             while (   (index < length)
                    && (i < sizeof(buffer)-1)
@@ -1642,7 +1649,7 @@ LOCAL bool parseString(const char *string,
               i++;
               index++;
             }
-            buffer[i] = '\0';
+            buffer[i] = NUL;
 
             // convert
             if (i > 0)
@@ -1681,14 +1688,17 @@ LOCAL bool parseString(const char *string,
           case 'G':
           case 'a':
           case 'A':
-            // get data
             i = 0L;
+
+            // get +,0,.
             if ((index < length) && ((string[index] == '+') || (string[index] == '-')  || (string[index] == '.')))
             {
               buffer[i] = string[index];
               i++;
               index++;
             }
+
+            // get data
             while (   (index < length)
                    && (i < sizeof(buffer)-1)
                    && isdigit(string[index])
@@ -1713,7 +1723,7 @@ LOCAL bool parseString(const char *string,
                 index++;
               }
             }
-            buffer[i] = '\0';
+            buffer[i] = NUL;
 
             // convert
             if (i > 0)
@@ -1773,7 +1783,7 @@ LOCAL bool parseString(const char *string,
                 {
                   // check for string quote
                   stringQuote = NULL;
-                  if ((formatToken.quoteChar != '\0') && (formatToken.quoteChar == string[index])) stringQuote = &formatToken.quoteChar;
+                  if ((formatToken.quoteChar != NUL) && (formatToken.quoteChar == string[index])) stringQuote = &formatToken.quoteChar;
                   if ((stringQuote == NULL) && (stringQuotes != NULL)) stringQuote = strchr(stringQuotes,string[index]);
 
                   if (   (stringQuote != NULL)
@@ -1820,7 +1830,7 @@ LOCAL bool parseString(const char *string,
                       stringQuote = NULL;
                       if (index < length)
                       {
-                        if ((formatToken.quoteChar != '\0') && (formatToken.quoteChar == string[index])) stringQuote = &formatToken.quoteChar;
+                        if ((formatToken.quoteChar != NUL) && (formatToken.quoteChar == string[index])) stringQuote = &formatToken.quoteChar;
                         if ((stringQuote == NULL) && (stringQuotes != NULL)) stringQuote = strchr(stringQuotes,string[index]);
                       }
                     }
@@ -1838,7 +1848,7 @@ LOCAL bool parseString(const char *string,
                 }
               }
             }
-            if (value.s != NULL) value.s[i] = '\0';
+            if (value.s != NULL) value.s[i] = NUL;
             break;
           case 'p':
           case 'n':
@@ -1876,7 +1886,7 @@ LOCAL bool parseString(const char *string,
                 {
                   // check for string quote
                   stringQuote = NULL;
-                  if ((formatToken.quoteChar != '\0') && (formatToken.quoteChar == string[index])) stringQuote = &formatToken.quoteChar;
+                  if ((formatToken.quoteChar != NUL) && (formatToken.quoteChar == string[index])) stringQuote = &formatToken.quoteChar;
                   if ((stringQuote == NULL) && (stringQuotes != NULL)) stringQuote = strchr(stringQuotes,string[index]);
 
                   if (   (stringQuote != NULL)
@@ -1924,7 +1934,7 @@ LOCAL bool parseString(const char *string,
                       stringQuote = NULL;
                       if (index < length)
                       {
-                        if ((formatToken.quoteChar != '\0') && (formatToken.quoteChar == string[index])) stringQuote = &formatToken.quoteChar;
+                        if ((formatToken.quoteChar != NUL) && (formatToken.quoteChar == string[index])) stringQuote = &formatToken.quoteChar;
                         if ((stringQuote == NULL) && (stringQuotes != NULL)) stringQuote = strchr(stringQuotes,string[index]);
                       }
                     }
@@ -1999,7 +2009,7 @@ still not implemented
               }
               index++;
             }
-            buffer[i] = '\0';
+            buffer[i] = NUL;
 
             // convert
             if (i > 0)
@@ -2512,7 +2522,7 @@ String __String_duplicate(const char *__fileName__, ulong __lineNb__, ConstStrin
 
     ensureStringLength(string,fromString->length);
     memcpy(&string->data[0],&fromString->data[0],fromString->length);
-    string->data[fromString->length] ='\0';
+    string->data[fromString->length] =NUL;
     string->length = fromString->length;
 
     STRING_UPDATE_VALID(string);
@@ -2562,8 +2572,8 @@ String __String_copy(const char *__fileName__, ulong __lineNb__, String *string,
 
     ensureStringLength((*string),fromString->length);
     memcpy(&(*string)->data[0],&fromString->data[0],fromString->length);
-    (*string)->data[fromString->length] ='\0';
-    (*string)->length = fromString->length;
+    (*string)->data[fromString->length] = NUL;
+    (*string)->length                   = fromString->length;
 
     STRING_UPDATE_VALID(*string);
   }
@@ -2571,8 +2581,8 @@ String __String_copy(const char *__fileName__, ulong __lineNb__, String *string,
   {
     if ((*string) != NULL)
     {
-      (*string)->data[0] ='\0';
-      (*string)->length = 0L;
+      (*string)->data[0] = NUL;
+      (*string)->length  = 0L;
 
       STRING_UPDATE_VALID(*string);
     }
@@ -2690,8 +2700,8 @@ String String_clear(String string)
   {
     assert(string->data != NULL);
 
-    string->data[0] = '\0';
-    string->length = 0L;
+    string->data[0] = NUL;
+    string->length  = 0L;
 
     STRING_UPDATE_VALID(string);
   }
@@ -2732,13 +2742,13 @@ String String_set(String string, ConstString sourceString)
 
       ensureStringLength(string,sourceString->length);
       memmove(&string->data[0],&sourceString->data[0],sourceString->length);
-      string->data[sourceString->length] = '\0';
-      string->length = sourceString->length;
+      string->data[sourceString->length] = NUL;
+      string->length                     = sourceString->length;
     }
     else
     {
-      string->data[0] = '\0';
-      string->length = 0L;
+      string->data[0] = NUL;
+      string->length  = 0L;
     }
 
     STRING_UPDATE_VALID(string);
@@ -2762,8 +2772,8 @@ String String_setCString(String string, const char *s)
     }
     else
     {
-      string->data[0] = '\0';
-      string->length = 0L;
+      string->data[0] = NUL;
+      string->length  = 0L;
     }
 
     STRING_UPDATE_VALID(string);
@@ -2797,13 +2807,13 @@ String String_setBuffer(String string, const void *buffer, ulong bufferLength)
     {
       ensureStringLength(string,bufferLength);
       memmove(&string->data[0],buffer,bufferLength);
-      string->data[bufferLength] = '\0';
-      string->length = bufferLength;
+      string->data[bufferLength] = NUL;
+      string->length             = bufferLength;
     }
     else
     {
-      string->data[0] = '\0';
-      string->length = 0L;
+      string->data[0] = NUL;
+      string->length  = 0L;
     }
 
     STRING_UPDATE_VALID(string);
@@ -2812,134 +2822,46 @@ String String_setBuffer(String string, const void *buffer, ulong bufferLength)
   return string;
 }
 
-String String_sub(String string, ConstString fromString, ulong fromIndex, long fromLength)
+String String_format(String string, const char *format, ...)
 {
-  ulong n;
+  va_list arguments;
+
+  assert(string != NULL);
+  assert(format != NULL);
 
   STRING_CHECK_VALID(string);
   STRING_CHECK_ASSIGNABLE(string);
-  STRING_CHECK_VALID(fromString);
 
   if (string != NULL)
   {
-    assert(string->data != NULL);
-
-    if (fromString != NULL)
-    {
-      assert(fromString->data != NULL);
-
-      if      (fromIndex == STRING_END)
-      {
-        n = MIN((ulong)fromLength,fromString->length);
-        ensureStringLength(string,n);
-        memmove(&string->data[0],&fromString->data[fromString->length-n],n);
-        string->data[n] ='\0';
-        string->length = n;
-      }
-      else if (fromIndex < fromString->length)
-      {
-        n = MIN((ulong)fromLength,fromString->length-fromIndex);
-        ensureStringLength(string,n);
-        memmove(&string->data[0],&fromString->data[fromIndex],n);
-        string->data[n] ='\0';
-        string->length = n;
-      }
-      else
-      {
-        string->data[0] ='\0';
-        string->length = 0;
-      }
-    }
-    else
-    {
-      string->data[0] = '\0';
-      string->length = 0L;
-    }
-
+    string->length = 0;
     STRING_UPDATE_VALID(string);
+
+    va_start(arguments,format);
+    formatString(string,format,arguments);
+    va_end(arguments);
   }
 
   return string;
 }
 
-char *String_subCString(char *s, ConstString fromString, ulong fromIndex, long fromLength)
+String String_vformat(String string, const char *format, va_list arguments)
 {
-  ulong n;
+  assert(string != NULL);
+  assert(format != NULL);
 
-  assert(s != NULL);
+  STRING_CHECK_VALID(string);
+  STRING_CHECK_ASSIGNABLE(string);
 
-  STRING_CHECK_VALID(fromString);
-
-  if (fromLength > 0)
+  if (string != NULL)
   {
-    if (fromString != NULL)
-    {
-      assert(fromString->data != NULL);
+    string->length = 0;
+    STRING_UPDATE_VALID(string);
 
-      if      (fromIndex == STRING_END)
-      {
-        n = MIN((ulong)fromLength,fromString->length);
-        memmove(s,&fromString->data[fromString->length-n],n);
-        s[n] = '\0';
-      }
-      else if (fromIndex < fromString->length)
-      {
-        n = MIN((ulong)fromLength,fromString->length-fromIndex);
-        memmove(s,&fromString->data[fromIndex],n);
-        s[n] = '\0';
-      }
-      else
-      {
-        s[0] = '\0';
-      }
-    }
-    else
-    {
-      s[0] = '\0';
-    }
+    formatString(string,format,arguments);
   }
 
-  return s;
-}
-
-char *String_subBuffer(char *buffer, ConstString fromString, ulong fromIndex, long fromLength)
-{
-  ulong n;
-
-  assert(buffer != NULL);
-
-  STRING_CHECK_VALID(fromString);
-
-  if (fromLength > 0)
-  {
-    if (fromString != NULL)
-    {
-      assert(fromString->data != NULL);
-
-      if      (fromIndex == STRING_END)
-      {
-        n = MIN((ulong)fromLength,fromString->length);
-        memmove(&buffer[0],&fromString->data[fromString->length-n],n);
-        memset(&buffer[n],0,fromLength-n);
-      }
-      else if (fromIndex < fromString->length)
-      {
-        n = MIN((ulong)fromLength,fromString->length-fromIndex);
-        memmove(&buffer[0],&fromString->data[fromIndex],n);
-        memset(&buffer[n],0,fromLength-n);
-      }
-      else
-      {
-        memset(buffer,0,fromLength);
-      }
-    }
-    else
-    {
-      memset(buffer,0,fromLength);
-    }
-  }
-
-  return buffer;
+  return string;
 }
 
 String String_append(String string, ConstString appendString)
@@ -2958,8 +2880,8 @@ String String_append(String string, ConstString appendString)
       n = string->length+appendString->length;
       ensureStringLength(string,n);
       memmove(&string->data[string->length],&appendString->data[0],appendString->length);
-      string->data[n] = '\0';
-      string->length = n;
+      string->data[n] = NUL;
+      string->length  = n;
     }
 
     STRING_UPDATE_VALID(string);
@@ -2995,7 +2917,7 @@ String String_appendSub(String string, ConstString fromString, ulong fromIndex, 
         }
         ensureStringLength(string,string->length+n);
         memmove(&string->data[string->length],&fromString->data[fromIndex],n);
-        string->data[string->length+n] ='\0';
+        string->data[string->length+n] = NUL;
         string->length += n;
       }
     }
@@ -3037,8 +2959,32 @@ String String_appendChar(String string, char ch)
     n = string->length+1;
     ensureStringLength(string,n);
     string->data[string->length] = ch;
-    string->data[n] = '\0';
-    string->length = n;
+    string->data[n] = NUL;
+    string->length  = n;
+
+    STRING_UPDATE_VALID(string);
+  }
+
+  return string;
+}
+
+String String_appendCharUTF8(String string, Codepoint codepoint)
+{
+  size_t l;
+  ulong  n;
+
+  STRING_CHECK_VALID(string);
+  STRING_CHECK_ASSIGNABLE(string);
+
+  if (string != NULL)
+  {
+    assert(string->data != NULL);
+    l = charUTF8Length(codepoint);
+    n = string->length+l;
+    ensureStringLength(string,n);
+    memcpy(&string->data[string->length],charUTF8(codepoint),l);
+    string->data[n] = NUL;
+    string->length  = n;
 
     STRING_UPDATE_VALID(string);
   }
@@ -3061,11 +3007,47 @@ String String_appendBuffer(String string, const char *buffer, ulong bufferLength
       n = string->length+bufferLength;
       ensureStringLength(string,n);
       memmove(&string->data[string->length],buffer,bufferLength);
-      string->data[n] = '\0';
-      string->length = n;
-    }
+      string->data[n] = NUL;
+      string->length  = n;
 
-    STRING_UPDATE_VALID(string);
+      STRING_UPDATE_VALID(string);
+    }
+  }
+
+  return string;
+}
+
+String String_appendFormat(String string, const char *format, ...)
+{
+  va_list arguments;
+
+  assert(string != NULL);
+  assert(format != NULL);
+
+  STRING_CHECK_VALID(string);
+  STRING_CHECK_ASSIGNABLE(string);
+
+  if (string != NULL)
+  {
+    va_start(arguments,format);
+    formatString(string,format,arguments);
+    va_end(arguments);
+  }
+
+  return string;
+}
+
+String String_appendVformat(String string, const char *format, va_list arguments)
+{
+  assert(string != NULL);
+  assert(format != NULL);
+
+  STRING_CHECK_VALID(string);
+  STRING_CHECK_ASSIGNABLE(string);
+
+  if (string != NULL)
+  {
+    formatString(string,format,arguments);
   }
 
   return string;
@@ -3090,8 +3072,8 @@ String String_insert(String string, ulong index, ConstString insertString)
         n = string->length+insertString->length;
         ensureStringLength(string,n);
         memmove(&string->data[string->length],&insertString->data[0],insertString->length);
-        string->data[n] = '\0';
-        string->length = n;
+        string->data[n] = NUL;
+        string->length  = n;
       }
       else if (index <= string->length)
       {
@@ -3099,8 +3081,8 @@ String String_insert(String string, ulong index, ConstString insertString)
         ensureStringLength(string,n);
         memmove(&string->data[index+insertString->length],&string->data[index],string->length-index);
         memmove(&string->data[index],&insertString->data[0],insertString->length);
-        string->data[n] = '\0';
-        string->length = n;
+        string->data[n] = NUL;
+        string->length  = n;
       }
     }
 
@@ -3139,7 +3121,7 @@ String String_insertSub(String string, ulong index, ConstString fromString, ulon
         {
           ensureStringLength(string,string->length+n);
           memmove(&string->data[string->length],&fromString->data[fromIndex],n);
-          string->data[string->length+n] = '\0';
+          string->data[string->length+n] = NUL;
           string->length += n;
         }
         else if (index <= string->length)
@@ -3147,7 +3129,7 @@ String String_insertSub(String string, ulong index, ConstString fromString, ulon
           ensureStringLength(string,string->length+n);
           memmove(&string->data[index+n],&string->data[index],string->length-index);
           memmove(&string->data[index],&fromString->data[fromIndex],n);
-          string->data[string->length+n] = '\0';
+          string->data[string->length+n] = NUL;
           string->length += n;
         }
       }
@@ -3210,8 +3192,8 @@ String String_insertBuffer(String string, ulong index, const char *buffer, ulong
         n = string->length+bufferLength;
         ensureStringLength(string,n);
         memmove(&string->data[string->length],buffer,bufferLength);
-        string->data[n] = '\0';
-        string->length = n;
+        string->data[n] = NUL;
+        string->length  = n;
       }
       else if (index <= string->length)
       {
@@ -3219,8 +3201,8 @@ String String_insertBuffer(String string, ulong index, const char *buffer, ulong
         ensureStringLength(string,n);
         memmove(&string->data[index+bufferLength],&string->data[index],string->length-index);
         memmove(&string->data[index],buffer,bufferLength);
-        string->data[n] = '\0';
-        string->length = n;
+        string->data[n] = NUL;
+        string->length  = n;
       }
     }
 
@@ -3244,8 +3226,8 @@ String String_remove(String string, ulong index, ulong length)
     if      (index == STRING_END)
     {
       n = (string->length > length) ? string->length-length : 0L;
-      string->data[n] = '\0';
-      string->length = n;
+      string->data[n] = NUL;
+      string->length  = n;
     }
     else if (index < string->length)
     {
@@ -3258,8 +3240,8 @@ String String_remove(String string, ulong index, ulong length)
       {
         n = index;
       }
-      string->data[n] = '\0';
-      string->length = n;
+      string->data[n] = NUL;
+      string->length  = n;
     }
 
     STRING_UPDATE_VALID(string);
@@ -3425,6 +3407,178 @@ String String_mapChar(String string, ulong index, const char from[], const char 
   }
 
   return string;
+}
+
+String String_sub(String string, ConstString fromString, ulong fromIndex, long fromLength)
+{
+  ulong n;
+
+  STRING_CHECK_VALID(string);
+  STRING_CHECK_ASSIGNABLE(string);
+  STRING_CHECK_VALID(fromString);
+
+  if (string != NULL)
+  {
+    assert(string->data != NULL);
+
+    if (fromString != NULL)
+    {
+      assert(fromString->data != NULL);
+
+      if      (fromIndex == STRING_END)
+      {
+        if (fromLength == STRING_END)
+        {
+          n = fromString->length;
+        }
+        else
+        {
+          n = MIN((ulong)fromLength,fromString->length);
+        }
+        ensureStringLength(string,n);
+        memmove(&string->data[0],&fromString->data[fromString->length-n],n);
+        string->data[n] = NUL;
+        string->length  = n;
+      }
+      else if (fromIndex < fromString->length)
+      {
+        if (fromLength == STRING_END)
+        {
+          n = fromString->length-fromIndex;
+        }
+        else
+        {
+          n = MIN((ulong)fromLength,fromString->length-fromIndex);
+        }
+        ensureStringLength(string,n);
+        memmove(&string->data[0],&fromString->data[fromIndex],n);
+        string->data[n] = NUL;
+        string->length  = n;
+      }
+      else
+      {
+        string->data[0] = NUL;
+        string->length  = 0;
+      }
+    }
+    else
+    {
+      string->data[0] = NUL;
+      string->length  = 0L;
+    }
+
+    STRING_UPDATE_VALID(string);
+  }
+
+  return string;
+}
+
+char *String_subCString(char *s, ConstString fromString, ulong fromIndex, long fromLength)
+{
+  ulong n;
+
+  assert(s != NULL);
+
+  STRING_CHECK_VALID(fromString);
+
+  if (fromLength > 0)
+  {
+    if (fromString != NULL)
+    {
+      assert(fromString->data != NULL);
+
+      if      (fromIndex == STRING_END)
+      {
+        if (fromLength == STRING_END)
+        {
+          n = fromString->length;
+        }
+        else
+        {
+          n = MIN((ulong)fromLength,fromString->length);
+        }
+        memmove(s,&fromString->data[fromString->length-n],n);
+        s[n] = NUL;
+      }
+      else if (fromIndex < fromString->length)
+      {
+        if (fromLength == STRING_END)
+        {
+          n = fromString->length-fromIndex;
+        }
+        else
+        {
+          n = MIN((ulong)fromLength,fromString->length-fromIndex);
+        }
+        memmove(s,&fromString->data[fromIndex],n);
+        s[n] = NUL;
+      }
+      else
+      {
+        s[0] = NUL;
+      }
+    }
+    else
+    {
+      s[0] = NUL;
+    }
+  }
+
+  return s;
+}
+
+char *String_subBuffer(char *buffer, ConstString fromString, ulong fromIndex, long fromLength)
+{
+  ulong n;
+
+  assert(buffer != NULL);
+
+  STRING_CHECK_VALID(fromString);
+
+  if (fromLength > 0)
+  {
+    if (fromString != NULL)
+    {
+      assert(fromString->data != NULL);
+
+      if      (fromIndex == STRING_END)
+      {
+        if (fromLength == STRING_END)
+        {
+          n = fromString->length;
+        }
+        else
+        {
+          n = MIN((ulong)fromLength,fromString->length);
+        }
+        memmove(&buffer[0],&fromString->data[fromString->length-n],n);
+        memset(&buffer[n],0,fromLength-n);
+      }
+      else if (fromIndex < fromString->length)
+      {
+        if (fromLength == STRING_END)
+        {
+          n = fromString->length-fromIndex;
+        }
+        else
+        {
+          n = MIN((ulong)fromLength,fromString->length-fromIndex);
+        }
+        memmove(&buffer[0],&fromString->data[fromIndex],n);
+        memset(&buffer[n],0,fromLength-n);
+      }
+      else
+      {
+        memset(buffer,0,fromLength);
+      }
+    }
+    else
+    {
+      memset(buffer,0,fromLength);
+    }
+  }
+
+  return buffer;
 }
 
 String String_join(String string, ConstString joinString, char joinChar)
@@ -4303,7 +4457,7 @@ String String_iterate(                      String string,
         ensureStringLength(string,string->length+n-1);
         memmove(&string->data[j+n],&string->data[j+1],string->length-(j+1));
         memmove(&string->data[j],s,n);
-        string->data[string->length+n-1] = '\0';
+        string->data[string->length+n-1] = NUL;
         string->length += n-1;
 
         j += n;
@@ -4395,8 +4549,8 @@ String String_trimBegin(String string, const char *chars)
     {
       n = string->length-i;
       memmove(&string->data[0],&string->data[i],n);
-      string->data[n] = '\0';
-      string->length = n;
+      string->data[n] = NUL;
+      string->length  = n;
     }
 
     STRING_UPDATE_VALID(string);
@@ -4421,8 +4575,8 @@ String String_trimEnd(String string, const char *chars)
     {
       n--;
     }
-    string->data[n] = '\0';
-    string->length = n;
+    string->data[n] = NUL;
+    string->length  = n;
 
     STRING_UPDATE_VALID(string);
   }
@@ -4669,8 +4823,8 @@ String String_padRight(String string, ulong length, char ch)
       n = length-string->length;
       ensureStringLength(string,length);
       memset(&string->data[string->length],ch,n);
-      string->data[length] = '\0';
-      string->length = length;
+      string->data[length] = NUL;
+      string->length       = length;
 
       STRING_UPDATE_VALID(string);
     }
@@ -4696,8 +4850,8 @@ String String_padLeft(String string, ulong length, char ch)
       ensureStringLength(string,length);
       memmove(&string->data[n],&string->data[0],string->length);
       memset(&string->data[0],ch,n);
-      string->data[length] = '\0';
-      string->length = length;
+      string->data[length] = NUL;
+      string->length       = length;
 
       STRING_UPDATE_VALID(string);
     }
@@ -4715,48 +4869,8 @@ String String_fillChar(String string, ulong length, char ch)
   {
     ensureStringLength(string,length);
     memset(&string->data[0],ch,length);
-    string->data[length] = '\0';
-    string->length = length;
-
-    STRING_UPDATE_VALID(string);
-  }
-
-  return string;
-}
-
-String String_format(String string, const char *format, ...)
-{
-  va_list arguments;
-
-  assert(string != NULL);
-  assert(format != NULL);
-
-  STRING_CHECK_VALID(string);
-  STRING_CHECK_ASSIGNABLE(string);
-
-  if (string != NULL)
-  {
-    va_start(arguments,format);
-    formatString(string,format,arguments);
-    va_end(arguments);
-
-    STRING_UPDATE_VALID(string);
-  }
-
-  return string;
-}
-
-String String_vformat(String string, const char *format, va_list arguments)
-{
-  assert(string != NULL);
-  assert(format != NULL);
-
-  STRING_CHECK_VALID(string);
-  STRING_CHECK_ASSIGNABLE(string);
-
-  if (string != NULL)
-  {
-    formatString(string,format,arguments);
+    string->data[length] = NUL;
+    string->length       = length;
 
     STRING_UPDATE_VALID(string);
   }
@@ -5287,7 +5401,7 @@ char* String_toCString(ConstString string)
   }
 
   memcpy(cString,string->data,string->length);
-  cString[string->length] = '\0';
+  cString[string->length] = NUL;
 
   return cString;
 }
@@ -5508,7 +5622,7 @@ void String_debugDumpInfo(FILE                   *handle,
                           uint                   stringDumpInfoTypes
                          )
 {
-  typedef struct
+  typedef struct StringHistogramNode
   {
     LIST_NODE_HEADER(struct StringHistogramNode);
 
@@ -5586,7 +5700,7 @@ void String_debugDumpInfo(FILE                   *handle,
           stringHistogramNode->count++;
         }
 
-        List_sort(&stringHistogramList,CALLBACK(compareStringHistogramNodes,NULL));
+        List_sort(&stringHistogramList,(ListNodeCompareFunction)CALLBACK(compareStringHistogramNodes,NULL));
       }
 
       // get count
@@ -5646,7 +5760,7 @@ void String_debugDumpInfo(FILE                   *handle,
                  );
           #ifdef HAVE_BACKTRACE
             fprintf(handle,"  allocated at least at\n");
-            debugDumpStackTrace(handle,4,stringHistogramNode->debugStringNode->stackTrace,stringHistogramNode->debugStringNode->stackTraceSize,0);
+            debugDumpStackTrace(handle,4,(const void**)stringHistogramNode->debugStringNode->stackTrace,stringHistogramNode->debugStringNode->stackTraceSize,0);
           #endif /* HAVE_BACKTRACE */
 
           if (stringDumpInfoFunction != NULL)

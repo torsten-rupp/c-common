@@ -215,9 +215,9 @@ int main(int argc, char *argv[])
   s = String_new();
   String_setCString(s,"  Hello 'World!'  ");
   printf("String: #%s#\n",String_cString(s));
-  String_trimRight(s,STRING_WHITE_SPACES);
+  String_trimEnd(s,STRING_WHITE_SPACES);
   printf("trim right=#%s#\n",String_cString(s));
-  String_trimLeft(s,STRING_WHITE_SPACES);
+  String_trimBegin(s,STRING_WHITE_SPACES);
   printf("trim left=#%s#\n",String_cString(s));
   String_toLower(s);
   printf("lower=#%s#\n",String_cString(s));
@@ -277,7 +277,7 @@ int main(int argc, char *argv[])
   #endif /* 0 */
 
   #ifndef NDEBUG
-    String_debugPrintInfo(CALLBACK(NULL,NULL));
+    String_debugPrintInfo(CALLBACK(NULL,NULL),DUMP_INFO_TYPE_ALLOCATED);
   #endif
 
   return 0;
