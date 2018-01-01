@@ -931,7 +931,7 @@ void debugResourceDumpInfo(FILE                     *handle,
                            uint                     resourceDumpInfoTypes
                           )
 {
-  typedef struct
+  typedef struct ResourceHistogramNode
   {
     LIST_NODE_HEADER(struct ResourceHistogramNode);
 
@@ -1008,7 +1008,7 @@ void debugResourceDumpInfo(FILE                     *handle,
         resourceHistogramNode->count++;
       }
 
-      List_sort(&resourceHistogramList,CALLBACK(compareResourceHistogramNodes,NULL));
+      List_sort(&resourceHistogramList,(ListNodeCompareFunction)CALLBACK(compareResourceHistogramNodes,NULL));
     }
 
     // get count
@@ -1209,7 +1209,7 @@ LOCAL void debugDumpStackTraceOutputSymbol(const void *address,
 
 void debugDumpStackTrace(FILE       *handle,
                          uint       indent,
-                         void const *stackTrace[],
+                         const void *stackTrace[],
                          uint       stackTraceSize,
                          uint       skipFrameCount
                         )

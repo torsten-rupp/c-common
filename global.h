@@ -73,6 +73,11 @@
 #define OFF FALSE
 #define ON  TRUE
 
+// definition of some character names
+#define NUL '\000'
+#define BEL '\007'
+#define ESC '\033'
+
 // math constants
 #ifndef PI
   #define PI 3.14159265358979323846
@@ -85,18 +90,21 @@
 // time constants, time conversions
 #define NS_PER_US     1000LL
 #define NS_PER_MS     (1000LL*NS_PER_US)
-#define NS_PER_SECOND (1000LL*NS_PER_MS)
+#define NS_PER_S      (1000LL*NS_PER_MS)
+#define NS_PER_SECOND NS_PER_S
 #define NS_PER_MINUTE (1000LL*NS_PER_SECOND)
 #define NS_PER_HOUR   (60LL*NS_PER_MINUTE)
 #define NS_PER_DAY    (24LL*NS_PER_HOUR)
 
 #define US_PER_MS     1000LL
-#define US_PER_SECOND (1000LL*US_PER_MS)
+#define US_PER_S      (1000LL*US_PER_MS)
+#define US_PER_SECOND US_PER_S
 #define US_PER_MINUTE (60LL*US_PER_SECOND)
 #define US_PER_HOUR   (60LL*US_PER_MINUTE)
 #define US_PER_DAY    (24LL*US_PER_HOUR)
 
-#define MS_PER_SECOND 1000LL
+#define MS_PER_S      1000LL
+#define MS_PER_SECOND MS_PER_S
 #define MS_PER_MINUTE (60LL*MS_PER_SECOND)
 #define MS_PER_HOUR   (60LL*MS_PER_MINUTE)
 #define MS_PER_DAY    (24LL*MS_PER_HOUR)
@@ -251,6 +259,17 @@ typedef struct
   uint64 mask;
   uint   shift;
 } MaskShift64;
+
+// Unicode codepoint
+typedef uint32_t Codepoint;
+
+// string iterator
+typedef struct
+{
+  const char *s;
+  size_t     nextIndex;
+  Codepoint  codepoint;
+} StringIterator;
 
 #ifndef NDEBUG
 
@@ -1181,7 +1200,6 @@ typedef bool(*ResourceDumpInfoFunction)(const char *variableName,
 /***********************************************************************\
 * Name   : DEBUG_ADD_RESOURCE_TRACE, DEBUG_REMOVE_RESOURCE_TRACE,
 *          DEBUG_ADD_RESOURCE_TRACEX, DEBUG_REMOVE_RESOURCE_TRACEX,
-*          DEBUG_IS_RESOURCE_TRACE
 *          DEBUG_CHECK_RESOURCE_TRACE
 * Purpose: add/remove debug trace allocated resource functions,
 *          check if resource allocated
@@ -1760,25 +1778,6 @@ static inline double normDegree360(double n)
 /*---------------------------------------------------------------------*/
 
 /***********************************************************************\
-* Name   : stringClear
-* Purpose: clear string
-* Input  : s - string
-* Output : -
-* Return : string
-* Notes  : string is always NUL-terminated
-\***********************************************************************/
-
-static inline char *stringClear(char *s)
-{
-  if (s != NULL)
-  {
-    (*s) = '\0';
-  }
-
-  return s;
-}
-
-/***********************************************************************\
 * Name   : stringEquals
 * Purpose: compare strings for equal
 * Input  : s1, s2 - strings
@@ -1847,7 +1846,26 @@ static inline bool stringStartsWithIgnoreCase(const char *s, const char *prefix)
 
 static inline bool stringIsEmpty(const char *s)
 {
-  return (s == NULL) || (s[0] == '\0');
+  return (s == NULL) || (s[0] == NUL);
+}
+
+/***********************************************************************\
+* Name   : stringClear
+* Purpose: clear string
+* Input  : s - string
+* Output : -
+* Return : string
+* Notes  : string is always NUL-terminated
+\***********************************************************************/
+
+static inline char *stringClear(char *s)
+{
+  if (s != NULL)
+  {
+    (*s) = NUL;
+  }
+
+  return s;
 }
 
 /***********************************************************************\
@@ -1861,7 +1879,7 @@ static inline bool stringIsEmpty(const char *s)
 * Notes  : string is always NULL or NUL-terminated
 \***********************************************************************/
 
-static inline char* stringSet(char *destination, const char *source, size_t n)
+static inline char* stringSet(char *destination, size_t n, const char *source)
 {
   assert(n > 0);
 
@@ -1869,15 +1887,42 @@ static inline char* stringSet(char *destination, const char *source, size_t n)
   {
     if (source != NULL)
     {
-      strncpy(destination,source,n-1); destination[n-1] = '\0';
+      strncpy(destination,source,n-1); destination[n-1] = NUL;
     }
     else
     {
-      destination[0] = '\0';
+      destination[0] = NUL;
     }
   }
 
   return destination;
+}
+
+/***********************************************************************\
+* Name   : stringFormat
+* Purpose: formated string
+* Input  : string - string
+*          n      - size of string
+*          format - format string
+*          ...    - optional arguments
+* Output : -
+* Return : destination string
+* Notes  : string is always NULL or NUL-terminated
+\***********************************************************************/
+
+static inline char* stringFormat(char *string, size_t n, const char *format, ...)
+{
+  va_list arguments;
+
+  assert(string != NULL);
+  assert(n > 0);
+  assert(format != NULL);
+
+  va_start(arguments,format);
+  vsnprintf(string,n,format,arguments);
+  va_end(arguments);
+
+  return string;
 }
 
 /***********************************************************************\
@@ -1891,7 +1936,7 @@ static inline char* stringSet(char *destination, const char *source, size_t n)
 * Notes  : string is always NULL or NUL-terminated
 \***********************************************************************/
 
-static inline char* stringAppend(char *destination, const char *source, size_t n)
+static inline char* stringAppend(char *destination, size_t n, const char *source)
 {
   size_t m;
 
@@ -1910,6 +1955,108 @@ static inline char* stringAppend(char *destination, const char *source, size_t n
 }
 
 /***********************************************************************\
+* Name   : stringAppendFormat
+* Purpose: append formated string
+* Input  : string - string
+*          n      - size of string
+*          format - format string
+*          ...    - optional arguments
+* Output : -
+* Return : destination string
+* Notes  : string is always NULL or NUL-terminated
+\***********************************************************************/
+
+static inline char* stringAppendFormat(char *string, size_t n, const char *format, ...)
+{
+  size_t  length;
+  va_list arguments;
+
+  assert(string != NULL);
+  assert(n > 0);
+  assert(format != NULL);
+
+  length = strlen(string);
+  if (length < n)
+  {
+    va_start(arguments,format);
+    vsnprintf(string+length,n-length,format,arguments);
+    va_end(arguments);
+  }
+
+  return string;
+}
+
+/***********************************************************************\
+* Name   : stringTrimBegin
+* Purpose: trim spaces at beginning of string
+* Input  : string - string
+* Output : -
+* Return : trimmed string
+* Notes  : -
+\***********************************************************************/
+
+static inline const char* stringTrimBegin(const char *string)
+{
+  while (isspace(*string))
+  {
+    string++;
+  }
+
+  return string;
+}
+
+/***********************************************************************\
+* Name   : stringTrimEnd
+* Purpose: trim spaces at end of string
+* Input  : string - string
+* Output : -
+* Return : trimmed string
+* Notes  : -
+\***********************************************************************/
+
+static inline char* stringTrimEnd(char *string)
+{
+  char *s;
+
+  s = string+strlen(string)-1;
+  while ((s >= string) && isspace(*s))
+  {
+    s--;
+  }
+  if (s >= string) s[0] = NUL;
+
+  return string;
+}
+
+/***********************************************************************\
+* Name   : stringTrim
+* Purpose: trim spaces at beginning and end of string
+* Input  : string - string
+* Output : -
+* Return : trimmed string
+* Notes  : -
+\***********************************************************************/
+
+static inline char* stringTrim(char *string)
+{
+  char *s;
+
+  while (isspace(*string))
+  {
+    string++;
+  }
+
+  s = string+strlen(string)-1;
+  while ((s >= string) && isspace(*s))
+  {
+    s--;
+  }
+  if (s >= string) s[0] = NUL;
+
+  return string;
+}
+
+/***********************************************************************\
 * Name   : stringLength
 * Purpose: get string length
 * Input  : s - string
@@ -1924,7 +2071,187 @@ static inline size_t stringLength(const char *s)
 }
 
 /***********************************************************************\
-* Name   : stringFind
+* Name   : stringAt, stringAtUTF8
+* Purpose: get character in string
+* Input  : s         - string
+*          index     - index (0..n-1)
+*          nextIndex - next index variable or NULL
+* Output : nextIndex - next index
+* Return : character
+* Notes  : -
+\***********************************************************************/
+
+static inline char stringAt(const char *s, size_t index)
+{
+  assert(s != NULL);
+
+  return s[index];
+}
+
+static inline Codepoint stringAtUTF8(const char *s, size_t index, size_t *nextIndex)
+{
+  Codepoint ch;
+
+  assert(s != NULL);
+
+  if      ((s[index+0] & 0xF8) == 0xF0)
+  {
+    // 4 byte UTF8 codepoint
+    ch =   (Codepoint)((s[index+0] & 0x07) << 18)
+         | (Codepoint)((s[index+1] & 0x3F) << 12)
+         | (Codepoint)((s[index+2] & 0x3F) <<  6)
+         | (Codepoint)((s[index+3] & 0x3F) <<  0);
+    if (nextIndex != NULL) (*nextIndex) = index+4;
+  }
+  else if ((s[index+0] & 0xF0) == 0xE0)
+  {
+    // 3 byte UTF8 codepoint
+    ch =   (Codepoint)((s[index+0] & 0x0F) << 12)
+         | (Codepoint)((s[index+1] & 0x3F) <<  6)
+         | (Codepoint)((s[index+2] & 0x3F) <<  0);
+    if (nextIndex != NULL) (*nextIndex) = index+3;
+  }
+  else if ((s[index+0] & 0xE0) == 0xC0)
+  {
+    // 2 byte UTF8 codepoint
+    ch =   (Codepoint)((s[index+0] & 0x1F) << 6)
+         | (Codepoint)((s[index+1] & 0x3F) << 0);
+    if (nextIndex != NULL) (*nextIndex) = index+2;
+  }
+  else
+  {
+    // 1 byte UTF8 codepoint
+    ch = (Codepoint)s[index+0];
+    if (nextIndex != NULL) (*nextIndex) = index+1;
+  }
+
+  return ch;
+}
+
+/***********************************************************************\
+* Name   : stringNextUTF8
+* Purpose: get next UTF8 character index
+* Input  : s     - string
+*          index - index (0..n-1)
+* Output : -
+* Return : next index
+* Notes  : -
+\***********************************************************************/
+
+static inline size_t stringNextUTF8(const char *s, size_t index)
+{
+  assert(s != NULL);
+
+  if      ((s[index+0] & 0xF8) == 0xF0)
+  {
+    // 4 byte UTF8 codepoint
+    index += 4;
+  }
+  else if ((s[index+0] & 0xF0) == 0xE0)
+  {
+    // 3 byte UTF8 codepoint
+    index += 3;
+  }
+  else if ((s[index+0] & 0xE0) == 0xC0)
+  {
+    // 2 byte UTF8 codepoint
+    index += 2;
+  }
+  else
+  {
+    // 1 byte UTF8 codepoint
+    index += 1;
+  }
+
+  return index;
+}
+
+/***********************************************************************\
+* Name   : charUTF8Length
+* Purpose: get length of UTF8 character from codepoint
+* Input  : codepoint - codepoint
+* Output : -
+* Return : length of UTF8 character [bytes]
+* Notes  : -
+\***********************************************************************/
+
+static inline size_t charUTF8Length(Codepoint codepoint)
+{  
+  size_t length;
+
+  if      ((codepoint & 0xFFFFFF80) == 0)
+  {
+    // 7bit ASCII -> 1 byte
+    length = 1;
+  }
+  else if ((codepoint & 0xFFFFF800) == 0)
+  {
+    // 11bit UTF8 codepoint -> 2 byte
+    length = 2;
+  }
+  else if ((codepoint & 0xFFFF0000) == 0)
+  {
+    // 16bit UTF8 codepoint -> 3 byte
+    length = 3;
+  }
+  else // ((codepoint & 0xFFE00000) == 0)
+  {
+    // 21bit UTF8 codepoint -> 4 byte
+    length = 4;
+  }
+  
+  return length;
+}
+
+/***********************************************************************\
+* Name   : charUTF8
+* Purpose: convert codepoint to UTF8 character as string
+* Input  : codepoint - codepoint
+* Output : -
+* Return : string
+* Notes  : -
+\***********************************************************************/
+
+static inline const char *charUTF8(Codepoint codepoint)
+{
+  static char s[4+1];
+
+  if      ((codepoint & 0xFFFFFF80) == 0)
+  {
+    // 7bit ASCII; 0b1xxxxxxx
+    s[0] = (char)(codepoint & 0x0000007F);
+    s[1] = NUL;
+  }
+  else if ((codepoint & 0xFFFFF800) == 0)
+  {
+    // 11bit UTF8 codepoint: 0b110xxxxx 0b10xxxxxx
+    s[0] = 0xC0 | (char)((codepoint & 0x000007C0) >> 6);
+    s[1] = 0x80 | (char)((codepoint & 0x0000003F) >> 0);
+    s[2] = NUL;
+  }
+  else if ((codepoint & 0xFFFF0000) == 0)
+  {
+    // 16bit UTF8 codepoint: 0b1110xxxx 0b10xxxxxx 0b10xxxxxx
+    s[0] = 0xE0 | (char)((codepoint & 0x0000F000) >> 12);
+    s[1] = 0x80 | (char)((codepoint & 0x00000FC0) >>  6);
+    s[2] = 0x80 | (char)((codepoint & 0x0000003F) >>  0);
+    s[3] = NUL;
+  }
+  else // ((codepoint & 0xFFE00000) == 0)
+  {
+    // 21bit UTF8 codepoint: 0b11110xxx 0b10xxxxxx 0b10xxxxxx 0b10xxxxxx
+    s[0] = 0xF0 | (char)((codepoint & 0x001C0000) >> 18);
+    s[1] = 0x80 | (char)((codepoint & 0x0003F000) >> 12);
+    s[2] = 0x80 | (char)((codepoint & 0x00000FC0) >>  6);
+    s[3] = 0x80 | (char)((codepoint & 0x0000003F) >>  0);
+    s[4] = NUL;
+  }
+
+  return s;
+}
+
+/***********************************************************************\
+* Name   : stringFind, stringFindChar
 * Purpose: find string/character in string
 * Input  : s                   - string
 *          findString,findChar - string/character to find
@@ -1974,7 +2301,7 @@ static inline char* stringSub(char *destination, size_t n, const char *source, s
     {
       m = (length >= 0) ? MIN((ssize_t)n-1,length) : MIN((ssize_t)n-1,(ssize_t)strlen(source)-(ssize_t)index);
       if (m < 0) m = 0;
-      strncpy(destination,source+index,m); destination[m] = '\0';
+      strncpy(destination,source+index,m); destination[m] = NUL;
     }
   }
 
@@ -1982,100 +2309,173 @@ static inline char* stringSub(char *destination, size_t n, const char *source, s
 }
 
 /***********************************************************************\
-* Name   : stringTrimBegin
-* Purpose: trim spaces at beginning of string
-* Input  : string - string
-* Output : -
-* Return : trimmed string
+* Name   : stringIteratorInit
+* Purpose: init string iterator
+* Input  : stringIterator - string iterator variable
+*          string         - string
+* Output : stringIterator - string iterator
+* Return : -
 * Notes  : -
 \***********************************************************************/
 
-static inline const char* stringTrimBegin(const char *string)
+static inline void stringIteratorInit(StringIterator *stringIterator, const char *s)
 {
-  while (isspace(*string))
-  {
-    string++;
-  }
+  assert(stringIterator != NULL);
 
-  return string;
+  stringIterator->s         = s;
+  stringIterator->nextIndex = 0;
+
+  if (stringIterator->s[stringIterator->nextIndex] != NUL)
+  {
+    stringIterator->codepoint = stringAtUTF8(stringIterator->s,0,&stringIterator->nextIndex);
+  }
+  else
+  {
+    stringIterator->nextIndex = 0;
+    stringIterator->codepoint = 0x00000000;
+  }
 }
 
 /***********************************************************************\
-* Name   : stringTrimEnd
-* Purpose: trim spaces at end of string
-* Input  : string - string
+* Name   : stringIteratorDone
+* Purpose: done string iterator
+* Input  : stringIterator - string iterator
 * Output : -
-* Return : trimmed string
+* Return : -
 * Notes  : -
 \***********************************************************************/
 
-static inline char* stringTrimEnd(char *string)
+static inline void stringIteratorDone(StringIterator *stringIterator)
 {
-  char *s;
+  assert(stringIterator != NULL);
 
-  s = string+strlen(string)-1;
-  while ((s >= string) && isspace(*s))
-  {
-    s--;
-  }
-  if (s >= string) s[0] = '\0';
-
-  return string;
+  UNUSED_VARIABLE(stringIterator);
 }
 
 /***********************************************************************\
-* Name   : stringTrim
-* Purpose: trim spaces at beginning and end of string
-* Input  : string - string
+* Name   : stringIteratorAtX
+* Purpose: get character (codepoint) from string iterator
+* Input  : stringIterator - string iterator
+*          i              - index 0..n-1)
 * Output : -
-* Return : trimmed string
+* Return : character
 * Notes  : -
 \***********************************************************************/
 
-static inline char* stringTrim(char *string)
+static inline Codepoint stringIteratorAt(StringIterator *stringIterator)
 {
-  char *s;
+  assert(stringIterator != NULL);
 
-  while (isspace(*string))
-  {
-    string++;
-  }
-
-  s = string+strlen(string)-1;
-  while ((s >= string) && isspace(*s))
-  {
-    s--;
-  }
-  if (s >= string) s[0] = '\0';
-
-  return string;
+  return stringIterator->codepoint;
 }
 
 /***********************************************************************\
-* Name   : stringFormat
-* Purpose: format string
-* Input  : string - string
-*          n      - size of string
-*          format - format string
-*          ...    - optional arguments
+* Name   : stringIteratorAtX
+* Purpose: get character (codepoint) from string iterator
+* Input  : stringIterator - string iterator
+*          i              - index (0..n-1)
 * Output : -
-* Return : destination string
-* Notes  : string is always NULL or NUL-terminated
+* Return : character
+* Notes  : -
 \***********************************************************************/
 
-static inline char* stringFormat(char *string, size_t n, const char *format, ...)
+static inline Codepoint stringIteratorAtX(StringIterator *stringIterator, size_t n)
 {
-  va_list arguments;
+  Codepoint codepoint;
+  size_t    nextIndex;
 
-  assert(string != NULL);
-  assert(n > 0);
-  assert(format != NULL);
+  assert(stringIterator != NULL);
 
-  va_start(arguments,format);
-  vsnprintf(string,n,format,arguments);
-  va_end(arguments);
+  codepoint = stringIterator->codepoint;
+  nextIndex = stringIterator->nextIndex;
+  while ((n > 0) && (stringIterator->s[nextIndex] != NUL))
+  {
+    codepoint = stringAtUTF8(stringIterator->s,nextIndex,&nextIndex);
+    n--;
+  }
 
-  return string;
+  return codepoint;
+}
+
+/***********************************************************************\
+* Name   : stringIteratorEnd
+* Purpose: check if string iterator end
+* Input  : stringIterator - string iterator
+* Output : -
+* Return : TRUE iff string iterator end (no more characters)
+* Notes  : -
+\***********************************************************************/
+
+static inline bool stringIteratorEnd(const StringIterator *stringIterator)
+{
+  assert(stringIterator != NULL);
+
+  return stringIterator->codepoint == 0x00000000;
+}
+
+/***********************************************************************\
+* Name   : stringIteratorNext
+* Purpose: increment string iterator
+* Input  : stringIterator - string iterator
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+static inline void stringIteratorNext(StringIterator *stringIterator)
+{
+  assert(stringIterator != NULL);
+
+  if (stringIterator->s[stringIterator->nextIndex] != NUL)
+  {
+    stringIterator->codepoint = stringAtUTF8(stringIterator->s,stringIterator->nextIndex,&stringIterator->nextIndex);
+  }
+  else
+  {
+    stringIterator->codepoint = 0x00000000;
+  }
+}
+
+/***********************************************************************\
+* Name   : stringIteratorNextX
+* Purpose: increment string iterator
+* Input  : stringIterator - string iterator
+*          n              - number of chracters
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+static inline void stringIteratorNextX(StringIterator *stringIterator, size_t n)
+{
+  assert(stringIterator != NULL);
+
+  while ((n > 0) && (stringIterator->s[stringIterator->nextIndex] != NUL))
+  {
+    stringIterator->codepoint = stringAtUTF8(stringIterator->s,stringIterator->nextIndex,&stringIterator->nextIndex);
+    n--;
+  }
+}
+
+/***********************************************************************\
+* Name   : stringIteratorGet
+* Purpose: get character (codepoint) from string iterator
+* Input  : stringIterator - string iterator
+* Output : -
+* Return : character
+* Notes  : -
+\***********************************************************************/
+
+static inline Codepoint stringIteratorGet(StringIterator *stringIterator)
+{
+  Codepoint codepoint;
+
+  assert(stringIterator != NULL);
+
+  codepoint = stringIterator->codepoint;
+  stringIteratorNext(stringIterator);
+
+  return codepoint;
 }
 
 /***********************************************************************\
@@ -2097,7 +2497,7 @@ static inline bool stringToInt(const char *string, int *i)
   assert(i != NULL);
 
   n = strtoll(string,&s,0);
-  if ((*s) == '\0')
+  if ((*s) == NUL)
   {
     (*i) = (int)n;
     return TRUE;
@@ -2128,7 +2528,7 @@ static inline bool stringToUInt(const char *string, uint *i)
   assert(i != NULL);
 
   n = strtoll(string,&s,0);
-  if ((*s) == '\0')
+  if ((*s) == NUL)
   {
     (*i) = (uint)n;
     return TRUE;
@@ -2159,7 +2559,7 @@ static inline bool stringToInt64(const char *string, int64 *l)
   assert(l != NULL);
 
   n = strtoll(string,&s,0);
-  if ((*s) == '\0')
+  if ((*s) == NUL)
   {
     (*l) = (int64)n;
     return TRUE;
@@ -2190,7 +2590,7 @@ static inline bool stringToUInt64(const char *string, uint64 *l)
   assert(l != NULL);
 
   n = strtoll(string,&s,0);
-  if ((*s) == '\0')
+  if ((*s) == NUL)
   {
     (*l) = (uint64)n;
     return TRUE;
@@ -2221,7 +2621,7 @@ static inline bool stringToDouble(const char *string, double *d)
   assert(d != NULL);
 
   n = strtod(string,&s);
-  if ((*s) == '\0')
+  if ((*s) == NUL)
   {
     (*d) = n;
     return TRUE;
@@ -2479,7 +2879,7 @@ void debugResourceCheck(void);
 
 void debugDumpStackTrace(FILE       *handle,
                          uint       indent,
-                         void const *stackTrace[],
+                         const void *stackTrace[],
                          uint       stackTraceSize,
                          uint       skipFrameCount
                         );
