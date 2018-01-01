@@ -8,7 +8,7 @@
 *
 \***********************************************************************/
 
-#define __SEMAPHORES_IMPLEMENTATION__
+#define __SEMAPHORES_IMPLEMENATION__
 
 /****************************** Includes *******************************/
 #include "config.h"
@@ -38,6 +38,9 @@
 /***************************** Constants *******************************/
 
 #ifndef NDEBUG
+  #define DEBUG_MAX_THREADS     64
+  #define DEBUG_MAX_SEMAPHORES  256
+
   #define DEBUG_FLAG_READ       FALSE
   #define DEBUG_FLAG_READ_WRITE FALSE
   #define DEBUG_FLAG_MODIFIED   FALSE
@@ -145,8 +148,9 @@
         pthread_mutex_unlock(&debugSemaphoreLock); \
         \
         clock_gettime(CLOCK_REALTIME,&__tp); \
-        __tp.tv_sec  = __tp.tv_sec+((__tp.tv_nsec/10000000L)+(timeout))/1000L; \
-        __tp.tv_nsec = __tp.tv_nsec+((timeout)%1000L)*10000000L; \
+        __tp.tv_nsec = __tp.tv_nsec+((timeout)%1000L)*1000000L; \
+        __tp.tv_sec  = __tp.tv_sec+((__tp.tv_nsec/1000000L)+(timeout))/1000L; \
+        __tp.tv_nsec %= 1000000L; \
         \
         if (debugFlag) fprintf(stderr,"%s, %4d: '%s' (%s) wait lock %s (timeout %ldms)\n",__FILE__,__LINE__,Thread_getCurrentName(),Thread_getCurrentIdString(),text,timeout); \
         if (pthread_mutex_timedlock(&semaphore->lock,&__tp) != 0) \
@@ -202,8 +206,9 @@
         assert(timeout != WAIT_FOREVER); \
         \
         clock_gettime(CLOCK_REALTIME,&__tp); \
-        __tp.tv_sec  = __tp.tv_sec+((__tp.tv_nsec/10000000L)+(timeout))/1000L; \
-        __tp.tv_nsec = __tp.tv_nsec+((timeout)%1000L)*10000000L; \
+        __tp.tv_nsec = __tp.tv_nsec+((timeout)%1000L)*1000000L; \
+        __tp.tv_sec  = __tp.tv_sec+((__tp.tv_nsec/1000000L)+(timeout))/1000L; \
+        __tp.tv_nsec %= 1000000L; \
         \
         if (debugFlag) fprintf(stderr,"%s, %4d: '%s' (%s) unlock+wait %s\n",__FILE__,__LINE__,Thread_getCurrentName(),Thread_getCurrentIdString(),text); \
         if (pthread_cond_timedwait(condition,mutex,&__tp) != 0) \
@@ -237,8 +242,9 @@
         struct timespec __tp; \
         \
         clock_gettime(CLOCK_REALTIME,&__tp); \
-        __tp.tv_sec  = __tp.tv_sec+((__tp.tv_nsec/10000000L)+(timeout))/1000L; \
-        __tp.tv_nsec = __tp.tv_nsec+((timeout)%1000L)*10000000L; \
+        __tp.tv_nsec = __tp.tv_nsec+((timeout)%1000L)*1000000L; \
+        __tp.tv_sec  = __tp.tv_sec+((__tp.tv_nsec/1000000L)+(timeout))/1000L; \
+        __tp.tv_nsec %= 1000000L; \
         \
         if (debugFlag) fprintf(stderr,"%s, %4d: '%s' (%s) wait lock %s\n",__FILE__,__LINE__,Thread_getCurrentName(),Thread_getCurrentIdString(),text); \
         if (WaitForSingleObject(semaphore,&__tp) != WAIT_OBJECT_0) \
@@ -292,8 +298,9 @@
         struct timespec __tp; \
         \
         clock_gettime(CLOCK_REALTIME,&__tp); \
+        __tp.tv_nsec = __tp.tv_nsec+((timeout)%1000L)*1000000L; \
+        __tp.tv_sec  = __tp.tv_sec+((__tp.tv_nsec/1000000L)+(timeout))/1000L; \
         __tp.tv_sec  = __tp.tv_sec+((__tp.tv_nsec/10000000L)+(timeout))/1000L; \
-        __tp.tv_nsec = __tp.tv_nsec+((timeout)%1000L)*10000000L; \
         \
         if (debugFlag) fprintf(stderr,"%s, %4d: '%s' (%s) unlock+wait %s\n",__FILE__,__LINE__,Thread_getCurrentName(),Thread_getCurrentIdString(),text); \
         if (pthread_cond_timedwait(condition,mutex,&__tp) != 0) \
@@ -333,8 +340,9 @@
         struct timespec __tp; \
         \
         clock_gettime(CLOCK_REALTIME,&__tp); \
-        __tp.tv_sec  = __tp.tv_sec+((__tp.tv_nsec/10000000L)+(timeout))/1000L; \
-        __tp.tv_nsec = __tp.tv_nsec+((timeout)%1000L)*10000000L; \
+        __tp.tv_nsec = __tp.tv_nsec+((timeout)%1000L)*1000000L; \
+        __tp.tv_sec  = __tp.tv_sec+((__tp.tv_nsec/1000000L)+(timeout))/1000L; \
+        __tp.tv_nsec %= 1000000L; \
         \
         if (pthread_mutex_timedlock(&semaphore->lock,&__tp) != 0) lockedFlag = FALSE; \
       } \
@@ -367,8 +375,9 @@
         struct timespec __tp; \
         \
         clock_gettime(CLOCK_REALTIME,&__tp); \
-        __tp.tv_sec  = __tp.tv_sec+((__tp.tv_nsec/10000000L)+(timeout))/1000L; \
-        __tp.tv_nsec = __tp.tv_nsec+((timeout)%1000L)*10000000L; \
+        __tp.tv_nsec = __tp.tv_nsec+((timeout)%1000L)*1000000L; \
+        __tp.tv_sec  = __tp.tv_sec+((__tp.tv_nsec/1000000L)+(timeout))/1000L; \
+        __tp.tv_nsec %= 1000000L; \
         \
         if (pthread_cond_timedwait(condition,mutex,&__tp) != 0) lockedFlag = FALSE; \
       } \
@@ -628,13 +637,13 @@ LOCAL_INLINE bool debugRemoveThreadInfo(__SemaphoreThreadInfo threadInfos[],
   if (i >= 0)
   {
     threadInfos[i] = threadInfos[(*threadInfoCount)-1];
+    memset(&threadInfos[(*threadInfoCount)-1],0,sizeof(__SemaphoreThreadInfo));
     (*threadInfoCount)--;
 
     return TRUE;
   }
   else
   {
-fprintf(stderr,"%s, %d: \n",__FILE__,__LINE__);
     return FALSE;
   }
 }
@@ -750,12 +759,77 @@ LOCAL const __SemaphoreThreadInfo *getPendingByThreadInfo(const Semaphore *semap
 }
 
 /***********************************************************************\
+* Name   : debugSemaphoreSetInit
+* Purpose: init semaphore set
+* Input  : semaphore         - semaphore set
+*          semaphoreCount    - number of semaphores variable
+*          addSemaphore      - initial semaphore
+* Output : semaphoreCount - new number of semaphores
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+LOCAL_INLINE void debugSemaphoreSetInit(const Semaphore *semaphores[], uint *semaphoreCount, const Semaphore *semaphore)
+{
+  semaphores[0]     = semaphore;
+  (*semaphoreCount) = 1;
+}
+
+/***********************************************************************\
+* Name   : debugSemaphoreSetContains
+* Purpose: check if semaphore is contained in semaphore set
+* Input  : semaphore         - semaphore set
+*          semaphoreCount    - number of semaphores
+*          semaphore         - semaphore to check
+* Output : -
+* Return : TRUE iff semaphore is contained in set
+* Notes  : -
+\***********************************************************************/
+
+LOCAL_INLINE bool debugSemaphoreSetContains(const Semaphore *semaphores[], uint semaphoreCount, const Semaphore *semaphore)
+{
+  uint i;
+
+  i = 0;
+  while ((i < semaphoreCount) && (semaphores[i] != semaphore))
+  {
+    i++;
+  }
+  
+  return i < semaphoreCount;
+}
+
+/***********************************************************************\
+* Name   : debugSemaphoreSetAdd
+* Purpose: add semaphore to semaphore set (avoid duplicates)
+* Input  : semaphore         - semaphore set
+*          semaphoreCount    - number of semaphores variable
+*          addSemaphore      - semaphore to add
+* Output : semaphoreCount - new number of semaphores
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+LOCAL_INLINE void debugSemaphoreSetAdd(const Semaphore *semaphores[], uint *semaphoreCount, const Semaphore *semaphore)
+{
+  uint n;
+
+  n = (*semaphoreCount);
+  if (!debugSemaphoreSetContains(semaphores,n,semaphore))
+  {
+    assert(n < DEBUG_MAX_SEMAPHORES);
+    semaphores[n] = semaphore;
+    (*semaphoreCount) = n+1;
+  }
+}
+
+/***********************************************************************\
 * Name   : debugCheckForDeadLock
 * Purpose: check for dead lock
-* Input  : fileName      - file name
-*          lineNb        - line number
-*          semaphore     - semaphore
-*          lockType      - lock types; see SemaphoreLockTypes
+* Input  : fileName  - file name
+*          lineNb    - line number
+*          semaphore - semaphore
+*          lockType  - lock types; see SemaphoreLockTypes
 * Output : -
 * Return : -
 * Notes  : -
@@ -767,74 +841,81 @@ LOCAL void debugCheckForDeadLock(const char         *fileName,
                                  SemaphoreLockTypes lockType
                                 )
 {
-  uint                        i;
+  uint                        i,j,k;
   const Semaphore             *otherSemaphore;
-  const __SemaphoreThreadInfo *lockedInfo,*pendingInfo;
+  const __SemaphoreThreadInfo *pendingInfo;
+  const Semaphore             *lockedSemaphores[DEBUG_MAX_SEMAPHORES];
+  uint                        lockedSemaphoreCount;
+  const Semaphore             *checkSemaphores[DEBUG_MAX_SEMAPHORES];
+  uint                        checkSemaphoreCount;
+  const Semaphore             *lockedSemaphore;
+  const Semaphore             *checkSemaphore;
 
   assert(semaphore != NULL);
 
+  UNUSED_VARIABLE(lockType);
+
   pthread_mutex_lock(&debugSemaphoreLock);
   {
-    // check all threads who currently own semaphore
-    for (i = 0; i < semaphore->lockedByCount; i++)
+//fprintf(stderr,"%s, %d: \n",__FILE__,__LINE__); asm("int3");
+//Semaphore_debugPrintInfo();
+    // get all locked semaphores of current thread
+    lockedSemaphoreCount = 0;
+    LIST_ITERATE(&debugSemaphoreList,otherSemaphore)
     {
-      // check if thread is pending for a semaphore which is owned by current thread
-      LIST_ITERATE(&debugSemaphoreList,otherSemaphore)
+      if (getLockedByThreadInfo(otherSemaphore,Thread_getCurrentId()) != NULL)
       {
-        lockedInfo  = getLockedByThreadInfo(otherSemaphore,Thread_getCurrentId());
-        pendingInfo = getPendingByThreadInfo(otherSemaphore,semaphore->lockedBy[i].threadId);
-        if (   (lockedInfo != NULL)
-            && (lockedInfo->lockType != lockType)
-            && (pendingInfo != NULL)
-           )
+        lockedSemaphores[lockedSemaphoreCount] = otherSemaphore; lockedSemaphoreCount++;
+      }
+    }
+
+    if (!debugSemaphoreSetContains(lockedSemaphores,lockedSemaphoreCount,semaphore))
+    {
+      // initial check requested semaphore
+      debugSemaphoreSetInit(checkSemaphores,&checkSemaphoreCount,semaphore);
+
+      /* check
+         - if some thread which locked check semaphore is pending for a semaphore locked by current thread -> dead lock
+         - all semaphores, too, some thread which locked current check semaphore is pending
+      */
+      i = 0;
+      while (i < checkSemaphoreCount)
+      {
+        assert(i < DEBUG_MAX_SEMAPHORES);
+        checkSemaphore = checkSemaphores[i];
+
+        for (j = 0; j < lockedSemaphoreCount; j++)
         {
-          fprintf(stderr,"Warning: DEAD LOCK at %s, line %lu\n",fileName,lineNb);
-          fprintf(stderr,"  Thread '%s' (%s)\n    locked '%s' %s (%s, line %lu) at %s, line %lu and\n    wait for '%s' %s (%s, line %lu) at %s, line %lu\n",
-                  Thread_getCurrentName(),
-                  Thread_getCurrentIdString(),
-                  otherSemaphore->name,
-                  SEMAPHORE_LOCK_TYPE_NAMES[lockedInfo->lockType],
-                  otherSemaphore->fileName,
-                  otherSemaphore->lineNb,
-                  lockedInfo->fileName,
-                  lockedInfo->lineNb,
-                  semaphore->name,
-                  SEMAPHORE_LOCK_TYPE_NAMES[pendingInfo->lockType],
-                  semaphore->fileName,
-                  semaphore->lineNb,
-                  fileName,
-                  lineNb
-                 );
-          if (!Thread_isCurrentThread(semaphore->lockedBy[i].threadId))
+          lockedSemaphore = lockedSemaphores[j];
+
+          // check if some thread which locked check semaphore is pending for a semaphore locked by current thread
+          for (k = 0; k < checkSemaphore->lockedByCount; k++)
           {
-            fprintf(stderr,"  Thread '%s' (%s)\n    locked '%s' %s (%s, line %lu) at %s, line %lu and\n    wait for '%s' %s (%s, line %lu) at %s, line %lu\n",
-                    Thread_getName(semaphore->lockedBy[i].threadId),
-                    Thread_getIdString(semaphore->lockedBy[i].threadId),
-                    semaphore->name,
-                    SEMAPHORE_LOCK_TYPE_NAMES[semaphore->lockedBy[i].lockType],
-                    semaphore->fileName,
-                    semaphore->lineNb,
-                    semaphore->lockedBy[i].fileName,
-                    semaphore->lockedBy[i].lineNb,
-                    otherSemaphore->name,
-                    SEMAPHORE_LOCK_TYPE_NAMES[pendingInfo->lockType],
-                    otherSemaphore->fileName,
-                    otherSemaphore->lineNb,
-                    pendingInfo->fileName,
-                    pendingInfo->lineNb
-                   );
+            pendingInfo = getPendingByThreadInfo(lockedSemaphore,checkSemaphore->lockedBy[k].threadId);
+            if (pendingInfo != NULL)
+            {
+              // DEAD LOCK!
+              Semaphore_debugPrintInfo();
+              HALT_INTERNAL_ERROR_AT(fileName,lineNb,"DEAD LOCK!");
+            }
+
+            // check all semaphores, too, some thread which locked current check semaphore is pending
+            LIST_ITERATE(&debugSemaphoreList,otherSemaphore)
+            {
+              pendingInfo = getPendingByThreadInfo(otherSemaphore,checkSemaphore->lockedBy[k].threadId);
+              if (pendingInfo != NULL)
+              {
+                debugSemaphoreSetAdd(checkSemaphores,&checkSemaphoreCount,otherSemaphore);
+              }
+            }
           }
-          fprintf(stderr,"  Stack trace:\n");
-          debugDumpCurrentStackTrace(stderr,2,1);
-          Semaphore_debugPrintInfo();
-HALT_INTERNAL_ERROR_AT(fileName,lineNb,"DEAD LOCK!");
-          break;
         }
+
+        i++;
       }
     }
   }
   pthread_mutex_unlock(&debugSemaphoreLock);
-//  __SEMAPHORE_REQUEST_UNLOCK(semaphore);
 }
 
 /***********************************************************************\
@@ -884,8 +965,8 @@ LOCAL bool lock(Semaphore          *semaphore,
                 long               timeout
                )
 #else /* not NDEBUG */
-LOCAL bool lock(const char         *fileName,
-                ulong              lineNb,
+LOCAL bool lock(const char         *__fileName__,
+                ulong              __lineNb__,
                 Semaphore          *semaphore,
                 SemaphoreLockTypes semaphoreLockType,
                 long               timeout
@@ -915,7 +996,7 @@ LOCAL bool lock(const char         *fileName,
 
         #ifndef NDEBUG
           // debug trace code: store pending information
-          debugAddPendingThreadInfo(semaphore,semaphoreLockType,fileName,lineNb);
+          debugAddPendingThreadInfo(semaphore,semaphoreLockType,__fileName__,__lineNb__);
         #endif /* not NDEBUG */
       }
       __SEMAPHORE_REQUEST_UNLOCK(semaphore);
@@ -933,7 +1014,7 @@ LOCAL bool lock(const char         *fileName,
 
             #ifndef NDEBUG
               // debug trace code: remove pending information
-              debugRemovePendingThreadInfo(semaphore,fileName,lineNb);
+              debugRemovePendingThreadInfo(semaphore,__fileName__,__lineNb__);
             #endif /* not NDEBUG */
           }
           __SEMAPHORE_REQUEST_UNLOCK(semaphore);
@@ -955,8 +1036,8 @@ LOCAL bool lock(const char         *fileName,
                                 Thread_getCurrentName(),
                                 Thread_getCurrentIdString(),
                                 semaphore->name,
-                                fileName,
-                                lineNb,
+                                __fileName__,
+                                __lineNb__,
                                 semaphore->lockedBy[semaphore->lockedByCount-1].fileName,
                                 semaphore->lockedBy[semaphore->lockedByCount-1].lineNb
                                );
@@ -985,7 +1066,7 @@ LOCAL bool lock(const char         *fileName,
 
                 #ifndef NDEBUG
                   // debug trace code: remove pending information
-                  debugRemovePendingThreadInfo(semaphore,fileName,lineNb);
+                  debugRemovePendingThreadInfo(semaphore,__fileName__,__lineNb__);
                 #endif /* not NDEBUG */
 
                 semaphore->readWriteRequestCount--;
@@ -1017,8 +1098,8 @@ LOCAL bool lock(const char         *fileName,
 
           #ifndef NDEBUG
             // debug trace code: remove pending information, store locked information
-            debugRemovePendingThreadInfo(semaphore,fileName,lineNb);
-            debugAddLockedThreadInfo(semaphore,semaphoreLockType,fileName,lineNb);
+            debugRemovePendingThreadInfo(semaphore,__fileName__,__lineNb__);
+            debugAddLockedThreadInfo(semaphore,semaphoreLockType,__fileName__,__lineNb__);
           #endif /* not NDEBUG */
 
           semaphore->readRequestCount--;
@@ -1039,7 +1120,7 @@ LOCAL bool lock(const char         *fileName,
 
         #ifndef NDEBUG
           // debug trace code: store pending information
-          debugAddPendingThreadInfo(semaphore,semaphoreLockType,fileName,lineNb);
+          debugAddPendingThreadInfo(semaphore,semaphoreLockType,__fileName__,__lineNb__);
         #endif /* not NDEBUG */
       }
       __SEMAPHORE_REQUEST_UNLOCK(semaphore);
@@ -1057,7 +1138,7 @@ LOCAL bool lock(const char         *fileName,
 
             #ifndef NDEBUG
               // debug trace code: remove pending information
-              debugRemovePendingThreadInfo(semaphore,fileName,lineNb);
+              debugRemovePendingThreadInfo(semaphore,__fileName__,__lineNb__);
             #endif /* not NDEBUG */
 
           }
@@ -1085,7 +1166,7 @@ LOCAL bool lock(const char         *fileName,
 
               #ifndef NDEBUG
                 // debug trace code: remove pending information
-                debugRemovePendingThreadInfo(semaphore,fileName,lineNb);
+                debugRemovePendingThreadInfo(semaphore,__fileName__,__lineNb__);
               #endif /* not NDEBUG */
             }
             __SEMAPHORE_REQUEST_UNLOCK(semaphore);
@@ -1115,8 +1196,8 @@ LOCAL bool lock(const char         *fileName,
 
         #ifndef NDEBUG
           // debug trace code: remove pending information, store locked information
-          debugRemovePendingThreadInfo(semaphore,fileName,lineNb);
-          debugAddLockedThreadInfo(semaphore,semaphoreLockType,fileName,lineNb);
+          debugRemovePendingThreadInfo(semaphore,__fileName__,__lineNb__);
+          debugAddLockedThreadInfo(semaphore,semaphoreLockType,__fileName__,__lineNb__);
         #endif /* not NDEBUG */
       }
       __SEMAPHORE_REQUEST_UNLOCK(semaphore);
@@ -1143,7 +1224,10 @@ LOCAL bool lock(const char         *fileName,
 #ifdef NDEBUG
 LOCAL void unlock(Semaphore *semaphore)
 #else /* not NDEBUG */
-LOCAL void unlock(const char *fileName, ulong lineNb, Semaphore *semaphore)
+LOCAL void unlock(const char *__fileName__,
+                  ulong      __lineNb__,
+                  Semaphore  *semaphore
+                 )
 #endif /* NDEBUG */
 {
   assert(semaphore != NULL);
@@ -1174,7 +1258,7 @@ LOCAL void unlock(const char *fileName, ulong lineNb, Semaphore *semaphore)
           // debug lock code: remove lock information
           __SEMAPHORE_REQUEST_LOCK(semaphore);
           {
-            debugRemoveLockedThreadInfo(semaphore,fileName,lineNb);
+            debugRemoveLockedThreadInfo(semaphore,__fileName__,__lineNb__);
           }
           __SEMAPHORE_REQUEST_UNLOCK(semaphore);
         #endif /* not NDEBUG */
@@ -1200,7 +1284,7 @@ LOCAL void unlock(const char *fileName, ulong lineNb, Semaphore *semaphore)
         // debug lock code: remove lock information
         __SEMAPHORE_REQUEST_LOCK(semaphore);
         {
-          debugRemoveLockedThreadInfo(semaphore,fileName,lineNb);
+          debugRemoveLockedThreadInfo(semaphore,__fileName__,__lineNb__);
         }
         __SEMAPHORE_REQUEST_UNLOCK(semaphore);
       #endif /* not NDEBUG */
@@ -1231,8 +1315,8 @@ LOCAL bool waitModified(Semaphore *semaphore,
                         long      timeout
                        )
 #else /* not NDEBUG */
-LOCAL bool waitModified(const char *fileName,
-                        ulong      lineNb,
+LOCAL bool waitModified(const char *__fileName__,
+                        ulong      __lineNb__,
                         Semaphore  *semaphore,
                         long       timeout
                        )
@@ -1273,7 +1357,7 @@ LOCAL bool waitModified(const char *fileName,
 
         #ifndef NDEBUG
           // debug trace code: temporary remove locked information
-          debugRemoveLockedThreadInfo(semaphore,fileName,lineNb);
+          debugRemoveLockedThreadInfo(semaphore,__fileName__,__lineNb__);
         #endif /* not NDEBUG */
 
         if (timeout != WAIT_FOREVER)
@@ -1305,7 +1389,7 @@ LOCAL bool waitModified(const char *fileName,
 
         #ifndef NDEBUG
           // debug trace code: revert temporary remove locked information
-          debugAddLockedThreadInfo(semaphore,semaphore->lockType,fileName,lineNb);
+          debugAddLockedThreadInfo(semaphore,semaphore->lockType,__fileName__,__lineNb__);
         #endif /* not NDEBUG */
       }
       __SEMAPHORE_UNLOCK(semaphore,DEBUG_FLAG_READ,"R",semaphore->readLockCount);
@@ -1389,7 +1473,8 @@ bool Semaphore_init(Semaphore *semaphore)
 bool __Semaphore_init(const char *__fileName__,
                       ulong      __lineNb__,
                       const char *name,
-                      Semaphore  *semaphore)
+                      Semaphore  *semaphore
+                     )
 #endif /* NDEBUG */
 {
   assert(semaphore != NULL);
@@ -1446,7 +1531,7 @@ bool __Semaphore_init(const char *__fileName__,
       semaphore->fileName       = __fileName__;
       semaphore->lineNb         = __lineNb__;
       semaphore->name           = name;
-//      memset(semaphore->lockedBy,0,sizeof(semaphore->lockedBy));
+      memset(semaphore->lockedBy,0,sizeof(semaphore->lockedBy));
       semaphore->lockedByCount  = 0;
       semaphore->pendingByCount = 0;
 
@@ -1455,33 +1540,22 @@ bool __Semaphore_init(const char *__fileName__,
     pthread_mutex_unlock(&debugSemaphoreLock);
   #endif /* not NDEBUG */
 
-  #ifndef NDEBUG
-    DEBUG_ADD_RESOURCE_TRACEX(__fileName__,__lineNb__,semaphore,sizeof(Semaphore));
-  #else /* NDEBUG */
+  #ifdef NDEBUG
     DEBUG_ADD_RESOURCE_TRACE(semaphore,sizeof(Semaphore));
+  #else /* not NDEBUG */
+    DEBUG_ADD_RESOURCE_TRACEX(__fileName__,__lineNb__,semaphore,sizeof(Semaphore));
   #endif /* not NDEBUG */
 
   return TRUE;
 }
 
-#ifdef NDEBUG
 void Semaphore_done(Semaphore *semaphore)
-#else /* not NDEBUG */
-void __Semaphore_done(const char *__fileName__,
-                      ulong      __lineNb__,
-                      Semaphore *semaphore
-                     )
-#endif /* NDEBUG */
 {
   bool lockedFlag;
 
   assert(semaphore != NULL);
 
-  #ifdef NDEBUG
-    DEBUG_REMOVE_RESOURCE_TRACE(semaphore,sizeof(Semaphore));
-  #else /* not NDEBUG */
-    DEBUG_REMOVE_RESOURCE_TRACEX(__fileName__,__lineNb__,semaphore,sizeof(Semaphore));
-  #endif /* NDEBUG */
+  DEBUG_REMOVE_RESOURCE_TRACE(semaphore,sizeof(Semaphore));
 
   #ifndef NDEBUG
     pthread_once(&debugSemaphoreInitFlag,debugSemaphoreInit);
@@ -1545,22 +1619,11 @@ Semaphore *__Semaphore_new(const char *__fileName__,
   return semaphore;
 }
 
-#ifdef NDEBUG
 void Semaphore_delete(Semaphore *semaphore)
-#else /* not NDEBUG */
-void __Semaphore_delete(const char *fileName,
-                        ulong      lineNb,
-                        Semaphore *semaphore
-                       )
-#endif /* NDEBUG */
 {
   assert(semaphore != NULL);
 
-  #ifdef NDEBUG
-    Semaphore_done(semaphore);
-  #else /* not NDEBUG */
-    __Semaphore_done(fileName,lineNb,semaphore);
-  #endif /* NDEBUG */
+  Semaphore_done(semaphore);
   free(semaphore);
 }
 
@@ -1579,11 +1642,7 @@ bool __Semaphore_lock(const char         *__fileName__,
 #endif /* NDEBUG */
 {
   assert(semaphore != NULL);
-  #ifndef NDEBUG
-    DEBUG_CHECK_RESOURCE_TRACEX(__fileName__,__lineNb__,semaphore);
-  #else /* NDEBUG */
-    DEBUG_CHECK_RESOURCE_TRACE(semaphore);
-  #endif /* not NDEBUG */
+  DEBUG_CHECK_RESOURCE_TRACE(semaphore);
 
   #ifdef NDEBUG
     return lock(semaphore,semaphoreLockType,timeout);
@@ -1595,18 +1654,10 @@ bool __Semaphore_lock(const char         *__fileName__,
 #ifdef NDEBUG
 void Semaphore_unlock(Semaphore *semaphore)
 #else /* not NDEBUG */
-void __Semaphore_unlock(const char *__fileName__,
-                        ulong      __lineNb__,
-                        Semaphore  *semaphore
-                       )
+void __Semaphore_unlock(const char *__fileName__, ulong __lineNb__, Semaphore *semaphore)
 #endif /* NDEBUG */
 {
   assert(semaphore != NULL);
-  #ifndef NDEBUG
-    DEBUG_CHECK_RESOURCE_TRACEX(__fileName__,__lineNb__,semaphore);
-  #else /* NDEBUG */
-    DEBUG_CHECK_RESOURCE_TRACE(semaphore);
-  #endif /* not NDEBUG */
 
   #ifdef NDEBUG
     unlock(semaphore);
@@ -1636,11 +1687,7 @@ bool __Semaphore_waitModified(const char *__fileName__,
 #endif /* NDEBUG */
 {
   assert(semaphore != NULL);
-  #ifndef NDEBUG
-    DEBUG_CHECK_RESOURCE_TRACEX(__fileName__,__lineNb__,semaphore);
-  #else /* NDEBUG */
-    DEBUG_CHECK_RESOURCE_TRACE(semaphore);
-  #endif /* not NDEBUG */
+  DEBUG_CHECK_RESOURCE_TRACE(semaphore);
 
   if (!semaphore->endFlag)
   {
