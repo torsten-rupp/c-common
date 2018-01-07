@@ -164,8 +164,8 @@ bool MsgQueue_get(MsgQueue *msgQueue, void *msg, ulong *size, ulong maxSize, lon
 bool MsgQueue_put(MsgQueue *msgQueue, const void *msg, ulong size);
 
 /***********************************************************************\
-* Name   : MsgQueue_count
-* Purpose: get number of messages in queue
+* Name   : MsgQueue_isEmpty
+* Purpose: check if message queue is empty
 * Input  : msgQueue - message queue
 * Output : -
 * Return : TRUE iff message queue is empty
@@ -191,9 +191,9 @@ INLINE bool MsgQueue_isEmpty(const MsgQueue *msgQueue)
 * Notes  : -
 \***********************************************************************/
 
-ulong MsgQueue_count(const MsgQueue *msgQueue);
+INLINE ulong MsgQueue_count(const MsgQueue *msgQueue);
 #if defined(NDEBUG) || defined(__MSGQUEUES_IMPLEMENATION__)
-ulong MsgQueue_count(const MsgQueue *msgQueue)
+INLINE ulong MsgQueue_count(const MsgQueue *msgQueue)
 {
   assert(msgQueue != NULL);
 
