@@ -31,10 +31,22 @@
 #ifdef HAVE_LIBINTL_H
   #include <libintl.h>
 #endif
+#if defined(HAVE_PCRE)
+  #include <pcreposix.h>
+#elif defined(HAVE_REGEX_H)
+  #include <regex.h>
+#else
+  #warning No regular expression library available!
+#endif /* HAVE_PCRE || HAVE_REGEX_H */
 #ifdef HAVE_BACKTRACE
   #include <execinfo.h>
 #endif
 #include <assert.h>
+
+#if   defined(PLATFORM_LINUX)
+#elif defined(PLATFORM_WINDOWS)
+  #include <intrin.h>
+#endif /* PLATFORM_... */
 
 #include "errors.h"
 
@@ -227,18 +239,18 @@ typedef enum
 // base datatypes
 typedef uint8_t             byte;
 
-typedef unsigned char       bool8;
-typedef unsigned int        bool32;
+typedef uint8_t             bool8;
+typedef uint32_t            bool32;
 typedef char                char8;
 typedef unsigned char       uchar8;
-typedef char                int8;
-typedef short int           int16;
-typedef int                 int32;
-typedef long long int       int64;
-typedef unsigned char       uint8;
-typedef unsigned short int  uint16;
-typedef unsigned int        uint32;
-typedef unsigned long long  uint64;
+typedef int8_t              int8;
+typedef int16_t             int16;
+typedef int32_t             int32;
+typedef int64_t             int64;
+typedef uint8_t             uint8;
+typedef uint16_t            uint16;
+typedef uint32_t            uint32;
+typedef uint64_t            uint64;
 typedef void                void32;
 
 // mask+shift data
@@ -608,6 +620,18 @@ typedef bool(*ResourceDumpInfoFunction)(const char *variableName,
   ((((byte*)(set))[bit/8] & (1 << (bit%8))) != 0)
 
 /***********************************************************************\
+* Name   : ATOMIC_INCREMENT, ATOMIC_DECREMENT
+* Purpose: atomic increment/decrement value by 1
+* Input  : n - value
+* Output : -
+* Return : new value
+* Notes  : -
+\***********************************************************************/
+
+#define ATOMIC_INCREMENT(n) atomicIncrement(&(n), 1)
+#define ATOMIC_DECREMENT(n) atomicIncrement(&(n),-1)
+
+/***********************************************************************\
 * Name   : IS_NAN, IS_INF
 * Purpose: check is NaN, infinite
 * Input  : d - number
@@ -911,10 +935,10 @@ typedef bool(*ResourceDumpInfoFunction)(const char *variableName,
   } \
   while (0)
 
-#define HALT_INSUFFICIENT_MEMORY() \
+#define HALT_INSUFFICIENT_MEMORY(args...) \
   do \
   { \
-     __abort(HALT_PREFIX_FATAL_ERROR,"Insufficient memory"); \
+     __abort(HALT_PREFIX_FATAL_ERROR,"Insufficient memory", ## args); \
   } \
  while (0)
 
@@ -1030,6 +1054,21 @@ typedef bool(*ResourceDumpInfoFunction)(const char *variableName,
    exit(errorLevel);\
   } \
   while (0)
+
+/***********************************************************************\
+* Name   : MEMSET, MEMCLEAR
+* Purpose: set/clear memory macros
+* Input  : p     - pointer
+*          value - value
+*          size  - size (in bytes)
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+#define MEMSET(p,value,size) memset(p,value,size)
+
+#define MEMCLEAR(p,size) memset(p,0,size)
 
 /***********************************************************************\
 * Name   : _
@@ -1298,6 +1337,22 @@ typedef bool(*ResourceDumpInfoFunction)(const char *variableName,
 
 #endif /* not NDEBUG */
 
+#ifdef HAVE_BACKTRACE
+  #define BACKTRACE(stackTrace,stackTraceSize) \
+    do \
+    { \
+      (stackTraceSize) = backtrace((void*)(stackTrace),SIZE_OF_ARRAY(stackTrace)); \
+    } \
+    while (0)
+#else /* not HAVE_BACKTRACE */
+  #define BACKTRACE(stackTrace,stackTraceSize) \
+    do \
+    { \
+      (stackTraceSize) = 0; \
+    } \
+    while (0)
+#endif /* HAVE_BACKTRACE */
+
 /**************************** Functions ********************************/
 
 #ifdef __cplusplus
@@ -1351,12 +1406,42 @@ unsigned long lcm(unsigned long a, unsigned long b);
 /*---------------------------------------------------------------------*/
 
 /***********************************************************************\
+* Name   : getCycleCounter
+* Purpose: get CPU cycle counter
+* Input  : -
+* Output : -
+* Return : cycle counter
+* Notes  : -
+\***********************************************************************/
+
+#ifdef PLATFORM_LINUX
+static inline uint64 getCycleCounter(void)
+{
+  #if defined(__x86_64__) || defined(__i386)
+    unsigned int l,h;
+
+    asm __volatile__ ("rdtsc" : "=a" (l), "=d" (h));
+
+    return ((uint64)h << 32) | ((uint64)l << 0);
+  #else
+    return 0LL;
+  #endif
+}
+#elif PLATFORM_WINDOWS
+#include <intrin.h>
+static inline uint64 rdtsc(void)
+{
+  return __rdtsc();
+}
+#endif /* PLATFORM_... */
+
+/***********************************************************************\
 * Name   : atomicIncrement
 * Purpose: atomic increment value
 * Input  : n - value
 *          d - delta
 * Output : -
-* Return : new value
+* Return : old value
 * Notes  : -
 \***********************************************************************/
 
@@ -1364,7 +1449,24 @@ static inline uint atomicIncrement(uint *n, int d)
 {
   assert(n != NULL);
 
-  return __sync_add_and_fetch(n,d);
+  return __sync_fetch_and_add(n,d);
+}
+
+/***********************************************************************\
+* Name   : atomicCompareSwap
+* Purpose: atomic increment value
+* Input  : n                 - value
+*          oldValue,newValue - old/new value
+* Output : -
+* Return : TURE iff swapped
+* Notes  : -
+\***********************************************************************/
+
+static inline bool atomicCompareSwap(uint *n, uint oldValue, uint newValue)
+{
+  assert(n != NULL);
+
+  return __sync_bool_compare_and_swap(n,oldValue,newValue);
 }
 
 /***********************************************************************\
@@ -1778,6 +1880,39 @@ static inline double normDegree360(double n)
 /*---------------------------------------------------------------------*/
 
 /***********************************************************************\
+* Name   : stringClear
+* Purpose: clear string
+* Input  : s - string
+* Output : -
+* Return : string
+* Notes  : string is always NUL-terminated
+\***********************************************************************/
+
+static inline char *stringClear(char *s)
+{
+  if (s != NULL)
+  {
+    (*s) = NUL;
+  }
+
+  return s;
+}
+
+/***********************************************************************\
+* Name   : stringLength
+* Purpose: get string length
+* Input  : s - string
+* Output : -
+* Return : string length or 0
+* Notes  : -
+\***********************************************************************/
+
+static inline size_t stringLength(const char *s)
+{
+  return (s != NULL) ? strlen(s) : 0;
+}
+
+/***********************************************************************\
 * Name   : stringEquals
 * Purpose: compare strings for equal
 * Input  : s1, s2 - strings
@@ -1847,25 +1982,6 @@ static inline bool stringStartsWithIgnoreCase(const char *s, const char *prefix)
 static inline bool stringIsEmpty(const char *s)
 {
   return (s == NULL) || (s[0] == NUL);
-}
-
-/***********************************************************************\
-* Name   : stringClear
-* Purpose: clear string
-* Input  : s - string
-* Output : -
-* Return : string
-* Notes  : string is always NUL-terminated
-\***********************************************************************/
-
-static inline char *stringClear(char *s)
-{
-  if (s != NULL)
-  {
-    (*s) = NUL;
-  }
-
-  return s;
 }
 
 /***********************************************************************\
@@ -2054,20 +2170,6 @@ static inline char* stringTrim(char *string)
   if (s >= string) s[0] = NUL;
 
   return string;
-}
-
-/***********************************************************************\
-* Name   : stringLength
-* Purpose: get string length
-* Input  : s - string
-* Output : -
-* Return : string length or 0
-* Notes  : -
-\***********************************************************************/
-
-static inline size_t stringLength(const char *s)
-{
-  return (s != NULL) ? strlen(s) : 0;
 }
 
 /***********************************************************************\
@@ -2633,6 +2735,56 @@ static inline bool stringToDouble(const char *string, double *d)
   }
 }
 
+/***********************************************************************\
+* Name   : stringMatch
+* Purpose: match string
+* Input  : string  - string
+*          pattern - pattern
+* Output : -
+* Return : TRUE iff pattern match with string
+* Notes  :
+\***********************************************************************/
+
+static inline bool stringMatch(const char *string, const char *pattern)
+{
+  bool matchFlag;
+  #if defined(HAVE_PCRE) || defined(HAVE_REGEX_H)
+    regex_t regex;
+  #endif /* HAVE_PCRE || HAVE_REGEX_H */
+
+  assert(pattern != NULL);
+
+  matchFlag = FALSE;
+
+  if (string != NULL)
+  {
+    #if defined(HAVE_PCRE) || defined(HAVE_REGEX_H)
+      // compile pattern
+      if (regcomp(&regex,pattern,REG_ICASE|REG_EXTENDED) == 0)
+      {
+        // match
+        matchFlag = (regexec(&regex,
+                             string,
+                             0,  // subMatchCount
+                             NULL,  // subMatches
+                             0  // eflags
+                            ) == 0
+                    );
+
+        // free resources
+        regfree(&regex);
+      }
+    #else /* not HAVE_PCRE || HAVE_REGEX_H */
+      UNUSED_VARIABLE(string);
+      UNUSED_VARIABLE(pattern);
+
+      matchFlag = FALSE;
+    #endif /* HAVE_PCRE || HAVE_REGEX_H */
+  }
+
+  return matchFlag;
+}
+
 /*---------------------------------------------------------------------*/
 
 /***********************************************************************\
@@ -2877,11 +3029,11 @@ void debugResourceCheck(void);
 * Notes  : -
 \***********************************************************************/
 
-void debugDumpStackTrace(FILE       *handle,
-                         uint       indent,
-                         const void *stackTrace[],
-                         uint       stackTraceSize,
-                         uint       skipFrameCount
+void debugDumpStackTrace(FILE               *handle,
+                         uint               indent,
+                         void const * const stackTrace[],
+                         uint               stackTraceSize,
+                         uint               skipFrameCount
                         );
 
 /***********************************************************************\
