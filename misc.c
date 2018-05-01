@@ -876,8 +876,8 @@ String Misc_formatDateTime(String string, uint64 dateTime, const char *format)
   while (length == 0);
   buffer[length] = '\0';
 
-  // set string
-  String_setBuffer(string,buffer,length);
+  // append to string
+  String_appendBuffer(string,buffer,length);
 
   // free resources
   free(buffer);
@@ -1000,7 +1000,7 @@ String Misc_getCurrentUserName(String string)
 
 uint Misc_getId(void)
 {
-  static uint id = 0;
+  static uint id = 1;
 
   return atomicIncrement(&id,1);
 }
@@ -1229,19 +1229,19 @@ String Misc_expandMacros(String           string,
                 switch (macros[j].type)
                 {
                   case TEXT_MACRO_TYPE_INTEGER:
-                    stringSet(format,"%d",sizeof(format));
+                    stringSet(format,sizeof(format),"%d");
                     break;
                   case TEXT_MACRO_TYPE_INTEGER64:
-                    stringSet(format,"%lld",sizeof(format));
+                    stringSet(format,sizeof(format),"%lld");
                     break;
                   case TEXT_MACRO_TYPE_DOUBLE:
-                    stringSet(format,"%lf",sizeof(format));
+                    stringSet(format,sizeof(format),"%lf");
                     break;
                   case TEXT_MACRO_TYPE_CSTRING:
-                    stringSet(format,"%s",sizeof(format));
+                    stringSet(format,sizeof(format),"%s");
                     break;
                   case TEXT_MACRO_TYPE_STRING:
-                    stringSet(format,"%S",sizeof(format));
+                    stringSet(format,sizeof(format),"%S");
                     break;
                   #ifndef NDEBUG
                     default:
@@ -1255,19 +1255,19 @@ String Misc_expandMacros(String           string,
               switch (macros[j].type)
               {
                 case TEXT_MACRO_TYPE_INTEGER:
-                  String_format(expanded,format,macros[j].value.i);
+                  String_appendFormat(expanded,format,macros[j].value.i);
                   break;
                 case TEXT_MACRO_TYPE_INTEGER64:
-                  String_format(expanded,format,macros[j].value.l);
+                  String_appendFormat(expanded,format,macros[j].value.l);
                   break;
                 case TEXT_MACRO_TYPE_DOUBLE:
-                  String_format(expanded,format,macros[j].value.d);
+                  String_appendFormat(expanded,format,macros[j].value.d);
                   break;
                 case TEXT_MACRO_TYPE_CSTRING:
-                  String_format(expanded,format,macros[j].value.s);
+                  String_appendFormat(expanded,format,macros[j].value.s);
                   break;
                 case TEXT_MACRO_TYPE_STRING:
-                  String_format(expanded,format,macros[j].value.string);
+                  String_appendFormat(expanded,format,macros[j].value.string);
                   break;
                 #ifndef NDEBUG
                   default:
@@ -1302,11 +1302,11 @@ String Misc_expandMacros(String           string,
             // get default format if no format given
             if (stringIsEmpty(format))
             {
-              stringSet(format,"%s",sizeof(format));
+              stringSet(format,sizeof(format),"%s");
             }
 
             // expand macro into string
-            String_format(expanded,format,"");
+            String_appendFormat(expanded,format,"");
             break;
           case EXPAND_MACRO_MODE_PATTERN:
             // expand macro into pattern
@@ -1493,7 +1493,7 @@ Errors Misc_executeScript(const char        *script,
   char const      *arguments[3];
 
   error = ERROR_NONE;
-  if (script != NULL)
+  if (!stringIsEmpty(script))
   {
     command     = String_new();
     tmpFileName = String_new();
@@ -1950,7 +1950,7 @@ String Misc_hexEncode(String string, const byte *data, uint dataLength)
 
   for (i = 0; i < dataLength; i++)
   {
-    String_format(string,"%02x",data[i]);
+    String_appendFormat(string,"%02x",data[i]);
   }
 
   return string;
