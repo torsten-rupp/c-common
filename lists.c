@@ -23,7 +23,7 @@
 #endif
 #include <assert.h>
 
-#include "global.h"
+#include "common/global.h"
 
 #include "lists.h"
 
@@ -541,9 +541,9 @@ Node *__List_deleteNode(const char *__fileName__, ulong __lineNb__, Node *node)
                );
         #ifdef HAVE_BACKTRACE
           fprintf(stderr,"  allocated at\n");
-          debugDumpStackTrace(stderr,4,debugListNode->stackTrace,debugListNode->stackTraceSize,0);
+          debugDumpStackTrace(stderr,4,DEBUG_DUMP_STACKTRACE_OUTPUT_TYPE_NONE,debugListNode->stackTrace,debugListNode->stackTraceSize,0);
           fprintf(stderr,"  deleted at\n");
-          debugDumpStackTrace(stderr,4,debugListNode->deleteStackTrace,debugListNode->deleteStackTraceSize,0);
+          debugDumpStackTrace(stderr,4,DEBUG_DUMP_STACKTRACE_OUTPUT_TYPE_NONE,debugListNode->deleteStackTrace,debugListNode->deleteStackTraceSize,0);
         #endif /* HAVE_BACKTRACE */
         HALT_INTERNAL_ERROR("delete node");
       }
@@ -565,9 +565,9 @@ Node *__List_deleteNode(const char *__fileName__, ulong __lineNb__, Node *node)
                  );
           #ifdef HAVE_BACKTRACE
             fprintf(stderr,"  allocated at\n");
-            debugDumpStackTrace(stderr,4,debugListNode->stackTrace,debugListNode->stackTraceSize,0);
+            debugDumpStackTrace(stderr,4,DEBUG_DUMP_STACKTRACE_OUTPUT_TYPE_NONE,debugListNode->stackTrace,debugListNode->stackTraceSize,0);
             fprintf(stderr,"  deleted at\n");
-            debugDumpStackTrace(stderr,4,debugListNode->deleteStackTrace,debugListNode->deleteStackTraceSize,0);
+            debugDumpStackTrace(stderr,4,DEBUG_DUMP_STACKTRACE_OUTPUT_TYPE_NONE,debugListNode->deleteStackTrace,debugListNode->deleteStackTraceSize,0);
           #endif /* HAVE_BACKTRACE */
           HALT_INTERNAL_ERROR("delete node");
         }
@@ -598,7 +598,7 @@ Node *__List_deleteNode(const char *__fileName__, ulong __lineNb__, Node *node)
                 __lineNb__
                );
         #ifdef HAVE_BACKTRACE
-          debugDumpCurrentStackTrace(stderr,0,0);
+          debugDumpCurrentStackTrace(stderr,0,DEBUG_DUMP_STACKTRACE_OUTPUT_TYPE_NONE,0);
         #endif /* HAVE_BACKTRACE */
         HALT_INTERNAL_ERROR("delete node");
       }
@@ -905,54 +905,6 @@ void __List_append(const char *fileName,
   #else /* not NDEBUG */
     __List_insert(fileName,lineNb,list,node,NULL);
   #endif /* NDEBUG */
-}
-
-#ifdef NDEBUG
-bool List_appendUniq(void                   *list,
-                     void                   *node,
-                     ListNodeEqualsFunction listNodeEqualsFunction,
-                     void                   *listNodeEqualsUserData
-                    )
-#else /* not NDEBUG */
-bool __List_appendUniq(const char             *fileName,
-                       ulong                  lineNb,
-                       void                   *list,
-                       void                   *node,
-                       ListNodeEqualsFunction listNodeEqualsFunction,
-                       void                   *listNodeEqualsUserData
-                      )
-#endif /* NDEBUG */
-{
-  bool existsFlag;
-  Node *existingNode;
-
-  assert(list != NULL);
-  assert(node != NULL);
-  assert(listNodeEqualsFunction != NULL);
-
-  existsFlag = FALSE;
-  LIST_ITERATE((List*)list,existingNode)
-  {
-    if (listNodeEqualsFunction(existingNode,listNodeEqualsUserData))
-    {
-      existsFlag = TRUE;
-      break;
-    }
-  }
-
-  if (!existsFlag)
-  {
-    #ifdef NDEBUG
-      List_append(list,node);
-    #else /* not NDEBUG */
-      __List_append(fileName,lineNb,list,node);
-    #endif /* NDEBUG */
-    return TRUE;
-  }
-  else
-  {
-    return FALSE;
-  }
 }
 
 void *List_remove(void *list,
@@ -1287,7 +1239,7 @@ void List_debugDumpInfo(FILE *handle)
              );
       #ifdef HAVE_BACKTRACE
         fprintf(stderr,"  allocated at\n");
-        debugDumpStackTrace(handle,4,debugListNode->stackTrace,debugListNode->stackTraceSize,0);
+        debugDumpStackTrace(handle,4,DEBUG_DUMP_STACKTRACE_OUTPUT_TYPE_NONE,debugListNode->stackTrace,debugListNode->stackTraceSize,0);
       #endif /* HAVE_BACKTRACE */
     }
   }
