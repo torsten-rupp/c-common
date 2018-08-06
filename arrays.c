@@ -16,13 +16,13 @@
 #include <stdio.h>
 #include <assert.h>
 
-#include "global.h"
+#include "common/global.h"
 #ifndef NDEBUG
   #include <pthread.h>
   #include "lists.h"
 #endif /* not NDEBUG */
 
-#include "arrays.h"
+#include "common/arrays.h"
 
 /****************** Conditional compilation switches *******************/
 #define HALT_ON_INSUFFICIENT_MEMORY
@@ -197,7 +197,7 @@ void Array_done(Array *array)
                 array
                );
         #ifdef HAVE_BACKTRACE
-          debugDumpCurrentStackTrace(stderr,0,0);
+          debugDumpCurrentStackTrace(stderr,0,DEBUG_DUMP_STACKTRACE_OUTPUT_TYPE_NONE,0);
         #endif /* HAVE_BACKTRACE */
         HALT_INTERNAL_ERROR("array not found");
       }

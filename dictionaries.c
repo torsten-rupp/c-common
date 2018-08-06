@@ -15,7 +15,7 @@
 #include <stdio.h>
 #include <assert.h>
 
-#include "global.h"
+#include "common/global.h"
 #include "semaphores.h"
 
 #include "dictionaries.h"
@@ -554,7 +554,7 @@ LOCAL DictionaryEntry *growTable(DictionaryEntry *entries, uint oldSize, uint ne
 {
   assert(dictionary != NULL);
 
-  if (!Semaphore_init(&dictionary->lock))
+  if (!Semaphore_init(&dictionary->lock,SEMAPHORE_TYPE_BINARY))
   {
     return FALSE;
   }

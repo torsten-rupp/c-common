@@ -289,7 +289,7 @@ typedef struct
 * Name   : ResourceDumpInfoFunction
 * Purpose: resource dump info call-back function
 * Input  : variableName  - variable name
-*           resource     - resource
+*          resource      - resource
 *          allocFileName - allocation file name
 *          allocLineNb   - allocation line number
 *          n             - string number [0..count-1]
@@ -308,6 +308,25 @@ typedef bool(*ResourceDumpInfoFunction)(const char *variableName,
                                         ulong      count,
                                         void       *userData
                                        );
+
+typedef enum
+{
+  DEBUG_DUMP_STACKTRACE_OUTPUT_TYPE_NONE,
+  DEBUG_DUMP_STACKTRACE_OUTPUT_TYPE_INFO,
+  DEBUG_DUMP_STACKTRACE_OUTPUT_TYPE_FATAL
+} DebugDumpStackTraceOutputTypes;
+
+/***********************************************************************\
+* Name   : DebugDumpStackTraceOutputFunction
+* Purpose: debug dump strack trace output function
+* Input  : text     - text
+*          userData - user data
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+typedef void(*DebugDumpStackTraceOutputFunction)(const char *text, void *userData);
 
 #endif /* NDEBUG */
 
@@ -360,7 +379,7 @@ typedef bool(*ResourceDumpInfoFunction)(const char *variableName,
 
 // debugging
 #if defined(__x86_64__) || defined(__i386)
-  #define __BP() do { asm(" int3"); } while (0)
+  #define __BP() do { fprintf(stderr,"%s, %d: \n",__FILE__,__LINE__); asm(" int3"); } while (0)
 #else
   #define __BP() do { } while (0)
 #endif
@@ -2173,6 +2192,48 @@ static inline char* stringTrim(char *string)
 }
 
 /***********************************************************************\
+* Name   : stringDuplicate
+* Purpose: duplicate string
+* Input  : source - source string
+* Output : -
+* Return : duplicate string
+* Notes  : string is always NULL or NUL-terminated
+\***********************************************************************/
+
+static inline char* stringDuplicate(const char *source)
+{
+  char *duplicate;
+
+  if (source != NULL)
+  {
+    duplicate = strdup(source);
+  }
+  else
+  {
+    duplicate = NULL;
+  }
+
+  return duplicate;
+}
+
+/***********************************************************************\
+* Name   : stringDelete
+* Purpose: delete string
+* Input  : string - string
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+static inline void stringDelete(char *string)
+{
+  if (string != NULL)
+  {
+    free(string);
+  }
+}
+
+/***********************************************************************\
 * Name   : stringAt, stringAtUTF8
 * Purpose: get character in string
 * Input  : s         - string
@@ -2278,7 +2339,7 @@ static inline size_t stringNextUTF8(const char *s, size_t index)
 \***********************************************************************/
 
 static inline size_t charUTF8Length(Codepoint codepoint)
-{  
+{
   size_t length;
 
   if      ((codepoint & 0xFFFFFF80) == 0)
@@ -2301,7 +2362,7 @@ static inline size_t charUTF8Length(Codepoint codepoint)
     // 21bit UTF8 codepoint -> 4 byte
     length = 4;
   }
-  
+
   return length;
 }
 
@@ -3016,11 +3077,50 @@ void debugResourcePrintStatistics(void);
 void debugResourceCheck(void);
 #endif /* not NDEBUG */
 
+#ifndef NDEBUG
+/***********************************************************************\
+* Name   : debugDumpStackTraceAddOutput
+* Purpose: add stack trace output handler function
+* Input  : type     - output type; see DebugDumpStackTraceOutputTypes
+*          function - output handler function
+*          userData - user data for output handler function
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+void debugDumpStackTraceAddOutput(DebugDumpStackTraceOutputTypes    type,
+                                  DebugDumpStackTraceOutputFunction function,
+                                  void                              *userData
+                                 );
+
+/***********************************************************************\
+* Name   : debugDumpStackTraceOutput
+* Purpose: stack trace output function
+* Input  : handle - output stream
+*          indent - indention of output
+*          type   - output type; see DebugDumpStackTraceOutputTypes
+*          format - format string (like printf)
+*          ...    - optional arguments
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+void debugDumpStackTraceOutput(FILE                           *handle,
+                               uint                           indent,
+                               DebugDumpStackTraceOutputTypes type,
+                               const char                     *format,
+                               ...
+                              );
+
 /***********************************************************************\
 * Name   : debugDumpStackTrace
 * Purpose: print function names of stack trace
 * Input  : handle         - output stream
 *          indent         - indention of output
+*          type           - output type; see
+*                           DebugDumpStackTraceOutputTypes
 *          stackTrace     - stack trace
 *          stackTraceSize - size of stack trace
 *          skipFrameCount - number of stack frames to skip
@@ -3029,30 +3129,33 @@ void debugResourceCheck(void);
 * Notes  : -
 \***********************************************************************/
 
-void debugDumpStackTrace(FILE               *handle,
-                         uint               indent,
-                         void const * const stackTrace[],
-                         uint               stackTraceSize,
-                         uint               skipFrameCount
+void debugDumpStackTrace(FILE                           *handle,
+                         uint                           indent,
+                         DebugDumpStackTraceOutputTypes type,
+                         void const * const             stackTrace[],
+                         uint                           stackTraceSize,
+                         uint                           skipFrameCount
                         );
 
 /***********************************************************************\
-* Name   : debugDumpStackTrace, debugDumpCurrentStackTrace
+* Name   : debugDumpCurrentStackTrace
 * Purpose: print function names of stack trace of current thread
 * Input  : handle         - output stream
 *          indent         - indention of output
+*          type           - output type; see
+*                           DebugDumpStackTraceOutputTypes
 *          skipFrameCount - number of stack frames to skip
 * Output : -
 * Return : -
 * Notes  : -
 \***********************************************************************/
 
-void debugDumpCurrentStackTrace(FILE *handle,
-                                uint indent,
-                                uint skipFrameCount
+void debugDumpCurrentStackTrace(FILE                           *handle,
+                                uint                           indent,
+                                DebugDumpStackTraceOutputTypes type,
+                                uint                           skipFrameCount
                                );
 
-#ifndef NDEBUG
 /***********************************************************************\
 * Name   : debugPrintStackTrace
 * Purpose: print stack trace

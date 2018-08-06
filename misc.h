@@ -18,7 +18,7 @@
 #include <stdio.h>
 #include <assert.h>
 
-#include "global.h"
+#include "common/global.h"
 #include "strings.h"
 
 /****************** Conditional compilation switches *******************/
@@ -67,6 +67,19 @@ typedef enum
 #define TEXT_MACRO_PATTERN_STRING    "\\S+"
 
 /***************************** Datatypes *******************************/
+
+//TODO: useful?
+typedef struct
+{
+  ulong value:61;
+  enum unit
+  {
+    S,
+    MS,
+    US
+  }:3;
+} Time;
+#define TIME(value,unit) { value, unit }
 
 // text macros
 typedef enum
@@ -250,6 +263,8 @@ typedef struct
 
 uint64 Misc_getRandom(uint64 min, uint64 max);
 
+/*---------------------------------------------------------------------*/
+
 /***********************************************************************\
 * Name   : Misc_getTimestamp
 * Purpose: get timestamp
@@ -260,6 +275,53 @@ uint64 Misc_getRandom(uint64 min, uint64 max);
 \***********************************************************************/
 
 uint64 Misc_getTimestamp(void);
+
+/***********************************************************************\
+* Name   : Misc_getRestTimeout
+* Purpose: get rest timeout
+* Input  : startTime - start time [us]
+*          timeout   - timeout [ms] or WAIT_FOREVER
+* Output : -
+* Return : rest timeout [ms]
+* Notes  : -
+\***********************************************************************/
+
+INLINE long Misc_getRestTimeout(uint64 startTimestamp, long timeout);
+#if defined(NDEBUG) || defined(__MISC_IMPLEMENTATION__)
+INLINE long Misc_getRestTimeout(uint64 startTimestamp, long timeout)
+{
+  uint64 elapsedTime;
+
+  if (timeout != WAIT_FOREVER)
+  {
+    elapsedTime = Misc_getTimestamp()-startTimestamp;
+    return (((uint64)timeout*US_PER_MS) > elapsedTime) ? (long)((((uint64)timeout*US_PER_MS)-elapsedTime)/US_PER_MS) : 0L;
+  }
+  else
+  {
+    return WAIT_FOREVER;
+  }
+}
+#endif /* NDEBUG || __MISC_IMPLEMENTATION__ */
+
+/***********************************************************************\
+* Name   : Misc_isTimeout
+* Purpose: check if timeout
+* Input  : startTime - start time [us]
+*          timeout   - timeout [ms] or WAIT_FOREVER
+* Output : -
+* Return : TRUE iff timeout
+* Notes  : -
+\***********************************************************************/
+
+INLINE bool Misc_isTimeout(uint64 startTimestamp, long timeout);
+#if defined(NDEBUG) || defined(__MISC_IMPLEMENTATION__)
+INLINE bool Misc_isTimeout(uint64 startTimestamp, long timeout)
+{
+  return    (timeout != WAIT_FOREVER)
+         && ((Misc_getTimestamp()-startTimestamp) > ((uint64)timeout*US_PER_MS));
+}
+#endif /* NDEBUG || __MISC_IMPLEMENTATION__ */
 
 /***********************************************************************\
 * Name   : Misc_getCurrentDateTime
@@ -358,7 +420,7 @@ uint64 Misc_parseDateTime(const char *string);
 
 /***********************************************************************\
 * Name   : Misc_formatDateTime, Misc_formatDateTimeCString
-* Purpose: format date/time
+* Purpose: format date/time and append
 * Input  : string     - string variable
 *          buffer     - buffer
 *          bufferSize - buffer size

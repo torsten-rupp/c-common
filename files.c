@@ -26,6 +26,9 @@
   #include <sys/ioctl.h>
 #endif
 #include <utime.h>
+#ifdef HAVE_SYS_STATFS_H
+  #include <sys/statfs.h>
+#endif
 #ifdef HAVE_SYS_STATVFS_H
   #include <sys/statvfs.h>
 #endif
@@ -38,6 +41,9 @@
 #ifdef HAVE_SYS_XATTR_H
   #include <sys/xattr.h>
 #endif
+#ifdef HAVE_SYS_VFS_H
+  #include <sys/vfs.h>
+#endif
 #include <errno.h>
 #ifdef HAVE_BACKTRACE
   #include <execinfo.h>
@@ -46,11 +52,12 @@
 
 #if   defined(PLATFORM_LINUX)
   #include <linux/fs.h>
+  #include <linux/magic.h>
 #elif defined(PLATFORM_WINDOWS)
   #include <windows.h>
 #endif /* PLATFORM_... */
 
-#include "global.h"
+#include "common/global.h"
 #include "strings.h"
 #include "stringlists.h"
 #include "devices.h"
@@ -255,7 +262,7 @@ LOCAL void fileCheckValid(const char       *fileName,
     if (debugFileNode != NULL)
     {
       #ifdef HAVE_BACKTRACE
-        debugDumpStackTrace(stderr,0,debugFileNode->closeStackTrace,debugFileNode->closeStackTraceSize,0);
+        debugDumpStackTrace(stderr,0,DEBUG_DUMP_STACKTRACE_OUTPUT_TYPE_NONE,debugFileNode->closeStackTrace,debugFileNode->closeStackTraceSize,0);
       #endif /* HAVE_BACKTRACE */
       HALT_INTERNAL_ERROR_AT(fileName,
                              lineNb,
@@ -275,7 +282,7 @@ LOCAL void fileCheckValid(const char       *fileName,
     if (debugFileNode == NULL)
     {
       #ifdef HAVE_BACKTRACE
-        debugDumpCurrentStackTrace(stderr,0,0);
+        debugDumpCurrentStackTrace(stderr,0,DEBUG_DUMP_STACKTRACE_OUTPUT_TYPE_NONE,0);
       #endif /* HAVE_BACKTRACE */
       HALT_INTERNAL_ERROR("File %p is not open",
                           fileHandle
@@ -469,7 +476,7 @@ LOCAL Errors initFileHandle(const char  *__fileName__,
       if (debugFileNode != NULL)
       {
         #ifdef HAVE_BACKTRACE
-          debugDumpStackTrace(stderr,0,debugFileNode->stackTrace,debugFileNode->stackTraceSize,0);
+          debugDumpStackTrace(stderr,0,DEBUG_DUMP_STACKTRACE_OUTPUT_TYPE_NONE,debugFileNode->stackTrace,debugFileNode->stackTraceSize,0);
         #endif /* HAVE_BACKTRACE */
         if (debugFileNode->fileHandle->name != NULL)
         {
@@ -600,7 +607,7 @@ LOCAL void doneFileHandle(const char  *__fileName__,
       else
       {
         #ifdef HAVE_BACKTRACE
-          debugDumpCurrentStackTrace(stderr,0,0);
+          debugDumpCurrentStackTrace(stderr,0,DEBUG_DUMP_STACKTRACE_OUTPUT_TYPE_NONE,0);
         #endif /* HAVE_BACKTRACE */
         HALT_INTERNAL_ERROR("File '%p' not found in debug list at %s, line %lu",
                             fileHandle->file,
@@ -752,10 +759,9 @@ LOCAL Errors setAttributes(FileAttributes fileAttributes, const char *fileName)
     Errors error;
   #endif /* FS_IOC_GETFLAGS */
   #ifndef HAVE_O_NOATIME
-//TODO
-//    struct stat     stat;
-//    bool            atimeFlag;
-//    struct timespec atime;
+    struct stat stat;
+    bool   atimeFlag;
+    struct timespec atime;
   #endif /* not HAVE_O_NOATIME */
 
   assert(fileName != NULL);
@@ -1404,7 +1410,7 @@ Errors __File_getTmpFileCString(const char *__fileName__,
       if (debugFileNode != NULL)
       {
         #ifdef HAVE_BACKTRACE
-          debugDumpStackTrace(stderr,0,debugFileNode->stackTrace,debugFileNode->stackTraceSize,0);
+          debugDumpStackTrace(stderr,0,DEBUG_DUMP_STACKTRACE_OUTPUT_TYPE_NONE,debugFileNode->stackTrace,debugFileNode->stackTraceSize,0);
         #endif /* HAVE_BACKTRACE */
         if (debugFileNode->fileHandle->name != NULL)
         {
@@ -2674,8 +2680,7 @@ Errors File_openDirectoryListCString(DirectoryListHandle *directoryListHandle,
   #ifdef HAVE_O_NOATIME
     int    handle;
   #else /* not HAVE_O_NOATIME */
-//TODO
-//    struct stat stat;
+    struct stat stat;
   #endif /* HAVE_O_NOATIME */
 
   assert(directoryListHandle != NULL);
@@ -3734,14 +3739,14 @@ bool File_isReadableCString(const char *fileName)
   #endif /* PLATFORM_... */
 }
 
-bool File_isWritable(ConstString fileName)
+bool File_isWriteable(ConstString fileName)
 {
   assert(fileName != NULL);
 
-  return File_isWritableCString(String_cString(fileName));
+  return File_isWriteableCString(String_cString(fileName));
 }
 
-bool File_isWritableCString(const char *fileName)
+bool File_isWriteableCString(const char *fileName)
 {
   #if   defined(PLATFORM_LINUX)
   #elif defined(PLATFORM_WINDOWS)
@@ -3759,6 +3764,39 @@ bool File_isWritableCString(const char *fileName)
     return    ((fileAttributes & (FILE_ATTRIBUTE_NORMAL|FILE_ATTRIBUTE_READONLY)) == FILE_ATTRIBUTE_NORMAL)
            || ((fileAttributes & (FILE_ATTRIBUTE_DIRECTORY|FILE_ATTRIBUTE_READONLY)) == FILE_ATTRIBUTE_DIRECTORY);
   #endif /* PLATFORM_... */
+}
+
+bool File_isNetworkFileSystem(ConstString fileName)
+{
+  assert(fileName != NULL);
+
+  return File_isNetworkFileSystemCString(String_cString(fileName));
+}
+
+bool File_isNetworkFileSystemCString(const char *fileName)
+{
+  bool isNetworkFileSystem;
+  #if   defined(PLATFORM_LINUX)
+    struct statfs buffer;
+  #elif defined(PLATFORM_WINDOWS)
+  #endif /* PLATFORM_... */
+
+  assert(fileName != NULL);
+
+  isNetworkFileSystem = FALSE;
+
+  #if   defined(PLATFORM_LINUX)
+    if (statfs(fileName,&buffer) == 0)
+    {
+      isNetworkFileSystem =    (buffer.f_type == AFS_SUPER_MAGIC)
+                            || (buffer.f_type == CODA_SUPER_MAGIC)
+                            || (buffer.f_type == NFS_SUPER_MAGIC)
+                            || (buffer.f_type == SMB_SUPER_MAGIC);
+    }
+  #elif defined(PLATFORM_WINDOWS)    
+  #endif /* PLATFORM_... */
+  
+  return isNetworkFileSystem;
 }
 
 Errors File_getInfo(FileInfo    *fileInfo,
@@ -4728,13 +4766,13 @@ String File_castToString(String string, const FileCast *fileCast)
 
   localtime_r(&fileCast->mtime,&tm);
   strftime(s,sizeof(s),"%F %T",&tm);
-  String_format(string,"mtime=%s",s);
+  String_appendFormat(string,"mtime=%s",s);
 
   String_appendChar(string,' ');
 
   localtime_r(&fileCast->ctime,&tm);
   strftime(s,sizeof(s),"%F %T",&tm);
-  String_format(string,"ctime=%s",s);
+  String_appendFormat(string,"ctime=%s",s);
 
   return string;
 }

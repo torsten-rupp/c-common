@@ -53,7 +53,7 @@
   #include <winsock2.h>
 #endif /* PLATFORM_... */
 
-#include "global.h"
+#include "common/global.h"
 #include "strings.h"
 #include "files.h"
 #include "misc.h"
@@ -782,16 +782,40 @@ Errors Network_connect(SocketHandle *socketHandle,
 //fprintf(stderr,"%s, %d: sshPrivateKeyLength=%d\n",__FILE__,__LINE__,sshPrivateKeyLength); debugDumpMemory(sshPrivateKeyData,sshPrivateKeyLength,0);
 //fprintf(stderr,"%s, %d: loginName=%s\n",__FILE__,__LINE__,String_cString(loginName));
 //fprintf(stderr,"%s, %d: plainPassword=%s\n",__FILE__,__LINE__,plainPassword);
-        result = libssh2_userauth_publickey_frommemory(socketHandle->ssh2.session,
-                                                       String_cString(loginName),
-                                                       String_length(loginName),
-                                                       sshPublicKeyData,
-                                                       sshPublicKeyLength,
-                                                       sshPrivateKeyData,
-                                                       sshPrivateKeyLength,
-                                                       plainPassword
-                                                      );
-        if (result != 0)
+        error = ERROR_SSH_AUTHENTICATION;
+        if (Error_getCode(error) == ERROR_SSH_AUTHENTICATION)
+        {
+          if ((sshPublicKeyData != NULL) && (sshPrivateKeyData != NULL))
+          {
+            result = libssh2_userauth_publickey_frommemory(socketHandle->ssh2.session,
+                                                           String_cString(loginName),
+                                                           String_length(loginName),
+                                                           sshPublicKeyData,
+                                                           sshPublicKeyLength,
+                                                           sshPrivateKeyData,
+                                                           sshPrivateKeyLength,
+                                                           plainPassword
+                                                          );
+            if (result == 0)
+            {
+              error = ERROR_NONE;
+            }
+            else
+            {
+              ssh2Error = libssh2_session_last_error(socketHandle->ssh2.session,&ssh2ErrorText,NULL,0);
+              // Note: work-around for missleading error message from libssh2: original error (-16) is overwritten by callback-error (-19) in libssh2.
+              if (ssh2Error == LIBSSH2_ERROR_PUBLICKEY_UNVERIFIED)
+              {
+                error = ERRORX_(INVALID_SSH_PRIVATE_KEY,ssh2Error,"%s@%s",String_cString(loginName),String_cString(hostName));
+              }
+              else
+              {
+                error = ERRORX_(SSH_AUTHENTICATION,ssh2Error,"%s@%s",String_cString(loginName),String_cString(hostName));
+              }
+            }
+          }
+        }
+        if (Error_getCode(error) == ERROR_SSH_AUTHENTICATION)
         {
           // authorize with password only
           result = libssh2_userauth_password_ex(socketHandle->ssh2.session,
@@ -801,9 +825,8 @@ Errors Network_connect(SocketHandle *socketHandle,
                                                 Password_length(password),
                                                 NULL
                                                );
-        }  
-        if (result != 0)
-        {
+          if (result == 0)
+          {
           ssh2Error = libssh2_session_last_error(socketHandle->ssh2.session,&ssh2ErrorText,NULL,0);
           // Note: work-around for missleading error message from libssh2: original error (-16) is overwritten by callback-error (-19) in libssh2.
           if (ssh2Error == LIBSSH2_ERROR_PUBLICKEY_UNVERIFIED)
@@ -1951,9 +1974,14 @@ void Network_getLocalInfo(SocketHandle  *socketHandle,
   #elif defined(PLATFORM_WINDOWS)
     int                  sockAddrInLength;
   #endif /* PLATFORM_... */
-  #ifdef HAVE_GETHOSTBYADDR
+  #if   defined(HAVE_GETHOSTBYADDR_R)
+    char           buffer[512];
+    struct hostent bufferAddressEntry;
+    struct hostent *hostAddressEntry;
+    int            getHostByAddrError;
+  #elif defined(HAVE_GETHOSTBYADDR)
     const struct hostent *hostEntry;
-  #endif
+  #endif /* HAVE_GETHOSTBYNAME* */
 
   assert(socketHandle != NULL);
   assert(name != NULL);
@@ -1968,7 +1996,25 @@ void Network_getLocalInfo(SocketHandle  *socketHandle,
   {
     if (name != NULL)
     {
-      #ifdef HAVE_GETHOSTBYADDR
+      #if   defined(HAVE_GETHOSTBYADDR_R)
+        if (gethostbyaddr_r(&sockAddrIn.sin_addr,
+                            sizeof(sockAddrIn.sin_addr),
+                            AF_INET,
+                            &bufferAddressEntry,
+                            buffer,
+                            sizeof(buffer),
+                            &hostAddressEntry,
+                            &getHostByAddrError
+                           ) == 0
+           )
+        {
+          String_setCString(name,hostAddressEntry->h_name);
+        }
+        else
+        {
+          String_setCString(name,inet_ntoa(sockAddrIn.sin_addr));
+        }
+      #elif defined(HAVE_GETHOSTBYADDR)
         hostEntry = gethostbyaddr((const char*)&sockAddrIn.sin_addr,
                                   sizeof(sockAddrIn.sin_addr),
                                   AF_INET
@@ -1981,9 +2027,9 @@ void Network_getLocalInfo(SocketHandle  *socketHandle,
         {
           String_setCString(name,inet_ntoa(sockAddrIn.sin_addr));
         }
-      #else /* not HAVE_GETHOSTBYADDR */
+      #else /* not HAVE_GETHOSTBYADDR* */
         String_setCString(name,inet_ntoa(sockAddrIn.sin_addr));
-      #endif /* HAVE_GETHOSTBYADDR */
+      #endif /* HAVE_GETHOSTBYADDR* */
     }
     if (port != NULL) (*port) = ntohs(sockAddrIn.sin_port);
     if (socketAddress != NULL)
@@ -2024,9 +2070,14 @@ void Network_getRemoteInfo(SocketHandle  *socketHandle,
   #elif defined(PLATFORM_WINDOWS)
     int                  sockAddrInLength;
   #endif /* PLATFORM_... */
-  #ifdef HAVE_GETHOSTBYADDR_R
+  #if   defined(HAVE_GETHOSTBYADDR_R)
+    char           buffer[512];
+    struct hostent bufferAddressEntry;
+    struct hostent *hostAddressEntry;
+    int            getHostByAddrError;
+  #elif defined(HAVE_GETHOSTBYADDR)
     const struct hostent *hostEntry;
-  #endif
+  #endif /* HAVE_GETHOSTBYNAME* */
 
   assert(socketHandle != NULL);
   assert(name != NULL);
@@ -2041,7 +2092,25 @@ void Network_getRemoteInfo(SocketHandle  *socketHandle,
   {
     if (name != NULL)
     {
-      #ifdef HAVE_GETHOSTBYADDR_R
+      #if   defined(HAVE_GETHOSTBYADDR_R)
+        if (gethostbyaddr_r(&sockAddrIn.sin_addr,
+                            sizeof(sockAddrIn.sin_addr),
+                            AF_INET,
+                            &bufferAddressEntry,
+                            buffer,
+                            sizeof(buffer),
+                            &hostAddressEntry,
+                            &getHostByAddrError
+                           ) == 0
+           )
+        {
+          String_setCString(name,hostAddressEntry->h_name);
+        }
+        else
+        {
+          String_setCString(name,inet_ntoa(sockAddrIn.sin_addr));
+        }
+      #elif defined(HAVE_GETHOSTBYADDR)
         hostEntry = gethostbyaddr(&sockAddrIn.sin_addr,
                                   sizeof(sockAddrIn.sin_addr),
                                   AF_INET
@@ -2054,9 +2123,9 @@ void Network_getRemoteInfo(SocketHandle  *socketHandle,
         {
           String_setCString(name,inet_ntoa(sockAddrIn.sin_addr));
         }
-      #else /* not HAVE_GETHOSTBYADDR_R */
+      #else /* not HAVE_GETHOSTBYADDR* */
         String_setCString(name,inet_ntoa(sockAddrIn.sin_addr));
-      #endif /* HAVE_GETHOSTBYADDR_R */
+      #endif /* HAVE_GETHOSTBYADDR* */
     }
     if (port != NULL) (*port) = ntohs(sockAddrIn.sin_port);
     if (socketAddress != NULL)
@@ -2096,10 +2165,10 @@ bool Network_isLocalHost(const SocketAddress *socketAddress)
 
   assert(socketAddress != NULL);
 
+  isLocalHost = FALSE;
   switch (socketAddress->type)
   {
     case SOCKET_ADDRESS_TYPE_NONE:
-      isLocalHost = FALSE;
       break;
     case SOCKET_ADDRESS_TYPE_V4:
       inet_pton(AF_INET,"127.0.0.1",&address.v4);

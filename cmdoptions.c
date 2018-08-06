@@ -15,7 +15,7 @@
 #include <string.h>
 #include <assert.h>
 
-#include "global.h"
+#include "common/global.h"
 
 #include "cmdoptions.h"
 
@@ -1340,70 +1340,144 @@ bool CmdOption_parse(const char              *argv[],
         {
           // get option value
           value = NULL;
-          if      (   (commandLineOptions[j].type == CMD_OPTION_TYPE_INTEGER   )
-                   || (commandLineOptions[j].type == CMD_OPTION_TYPE_INTEGER64 )
-                   || (commandLineOptions[j].type == CMD_OPTION_TYPE_DOUBLE    )
-                   || (commandLineOptions[j].type == CMD_OPTION_TYPE_SELECT    )
-                   || (commandLineOptions[j].type == CMD_OPTION_TYPE_SET       )
-                   || (commandLineOptions[j].type == CMD_OPTION_TYPE_CSTRING   )
-                   || (commandLineOptions[j].type == CMD_OPTION_TYPE_STRING    )
-                   || (commandLineOptions[j].type == CMD_OPTION_TYPE_SPECIAL   )
-                   || (commandLineOptions[j].type == CMD_OPTION_TYPE_DEPRECATED)
-                  )
+          switch (commandLineOptions[j].type)
           {
-            if (s != NULL)
-            {
-              // skip '='
-              s++;
-              value = s;
-            }
-            else
-            {
-              if ((i+1) < (uint)(*argc))
+            case CMD_OPTION_TYPE_INTEGER:
+            case CMD_OPTION_TYPE_INTEGER64:
+            case CMD_OPTION_TYPE_DOUBLE:
+            case CMD_OPTION_TYPE_SELECT:
+            case CMD_OPTION_TYPE_SET:
+            case CMD_OPTION_TYPE_CSTRING:
+            case CMD_OPTION_TYPE_STRING:
+              if (s != NULL)
               {
-                // get value
-                i++;
-                value = argv[i];
-              }
-              else if (   (commandLineOptions[j].type == CMD_OPTION_TYPE_SPECIAL   )
-                       || (commandLineOptions[j].type == CMD_OPTION_TYPE_DEPRECATED)
-                      )
-              {
-                // optional no value
-                value = NULL;
+                // skip '='
+                s++;
+                value = s;
               }
               else
               {
-                if (outputHandle != NULL)
+                if      ((i+1) < (uint)(*argc))
                 {
-                  fprintf(outputHandle,
-                          "%sNo value given for option '--%s'!\n",
-                          (errorPrefix != NULL)?errorPrefix:"",
-                          name
-                         );
+                  // get value
+                  i++;
+                  value = argv[i];
                 }
-                return FALSE;
+                else
+                {
+                  // missing value for option
+                  if (outputHandle != NULL)
+                  {
+                    fprintf(outputHandle,
+                            "%sNo value given for option '--%s'!\n",
+                            (errorPrefix != NULL)?errorPrefix:"",
+                            name
+                           );
+                  }
+                  return FALSE;
+                }
               }
-            }
+              break;
+            case CMD_OPTION_TYPE_BOOLEAN:
+              if (s != NULL)
+              {
+                // skip '='
+                s++;
+                value = s;
+              }
+              break;
+            case CMD_OPTION_TYPE_INCREMENT:
+              if (s != NULL)
+              {
+                // skip '='
+                s++;
+                value = s;
+              }
+              break;
+            case CMD_OPTION_TYPE_ENUM:
+              value = NULL;
+              break;
+            case CMD_OPTION_TYPE_SPECIAL:
+              assert(commandLineOptions[j].specialOption.argumentCount <= 1);
+
+              if      (s != NULL)
+              {
+                // skip '='
+                s++;
+                value = s;
+              }
+              else if (commandLineOptions[j].specialOption.argumentCount > 0)
+              {
+                if      ((i+1) < (uint)(*argc))
+                {
+                  // get value
+                  i++;
+                  value = argv[i];
+                }
+                else
+                {
+                  // missing value for option
+                  if (outputHandle != NULL)
+                  {
+                    fprintf(outputHandle,
+                            "%sNo value given for option '--%s'!\n",
+                            (errorPrefix != NULL)?errorPrefix:"",
+                            name
+                           );
+                  }
+                  return FALSE;
+                }
+              }
+              else
+              {
+                // no value
+                value = NULL;
+              }
+              break;
+            case CMD_OPTION_TYPE_DEPRECATED:
+              assert(commandLineOptions[j].deprecatedOption.argumentCount <= 1);
+
+              if      (s != NULL)
+              {
+                // skip '='
+                s++;
+                value = s;
+              }
+              else if (commandLineOptions[j].deprecatedOption.argumentCount > 0)
+              {
+                if      ((i+1) < (uint)(*argc))
+                {
+                  // get value
+                  i++;
+                  value = argv[i];
+                }
+                else
+                {
+                  // missing value for option
+                  if (outputHandle != NULL)
+                  {
+                    fprintf(outputHandle,
+                            "%sNo value given for option '--%s'!\n",
+                            (errorPrefix != NULL)?errorPrefix:"",
+                            name
+                           );
+                  }
+                  return FALSE;
+                }
+              }
+              else
+              {
+                // no value
+                value = NULL;
+              }
+              break;
+            #ifndef NDEBUG
+              default:
+                HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
+                break;
+            #endif /* NDEBUG */
           }
-          else if ((commandLineOptions[j].type == CMD_OPTION_TYPE_BOOLEAN))
-          {
-            if (s != NULL)
-            {
-              // skip '='
-              s++;
-              value = s;
-            }
-          }
-          else if ((commandLineOptions[j].type == CMD_OPTION_TYPE_INCREMENT))
-          {
-            if (s != NULL)
-            {
-              // skip '='
-              s++;
-              value = s;
-            }
-          }
+
 
           if (commandLineOptions[j].priority == priority)
           {
@@ -1447,36 +1521,91 @@ bool CmdOption_parse(const char              *argv[],
           if (j < commandLineOptionCount)
           {
             // find optional value for option
-            if      (   (commandLineOptions[j].type == CMD_OPTION_TYPE_INTEGER   )
-                     || (commandLineOptions[j].type == CMD_OPTION_TYPE_INTEGER64 )
-                     || (commandLineOptions[j].type == CMD_OPTION_TYPE_DOUBLE    )
-                     || (commandLineOptions[j].type == CMD_OPTION_TYPE_SELECT    )
-                     || (commandLineOptions[j].type == CMD_OPTION_TYPE_SET       )
-                     || (commandLineOptions[j].type == CMD_OPTION_TYPE_CSTRING   )
-                     || (commandLineOptions[j].type == CMD_OPTION_TYPE_STRING    )
-                     || (commandLineOptions[j].type == CMD_OPTION_TYPE_SPECIAL   )
-                     || (commandLineOptions[j].type == CMD_OPTION_TYPE_DEPRECATED)
-                    )
+            value = NULL;
+            switch (commandLineOptions[j].type)
             {
-              // next argument is option value
-              if ((i+1) >= (uint)(*argc))
-              {
-                if (outputHandle != NULL)
+              case CMD_OPTION_TYPE_INTEGER:
+              case CMD_OPTION_TYPE_INTEGER64:
+              case CMD_OPTION_TYPE_DOUBLE:
+              case CMD_OPTION_TYPE_SELECT:
+              case CMD_OPTION_TYPE_SET:
+              case CMD_OPTION_TYPE_CSTRING:
+              case CMD_OPTION_TYPE_STRING:
+                // next argument is option value
+                if ((i+1) >= (uint)(*argc))
                 {
-                  fprintf(outputHandle,
-                          "%sNo value given for option '-%s'!\n",
-                          (errorPrefix != NULL)?errorPrefix:"",
-                          name
-                         );
+                  if (outputHandle != NULL)
+                  {
+                    fprintf(outputHandle,
+                            "%sNo value given for option '-%s'!\n",
+                            (errorPrefix != NULL)?errorPrefix:"",
+                            name
+                           );
+                  }
+                  return FALSE;
                 }
-                return FALSE;
-              }
-              i++;
-              value = argv[i];
-            }
-            else
-            {
-              value = NULL;
+                i++;
+                value = argv[i];
+                break;
+              case CMD_OPTION_TYPE_BOOLEAN:
+              case CMD_OPTION_TYPE_INCREMENT:
+              case CMD_OPTION_TYPE_ENUM:
+                value = NULL;
+                break;
+              case CMD_OPTION_TYPE_SPECIAL:
+                assert(commandLineOptions[j].specialOption.argumentCount <= 1);
+
+                if (commandLineOptions[j].specialOption.argumentCount > 0)
+                {
+                  // next argument is option value
+                  if ((i+1) >= (uint)(*argc))
+                  {
+                    if (outputHandle != NULL)
+                    {
+                      fprintf(outputHandle,
+                              "%sNo value given for option '-%s'!\n",
+                              (errorPrefix != NULL)?errorPrefix:"",
+                              name
+                             );
+                    }
+                    return FALSE;
+                  }
+                  i++;
+                  value = argv[i];
+                }
+                else
+                {
+                  // no value
+                  value = NULL;
+                }
+                break;
+              case CMD_OPTION_TYPE_DEPRECATED:
+                assert(commandLineOptions[j].deprecatedOption.argumentCount <= 1);
+
+                if (commandLineOptions[j].deprecatedOption.argumentCount > 0)
+                {
+                  // next argument is option value
+                  if ((i+1) >= (uint)(*argc))
+                  {
+                    if (outputHandle != NULL)
+                    {
+                      fprintf(outputHandle,
+                              "%sNo value given for option '-%s'!\n",
+                              (errorPrefix != NULL)?errorPrefix:"",
+                              name
+                             );
+                    }
+                    return FALSE;
+                  }
+                  i++;
+                  value = argv[i];
+                }
+                else
+                {
+                  // no value
+                  value = NULL;
+                }
+                break;
             }
 
             if (commandLineOptions[j].priority == priority)
@@ -1624,18 +1753,22 @@ void CmdOption_printHelp(FILE                    *outputHandle,
   maxNameLength = 0;
   for (i = 0; i < commandLineOptionCount; i++)
   {
+    assert(commandLineOptions[i].name != NULL);
+
     if ((helpLevel == CMD_HELP_LEVEL_ALL) || (helpLevel >= (int)commandLineOptions[i].helpLevel))
     {
       n = 0;
 
+      // short name length
       if (commandLineOptions[i].shortName != '\0')
       {
         n += 3; // "-x|"
       }
 
-      assert(commandLineOptions[i].name != NULL);
-
+      // name length
       n += 2 + strlen(commandLineOptions[i].name); // --name
+
+      // value length
       switch (commandLineOptions[i].type)
       {
         case CMD_OPTION_TYPE_INTEGER:
@@ -1701,18 +1834,25 @@ void CmdOption_printHelp(FILE                    *outputHandle,
           n += 1; // >
           break;
         case CMD_OPTION_TYPE_SPECIAL:
-          n += 2; // =<
-          if (commandLineOptions[i].specialOption.descriptionArgument != NULL)
+          if (commandLineOptions[i].specialOption.argumentCount > 0)
           {
-            n += strlen(commandLineOptions[i].specialOption.descriptionArgument);
+            n += 2; // =<
+            if (commandLineOptions[i].specialOption.descriptionArgument != NULL)
+            {
+              n += strlen(commandLineOptions[i].specialOption.descriptionArgument);
+            }
+            else
+            {
+              n += 3; // ...
+            }
+            n += 1; // >
           }
-          else
-          {
-            n += 3; // ...
-          }
-          n += 1; // >
           break;
         case CMD_OPTION_TYPE_DEPRECATED:
+          if (commandLineOptions[i].deprecatedOption.argumentCount > 0)
+          {
+            n += 2+3+1; // =<...>
+          }
           break;
         #ifndef NDEBUG
           default:
@@ -1817,18 +1957,25 @@ void CmdOption_printHelp(FILE                    *outputHandle,
           strncat(name,">",sizeof(name)-strlen(name));
           break;
         case CMD_OPTION_TYPE_SPECIAL:
-          strncat(name,"=<",sizeof(name)-strlen(name));
-          if (commandLineOptions[i].specialOption.descriptionArgument != NULL)
+          if (commandLineOptions[i].specialOption.argumentCount > 0)
           {
-            strncat(name,commandLineOptions[i].specialOption.descriptionArgument,sizeof(name)-strlen(name));
+            strncat(name,"=<",sizeof(name)-strlen(name));
+            if (commandLineOptions[i].specialOption.descriptionArgument != NULL)
+            {
+              strncat(name,commandLineOptions[i].specialOption.descriptionArgument,sizeof(name)-strlen(name));
+            }
+            else
+            {
+              strncat(name,"...",sizeof(name)-strlen(name));
+            }
+            strncat(name,">",sizeof(name)-strlen(name));
           }
-          else
-          {
-            strncat(name,"...",sizeof(name)-strlen(name));
-          }
-          strncat(name,">",sizeof(name)-strlen(name));
           break;
         case CMD_OPTION_TYPE_DEPRECATED:
+          if (commandLineOptions[i].deprecatedOption.argumentCount > 0)
+          {
+            strncat(name,"=<...>",sizeof(name)-strlen(name));
+          }
           break;
         #ifndef NDEBUG
           default:

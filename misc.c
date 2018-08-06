@@ -40,11 +40,12 @@
   #include <windows.h>
 #endif /* PLATFORM_... */
 
-#include "global.h"
+#include "common/global.h"
 #include "errors.h"
 #include "strings.h"
 #include "stringlists.h"
 
+#include "bar.h"
 #include "files.h"
 
 #include "misc.h"
@@ -954,6 +955,7 @@ void Misc_udelay(uint64 time)
     struct timespec ts;
   #endif /* HAVE_NANOSLEEP */
 
+//printInfo(0,"%s, %d: Misc_udelay %llu\n",__FILE__,__LINE__,time);
   #if   defined(HAVE_USLEEP)
     usleep(time);
   #elif defined(HAVE_NANOSLEEP)
@@ -965,6 +967,7 @@ void Misc_udelay(uint64 time)
     {
       // nothing to do
     }
+//printInfo(0,"%s, %d: Misc_udelay %llu fertig\n",__FILE__,__LINE__,time);
   #elif defined(PLATFORM_WINDOWS)
     Sleep(time/1000LL);
   #else

@@ -20,17 +20,23 @@
 #include <semaphore.h>
 #include <assert.h>
 
-#include "global.h"
+#include "common/global.h"
 #include "strings.h"
-#include "threads.h"
+#include "common/arrays.h"
+#include "common/threads.h"
 #include "semaphores.h"
 #include "errors.h"
 
 #include "sqlite3.h"
 
 /****************** Conditional compilation switches *******************/
+#define _DATABASE_LOCK_PER_INSTANCE   // if defined use lock per database instance, otherwise a global lock for all database is used
 
 /***************************** Constants *******************************/
+
+// database open mask
+#define DATABASE_OPEN_MASK_MODE  0x0000000F
+#define DATABASE_OPEN_MASK_FLAGS 0xFFFF0000
 
 // database open modes
 typedef enum
@@ -40,7 +46,19 @@ typedef enum
   DATABASE_OPENMODE_READWRITE,
 } DatabaseOpenModes;
 
-// database types
+// additional database open flags
+#define DATABASE_OPENMODE_MEMORY (1 << 16)
+#define DATABASE_OPENMODE_SHARED (1 << 17)
+
+// database lock types
+typedef enum
+{
+  DATABASE_LOCK_TYPE_NONE,
+  DATABASE_LOCK_TYPE_READ,
+  DATABASE_LOCK_TYPE_READ_WRITE
+} DatabaseLockTypes;
+
+// database data types
 typedef enum
 {
   DATABASE_TYPE_NONE,
@@ -79,6 +97,169 @@ typedef enum
 
 /***************************** Datatypes *******************************/
 
+/***********************************************************************\
+* Name   : Database_BusyHandler
+* Purpose: database busy handler
+* Input  : userData - user data
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+typedef void(*DatabaseBusyHandlerFunction)(void *userData);
+
+// database busy handler list
+typedef struct DatabaseBusyHandlerNode
+{
+  LIST_NODE_HEADER(struct DatabaseBusyHandlerNode);
+
+  DatabaseBusyHandlerFunction function;                   // busy handler function
+  void                        *userData;
+
+} DatabaseBusyHandlerNode;
+
+typedef struct
+{
+  LIST_HEADER(DatabaseBusyHandlerNode);
+} DatabaseBusyHandlerList;
+
+/***********************************************************************\
+* Name   : DatabaseProgressHandlerFunction
+* Purpose: database progress handler
+* Input  : userData - user data
+* Output : -
+* Return : TRUE to interrupt, FALSE to continue
+* Notes  : -
+\***********************************************************************/
+
+typedef bool(*DatabaseProgressHandlerFunction)(void *userData);
+
+// database progress handler list
+typedef struct DatabaseProgressHandlerNode
+{
+  LIST_NODE_HEADER(struct DatabaseProgressHandlerNode);
+
+  DatabaseProgressHandlerFunction function;               // progress handler function
+  void                            *userData;
+
+} DatabaseProgressHandlerNode;
+
+typedef struct
+{
+  LIST_HEADER(DatabaseProgressHandlerNode);
+} DatabaseProgressHandlerList;
+
+// database list
+typedef struct DatabaseNode
+{
+  LIST_NODE_HEADER(struct DatabaseNode);
+
+  #ifdef DATABASE_LOCK_PER_INSTANCE
+    pthread_mutex_t           lock;
+  #endif /* DATABASE_LOCK_PER_INSTANCE */
+  String                      fileName;                   // database file name
+  uint                        openCount;
+
+  DatabaseLockTypes           type;
+  uint                        pendingReadCount;
+  uint                        readCount;
+  pthread_cond_t              readTrigger;
+
+  uint                        pendingReadWriteCount;
+  uint                        readWriteCount;
+  pthread_cond_t              readWriteTrigger;
+  ThreadId                    readWriteLockedBy;
+
+  uint                        pendingTransactionCount;
+  uint                        transactionCount;
+  pthread_cond_t              transactionTrigger;
+
+  DatabaseBusyHandlerList     busyHandlerList;
+  DatabaseProgressHandlerList progressHandlerList;
+
+  #ifndef NDEBUG
+    // pending reads
+    struct
+    {
+      ThreadId   threadId;
+      const char *fileName;
+      uint       lineNb;
+      #ifdef HAVE_BACKTRACE
+        void const *stackTrace[16];
+        int        stackTraceSize;
+      #endif /* HAVE_BACKTRACE */
+    }                     pendingReads[32];
+    // reads
+    struct
+    {
+      ThreadId   threadId;
+      const char *fileName;
+      uint       lineNb;
+      #ifdef HAVE_BACKTRACE
+        void const *stackTrace[16];
+        int        stackTraceSize;
+      #endif /* HAVE_BACKTRACE */
+    }                     reads[32];
+    // pending read/writes
+    struct
+    {
+      ThreadId   threadId;
+      const char *fileName;
+      uint       lineNb;
+      #ifdef HAVE_BACKTRACE
+        void const *stackTrace[16];
+        int        stackTraceSize;
+      #endif /* HAVE_BACKTRACE */
+    }                     pendingReadWrites[32];
+    // read/write
+    struct
+    {
+      ThreadId   threadId;
+      const char *fileName;
+      uint       lineNb;
+      #ifdef HAVE_BACKTRACE
+        void const *stackTrace[16];
+        int        stackTraceSize;
+      #endif /* HAVE_BACKTRACE */
+    }                     readWrites[32];
+    struct
+    {
+      ThreadId   threadId;
+      const char *fileName;
+      uint       lineNb;
+DatabaseLockTypes type;
+uint                    pendingReadCount;
+uint                    readCount;
+uint                    pendingReadWriteCount;
+uint                    readWriteCount;
+uint                    pendingTransactionCount;
+uint                    transactionCount;
+      #ifdef HAVE_BACKTRACE
+        void const *stackTrace[16];
+        int        stackTraceSize;
+      #endif /* HAVE_BACKTRACE */
+    }                     lastTrigger;
+    // running transaction
+    struct
+    {
+      ThreadId   threadId;
+      const char *fileName;
+      uint       lineNb;
+      #ifdef HAVE_BACKTRACE
+        void const *stackTrace[16];
+        int        stackTraceSize;
+      #endif /* HAVE_BACKTRACE */
+    }                     transaction;
+  #endif /* not NDEBUG */
+} DatabaseNode;
+
+typedef struct
+{
+  LIST_HEADER(DatabaseNode);
+
+  Semaphore lock;
+} DatabaseList;
+
 // database handle
 typedef struct DatabaseHandle
 {
@@ -86,45 +267,41 @@ typedef struct DatabaseHandle
     LIST_NODE_HEADER(struct DatabaseHandle);
   #endif /* not NDEBUG */
 
-  Semaphore     lock;                       // lock (Note: do not use sqlite mutex, because of debug facilities in semaphore.c)
-  sqlite3       *handle;                    // SQlite3 handle
-  long          timeout;                    // timeout [ms]
-  uint64        lastCheckpointTimestamp;    // last time forced execution of a checkpoint
-  sem_t         wakeUp;                     // unlock wake-up
-  #ifndef NDEBUG
-    char         name[256];                 // database name (file name)
+  DatabaseNode                *databaseNode;
+  Semaphore                   lock;                       // lock (Note: do not use sqlite mutex, because of debug facilities in semaphore.c)
+  sqlite3                     *handle;                    // SQlite3 handle
+  uint                        transcationCount;
+  long                        timeout;                    // timeout [ms]
+  void                        *busyHandlerUserData;
+  uint64                      lastCheckpointTimestamp;    // last time forced execution of a checkpoint
+  sem_t                       wakeUp;                     // unlock wake-up
 
-    const char   *fileName;                 // handle open/create location
-    ulong        lineNb;
+  #ifndef NDEBUG
+    ThreadId                  threadId;
+    const char                *fileName;                  // open/create location
+    ulong                     lineNb;
     #ifdef HAVE_BACKTRACE
-      void const *stackTrace[16];
-      int        stackTraceSize;
+      void const              *stackTrace[16];
+      int                     stackTraceSize;
     #endif /* HAVE_BACKTRACE */
 
     struct
     {
-      ThreadId   threadId;                  // thread who aquired lock
+      ThreadId   threadId;                                // thread who aquired lock        
       const char *fileName;
       uint       lineNb;
       char       text[8*1024];
-      uint64     t0,t1;                     // lock start/end timestamp [s]
-    } locked;
+      uint64     t0,t1;                                   // lock start/end timestamp [s]   
+    }                         locked;
     struct
     {
-      ThreadId   threadId;                  // thread who started transaction
-      const char *fileName;                 // != NULL iff transaction
-      uint       lineNb;
-      void const *stackTrace[16];
-      int        stackTraceSize;
-    } transaction;
-    struct                                  // current executed SQL command
-    {
-      String     sqlCommand;
+      Semaphore lock;
+      String    sqlCommand;                               // current SQL command            
       #ifdef HAVE_BACKTRACE
         void const *stackTrace[16];
         int        stackTraceSize;
       #endif /* HAVE_BACKTRACE */
-    }            current;
+    }                         current;
   #endif /* not NDEBUG */
 } DatabaseHandle;
 
@@ -140,7 +317,6 @@ typedef struct
   #endif /* not NDEBUG */
 } DatabaseQueryHandle;
 
-//
 /***********************************************************************\
 * Name   : DatabaseRowFunction
 * Purpose: execute row callback function
@@ -168,10 +344,10 @@ typedef struct DatabaseColumnNode
   union
   {
     // Note: data values are kept as strings to avoid conversion problems e.g. date/time -> integer
-    int64  id;      // primary key
-    String i;       // integer, date/time
-    String d;       // double
-    String text;    // text
+    DatabaseId id;      // primary key
+    String     i;       // integer, date/time
+    String     d;       // double
+    String     text;    // text
     struct
     {
       void  *data;
@@ -222,13 +398,15 @@ typedef bool(*DatabasePauseCallbackFunction)(void *userData);
 #define DATABASE_TRANSFER_OPERATION_END()                      DATABASE_TRANSFER_OPERATION_NONE,NULL,    0,     0
 
 #ifndef NDEBUG
-  #define Database_open(...)             __Database_open(__FILE__,__LINE__, ## __VA_ARGS__)
-  #define Database_close(...)            __Database_close(__FILE__,__LINE__, ## __VA_ARGS__)
-  #define Database_lock(...)             __Database_lock(__FILE__,__LINE__, ## __VA_ARGS__)
-  #define Database_unlock(...)           __Database_unlock(__FILE__,__LINE__, ## __VA_ARGS__)
-  #define Database_beginTransaction(...) __Database_beginTransaction(__FILE__,__LINE__, ## __VA_ARGS__)
-  #define Database_prepare(...)          __Database_prepare(__FILE__,__LINE__, ## __VA_ARGS__)
-  #define Database_finalize(...)         __Database_finalize(__FILE__,__LINE__, ## __VA_ARGS__)
+  #define Database_open(...)                __Database_open               (__FILE__,__LINE__, ## __VA_ARGS__)
+  #define Database_close(...)               __Database_close              (__FILE__,__LINE__, ## __VA_ARGS__)
+  #define Database_lock(...)                __Database_lock               (__FILE__,__LINE__, ## __VA_ARGS__)
+  #define Database_unlock(...)              __Database_unlock             (__FILE__,__LINE__, ## __VA_ARGS__)
+  #define Database_beginTransaction(...)    __Database_beginTransaction   (__FILE__,__LINE__, ## __VA_ARGS__)
+  #define Database_endTransaction(...)      __Database_endTransaction     (__FILE__,__LINE__, ## __VA_ARGS__)
+  #define Database_rollbackTransaction(...) __Database_rollbackTransaction(__FILE__,__LINE__, ## __VA_ARGS__)
+  #define Database_prepare(...)             __Database_prepare            (__FILE__,__LINE__, ## __VA_ARGS__)
+  #define Database_finalize(...)            __Database_finalize           (__FILE__,__LINE__, ## __VA_ARGS__)
 #endif /* not NDEBUG */
 
 /***************************** Forwards ********************************/
@@ -301,13 +479,77 @@ void Database_doneAll(void);
 #ifdef NDEBUG
   void Database_close(DatabaseHandle *databaseHandle);
 #else /* not NDEBUG */
-  void __Database_close(const char   *__fileName__,
-                        ulong        __lineNb__,
+  void __Database_close(const char     *__fileName__,
+                        ulong          __lineNb__,
                         DatabaseHandle *databaseHandle
                        );
 #endif /* NDEBUG */
 
-//bool Database_isHigherRequestPending(uint priority);
+/***********************************************************************\
+* Name   : Database_addBusyHandler
+* Purpose: add database busy handler
+* Input  : databaseHandle      - database handle
+*          busyHandlerFunction - busy handler function
+*          busyHandlerUserData - user data for busy handler functions
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+void Database_addBusyHandler(DatabaseHandle              *databaseHandle,
+                             DatabaseBusyHandlerFunction busyHandlerFunction,
+                             void                        *busyHandlerUserData
+                            );
+
+/***********************************************************************\
+* Name   : Database_removeBusyHandler
+* Purpose: remove database busy handler
+* Input  : databaseHandle      - database handle
+*          busyHandlerFunction - busy handler function
+*          busyHandlerUserData - user data for busy handler functions
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+void Database_removeBusyHandler(DatabaseHandle              *databaseHandle,
+                                DatabaseBusyHandlerFunction busyHandlerFunction,
+                                void                        *busyHandlerUserData
+                               );
+
+/***********************************************************************\
+* Name   : Database_addProgressHandler
+* Purpose: add database progress handler
+* Input  : databaseHandle          - database handle
+*          progressHandlerFunction - progress handler function
+*          progressHandlerUserData - user data for progress handler
+*                                    functions
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+void Database_addProgressHandler(DatabaseHandle                  *databaseHandle,
+                                 DatabaseProgressHandlerFunction progressHandlerFunction,
+                                 void                            *progressHandlerUserData
+                                );
+
+/***********************************************************************\
+* Name   : Database_removeProgressHandler
+* Purpose: remove database progress handler
+* Input  : databaseHandle          - database handle
+*          progressHandlerFunction - progress handler function
+*          progressHandlerUserData - user data for progress handler
+*                                    functions
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+void Database_removeProgressHandler(DatabaseHandle                  *databaseHandle,
+                                    DatabaseProgressHandlerFunction progressHandlerFunction,
+                                    void                            *progressHandlerUserData
+                                   );
 
 /***********************************************************************\
 * Name   : Database_interrupt
@@ -370,21 +612,20 @@ void Database_yield(DatabaseHandle *databaseHandle,
 * Name   : Database_lock
 * Purpose: lock database exclusive for this handle
 * Input  : databaseHandle - database handle
-*          lockType       - lock type
 * Output : -
 * Return : -
 * Notes  : -
 \***********************************************************************/
 
 #ifdef NDEBUG
-  void Database_lock(DatabaseHandle     *databaseHandle,
-                     SemaphoreLockTypes lockType
+  void Database_lock(DatabaseHandle    *databaseHandle,
+                     DatabaseLockTypes lockType
                     );
 #else /* not NDEBUG */
-  void __Database_lock(const char         *__fileName__,
-                       ulong              __lineNb__,
-                       DatabaseHandle     *databaseHandle,
-                       SemaphoreLockTypes lockType
+  void __Database_lock(const char        *__fileName__,
+                       ulong             __lineNb__,
+                       DatabaseHandle    *databaseHandle,
+                       DatabaseLockTypes lockType
                       );
 #endif /* NDEBUG */
 
@@ -398,11 +639,14 @@ void Database_yield(DatabaseHandle *databaseHandle,
 \***********************************************************************/
 
 #ifdef NDEBUG
-  void Database_unlock(DatabaseHandle *databaseHandle);
+  void Database_unlock(DatabaseHandle    *databaseHandle,
+                       DatabaseLockTypes lockType
+                      );
 #else /* not NDEBUG */
-  void __Database_unlock(const char   *__fileName__,
-                         ulong        __lineNb__,
-                         DatabaseHandle *databaseHandle
+  void __Database_unlock(const char        *__fileName__,
+                         ulong             __lineNb__,
+                         DatabaseHandle    *databaseHandle,
+                         DatabaseLockTypes lockType
                         );
 #endif /* NDEBUG */
 
@@ -415,13 +659,49 @@ void Database_yield(DatabaseHandle *databaseHandle,
 * Notes  : -
 \***********************************************************************/
 
-INLINE bool Database_isLocked(DatabaseHandle *databaseHandle);
+INLINE bool Database_isLocked(DatabaseHandle    *databaseHandle,
+                              DatabaseLockTypes lockType
+                             );
 #if defined(NDEBUG) || defined(__DATABASE_IMPLEMENTATION__)
-INLINE bool Database_isLocked(DatabaseHandle *databaseHandle)
+INLINE bool Database_isLocked(DatabaseHandle    *databaseHandle,
+                              DatabaseLockTypes lockType
+                             )
 {
-  return Semaphore_isLocked(&databaseHandle->lock);
+  bool isLocked;
+
+  assert(databaseHandle != NULL);
+  assert(databaseHandle->databaseNode != NULL);
+
+  isLocked = FALSE;
+  switch (lockType)
+  {
+    case DATABASE_LOCK_TYPE_NONE:
+      break;
+    case DATABASE_LOCK_TYPE_READ:
+      isLocked = (databaseHandle->databaseNode->readCount > 0);
+      break;
+    case DATABASE_LOCK_TYPE_READ_WRITE:
+      isLocked = (databaseHandle->databaseNode->readWriteCount > 0);
+      break;
+  }
+
+  return isLocked;
 }
 #endif /* NDEBUG || __DATABASE_IMPLEMENTATION__ */
+
+/***********************************************************************\
+* Name   : Database_isLockPending
+* Purpose: check if database lock is pending
+* Input  : databaseHandle - database handle
+*          lockType       - lock type; see SEMAPHORE_LOCK_TYPE_*
+* Output : -
+* Return : TRUE iff locked
+* Notes  : -
+\***********************************************************************/
+
+bool Database_isLockPending(DatabaseHandle     *databaseHandle,
+                            SemaphoreLockTypes lockType
+                           );
 
 /***********************************************************************\
 * Name   : Database_setEnabledSync
@@ -472,6 +752,8 @@ Errors Database_compare(DatabaseHandle *databaseHandleReference,
 *          toDatabaseHandle      - fo-database handle
 *          fromTableName         - from-table name
 *          toTableName           - to-table name
+*          transactionFlag       - copy with transaction
+*          duration              - duration variable or NULL
 *          preCopyTableFunction  - pre-copy call-back function
 *          preCopyTableUserData  - user data for pre-copy call-back
 *          postCopyTableFunction - pre-copy call-back function
@@ -481,7 +763,7 @@ Errors Database_compare(DatabaseHandle *databaseHandleReference,
 *          fromAdditional        - additional SQL condition
 *          ...                   - optional arguments for additional
 *                                  SQL condition
-* Output : -
+* Output : duration - duration [ms]
 * Return : ERROR_NONE or error code
 * Notes  : -
 \***********************************************************************/
@@ -491,6 +773,7 @@ Errors Database_copyTable(DatabaseHandle                *fromDatabaseHandle,
                           const char                    *fromTableName,
                           const char                    *toTableName,
                           bool                          transactionFlag,
+                          uint64                        *duration,
                           DatabaseCopyTableFunction     preCopyTableFunction,
                           void                          *preCopyTableUserData,
                           DatabaseCopyTableFunction     postCopyTableFunction,
@@ -604,7 +887,14 @@ Errors Database_removeColumn(DatabaseHandle *databaseHandle,
 * Notes  : -
 \***********************************************************************/
 
-Errors Database_endTransaction(DatabaseHandle *databaseHandle);
+#ifdef NDEBUG
+  Errors Database_endTransaction(DatabaseHandle *databaseHandle);
+#else /* not NDEBUG */
+  Errors __Database_endTransaction(const char     *__fileName__,
+                                   uint           __lineNb__,
+                                   DatabaseHandle *databaseHandle
+                                  );
+#endif /* NDEBUG */
 
 /***********************************************************************\
 * Name   : Database_rollbackTransaction
@@ -615,7 +905,14 @@ Errors Database_endTransaction(DatabaseHandle *databaseHandle);
 * Notes  : -
 \***********************************************************************/
 
-Errors Database_rollbackTransaction(DatabaseHandle *databaseHandle);
+#ifdef NDEBUG
+  Errors Database_rollbackTransaction(DatabaseHandle *databaseHandle);
+#else /* not NDEBUG */
+  Errors __Database_rollbackTransaction(const char     *__fileName__,
+                                        uint           __lineNb__,
+                                        DatabaseHandle *databaseHandle
+                                       );
+#endif /* NDEBUG */
 
 /***********************************************************************\
 * Name   : Database_flush
@@ -751,6 +1048,7 @@ bool Database_exists(DatabaseHandle *databaseHandle,
 * Purpose: get database id of value from database table
 * Input  : databaseHandle - database handle
 *          tableName      - table name
+*          columnName     - column name
 *          additional     - additional string (e. g. WHERE...)
 *                           special functions:
 *                             REGEXP(pattern,case-flag,text)
@@ -762,15 +1060,48 @@ bool Database_exists(DatabaseHandle *databaseHandle,
 Errors Database_getId(DatabaseHandle *databaseHandle,
                       DatabaseId     *value,
                       const char     *tableName,
+                      const char     *columnName,
                       const char     *additional,
                       ...
                      );
 Errors Database_vgetId(DatabaseHandle *databaseHandle,
                        DatabaseId     *value,
                        const char     *tableName,
+                       const char     *columnName,
                        const char     *additional,
                        va_list        arguments
                       );
+
+/***********************************************************************\
+* Name   : Database_getIds, Database_vgetIds
+* Purpose: get database ids from database table
+* Input  : databaseHandle - database handle
+*          values         - database ids array
+*          tableName      - table name
+*          columnName     - column name
+*          additional     - additional string (e. g. WHERE...)
+*                           special functions:
+*                             REGEXP(pattern,case-flag,text)
+* Output : values - database ids array
+* Return : ERROR_NONE or error code
+* Notes  : -
+\***********************************************************************/
+
+Errors Database_getIds(DatabaseHandle *databaseHandle,
+                       Array          *values,
+                       const char     *tableName,
+                       const char     *columnName,
+                       const char     *additional,
+                       ...
+                      );
+
+Errors Database_vgetIds(DatabaseHandle *databaseHandle,
+                        Array          *values,
+                        const char     *tableName,
+                        const char     *columnName,
+                        const char     *additional,
+                        va_list        arguments
+                       );
 
 /***********************************************************************\
 * Name   : Database_getInteger64, Database_vgetInteger64
@@ -994,6 +1325,17 @@ void Database_debugPrintInfo(void);
 \***********************************************************************/
 
 void Database_debugPrintQueryInfo(DatabaseQueryHandle *databaseQueryHandle);
+
+/***********************************************************************\
+* Name   : Database_debugDump
+* Purpose: dump database schema
+* Input  : databaseHandle - database handle
+* Output : -
+* Return : -
+* Notes  : For debugging only!
+\***********************************************************************/
+
+void Database_debugDump(DatabaseHandle *databaseHandle, const char *tableName);
 
 #endif /* not NDEBUG */
 

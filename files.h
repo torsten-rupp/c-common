@@ -27,7 +27,7 @@
 #elif defined(PLATFORM_WINDOWS)
 #endif /* PLATFORM_... */
 
-#include "global.h"
+#include "common/global.h"
 #include "strings.h"
 #include "lists.h"
 #include "stringlists.h"
@@ -1320,7 +1320,7 @@ bool File_isReadable(ConstString fileName);
 bool File_isReadableCString(const char *fileName);
 
 /***********************************************************************\
-* Name   : File_isWritable, File_isWritableCString
+* Name   : File_isWriteable, File_isWriteableCString
 * Purpose: check if file or directory exists and is writable
 * Input  : fileName - file name
 * Output : -
@@ -1329,8 +1329,20 @@ bool File_isReadableCString(const char *fileName);
 * Notes  : -
 \***********************************************************************/
 
-bool File_isWritable(ConstString fileName);
-bool File_isWritableCString(const char *fileName);
+bool File_isWriteable(ConstString fileName);
+bool File_isWriteableCString(const char *fileName);
+
+/***********************************************************************\
+* Name   : File_isNetworkFileSystem, File_isNetworkFileSystemCString
+* Purpose: check if file or directory is on a network filesystem
+* Input  : fileName - file name
+* Output : -
+* Return : TRUE if file/directory is on a network filesystem
+* Notes  : -
+\***********************************************************************/
+
+bool File_isNetworkFileSystem(ConstString fileName);
+bool File_isNetworkFileSystemCString(const char *fileName);
 
 /***********************************************************************\
 * Name   : File_getInfo, File_getInfoCString

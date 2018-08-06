@@ -118,7 +118,7 @@ int main(int argc, char *argv[])
 
   UNUSED_VARIABLE(argc);
   UNUSED_VARIABLE(argv);
-  Semaphore_init(&semaphore);
+  Semaphore_init(&semaphore,SEMAPHORE_TYPE_BINARY);
 
 #if 1
   printf("Try lock for read..."); fflush(stdout);
@@ -184,9 +184,9 @@ fprintf(stderr,"%s, %d: 1 ok\n",__FILE__,__LINE__);
 
   Semaphore_done(&semaphore);
 
-  Semaphore_init(&semaphoreA);
-  Semaphore_init(&semaphoreB);
-  Semaphore_init(&semaphoreC);
+  Semaphore_init(&semaphoreA,SEMAPHORE_TYPE_BINARY);
+  Semaphore_init(&semaphoreB,SEMAPHORE_TYPE_BINARY);
+  Semaphore_init(&semaphoreC,SEMAPHORE_TYPE_BINARY);
 
 #if 0
 fprintf(stderr,"%s, %d: \n",__FILE__,__LINE__);
