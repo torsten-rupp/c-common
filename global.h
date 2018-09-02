@@ -272,7 +272,7 @@ typedef struct
   uint   shift;
 } MaskShift64;
 
-// Unicode codepoint
+// Unicode codepoint (4 bytes)
 typedef uint32_t Codepoint;
 
 // string iterator
@@ -2241,7 +2241,7 @@ static inline void stringDelete(char *string)
 *          index     - index (0..n-1)
 *          nextIndex - next index variable or NULL
 * Output : nextIndex - next index
-* Return : character
+* Return : character/codepoint
 * Notes  : -
 \***********************************************************************/
 
