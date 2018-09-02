@@ -71,7 +71,7 @@ typedef enum
 //TODO: useful?
 typedef struct
 {
-  ulong value:61;
+  uint64 value:61;
   enum unit
   {
     S,

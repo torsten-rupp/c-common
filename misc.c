@@ -45,7 +45,6 @@
 #include "strings.h"
 #include "stringlists.h"
 
-#include "bar.h"
 #include "files.h"
 
 #include "misc.h"
