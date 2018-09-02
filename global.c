@@ -705,7 +705,7 @@ Errors debugTestCodeError(const char *__fileName__,
 
   if (getenv(DEBUG_TESTCODE_STOP) != NULL)
   {
-    __BP();
+    __B();
   }
 
   return ERRORX_(TESTCODE,0,"'%s' at %s, %lu",__testCodeName__,__fileName__,__lineNb__);
@@ -1272,7 +1272,6 @@ void debugDumpStackTrace(FILE                           *handle,
     StackTraceOutputInfo stackTraceOutputInfo;
   #elif HAVE_BACKTRACE_SYMBOLS
     const char **functionNames;
-    uint       z;
     uint       i;
   #else /* not HAVE_... */
   #endif /* HAVE_... */
@@ -1311,16 +1310,16 @@ void debugDumpStackTrace(FILE                           *handle,
     }
 
     // output stack trace
-    for (z = 1+skipFrameCount; z < stackTraceSize; z++)
+    for (i = 1+skipFrameCount; i < stackTraceSize; i++)
     {
-      debugDumpStackTraceOutput(handle,indent,type,"  %2d 0x%016"PRIxPTR": %s\n",z,(uintptr_t)stackTrace[z],functionNames[z]);
+      debugDumpStackTraceOutput(handle,indent,type,"  %2d 0x%016"PRIxPTR": %s\n",i,(uintptr_t)stackTrace[i],functionNames[i]);
     }
     free(functionNames);
   #else /* not HAVE_... */
     UNUSED_VARIABLE(stackTraceSize);
     UNUSED_VARIABLE(skipFrameCount);
 
-    debugDumpStackTraceOutput(handle,indent,signalNumber,"  not available\n");
+    debugDumpStackTraceOutput(handle,indent,type,"  not available\n");
   #endif /* HAVE_... */
 }
 

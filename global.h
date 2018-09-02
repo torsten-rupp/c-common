@@ -309,6 +309,7 @@ typedef bool(*ResourceDumpInfoFunction)(const char *variableName,
                                         void       *userData
                                        );
 
+// stack trace output types
 typedef enum
 {
   DEBUG_DUMP_STACKTRACE_OUTPUT_TYPE_NONE,
@@ -379,9 +380,9 @@ typedef void(*DebugDumpStackTraceOutputFunction)(const char *text, void *userDat
 
 // debugging
 #if defined(__x86_64__) || defined(__i386)
-  #define __BP() do { fprintf(stderr,"%s, %d: \n",__FILE__,__LINE__); asm(" int3"); } while (0)
+  #define __B() do { fprintf(stderr,"%s, %d: \n",__FILE__,__LINE__); asm(" int3"); } while (0)
 #else
-  #define __BP() do { } while (0)
+  #define __B() do { } while (0)
 #endif
 
 /***********************************************************************\
@@ -2158,7 +2159,7 @@ static inline char* stringTrimEnd(char *string)
   {
     s--;
   }
-  if (s >= string) s[0] = NUL;
+  s[1] = NUL;
 
   return string;
 }
@@ -2186,7 +2187,7 @@ static inline char* stringTrim(char *string)
   {
     s--;
   }
-  if (s >= string) s[0] = NUL;
+  s[1] = NUL;
 
   return string;
 }
