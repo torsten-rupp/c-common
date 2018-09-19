@@ -631,7 +631,8 @@ INLINE unsigned long List_count(const void *list)
 * Purpose: insert node into list
 * Input  : list     - list
 *          node     - node to insert
-*          nextNode - insert node before nextNode (could be NULL)
+*          nextNode - insert node before nextNode (could be NULL to
+*                     append)
 * Output : -
 * Return : -
 * Notes  : -
