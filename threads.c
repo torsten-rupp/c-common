@@ -406,7 +406,7 @@ LOCAL void debugThreadDumpAllStackTraces(DebugDumpStackTraceOutputTypes type, co
                 // wait for done signal
 //fprintf(stderr,"%s, %d: wait %p: %s %p \n",__FILE__,__LINE__,pthread_self(),debugThreadStackTraceGetThreadName(debugThreadStackTraceThreads[debugThreadStackTraceThreadIndex].id),debugThreadStackTraceThreads[debugThreadStackTraceThreadIndex].id);
                 clock_gettime(CLOCK_REALTIME,&timeout);
-                timeout.tv_sec += 5;
+                timeout.tv_sec += 30;
                 if (pthread_cond_timedwait(&debugThreadStackTraceDone,&debugThreadStackTraceLock,&timeout) != 0)
                 {
                   // wait for done fail
@@ -426,6 +426,10 @@ LOCAL void debugThreadDumpAllStackTraces(DebugDumpStackTraceOutputTypes type, co
                     debugDumpStackTraceOutput(stderr,0,type,"  not availble (terminate fail)\n");
                   }
                   pthread_mutex_unlock(&debugConsoleLock);
+                }
+                else
+                {
+                  HALT_INTERNAL_ERROR("Process signal QUIT for thread %s fail",Thread_getIdString(debugThreadStackTraceThreads[debugThreadStackTraceThreadIndex].id));
                 }
               }
               else
@@ -630,6 +634,12 @@ LOCAL void *threadStartCode(void *userData)
   void            *argument;
 
   assert(startInfo != NULL);
+
+  // try to set thread name
+  if (startInfo->name != NULL)
+  {
+    (void)pthread_setname_np(pthread_self(),startInfo->name);
+  }
 
   #ifndef NDEBUG
     debugThreadStackTraceSetThreadName(pthread_self(),startInfo->name);
