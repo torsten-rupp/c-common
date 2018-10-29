@@ -407,7 +407,7 @@ LOCAL void debugThreadDumpAllStackTraces(DebugDumpStackTraceOutputTypes type, co
 //fprintf(stderr,"%s, %d: wait %p: %s %p \n",__FILE__,__LINE__,pthread_self(),debugThreadStackTraceGetThreadName(debugThreadStackTraceThreads[debugThreadStackTraceThreadIndex].id),debugThreadStackTraceThreads[debugThreadStackTraceThreadIndex].id);
                 clock_gettime(CLOCK_REALTIME,&timeout);
                 timeout.tv_sec += 30;
-                if (pthread_cond_timedwait(&debugThreadStackTraceDone,&debugThreadStackTraceLock,&timeout) != 0)
+                if (pthread_cond_timedwait(&debugThreadStackTraceDone,&debugThreadStackTraceLock,&timeout) == 0)
                 {
                   // wait for done fail
                   name = debugThreadStackTraceGetThreadName(debugThreadStackTraceThreads[debugThreadStackTraceThreadIndex].id);
@@ -429,7 +429,10 @@ LOCAL void debugThreadDumpAllStackTraces(DebugDumpStackTraceOutputTypes type, co
                 }
                 else
                 {
-                  HALT_INTERNAL_ERROR("Process signal QUIT for thread %s fail",Thread_getIdString(debugThreadStackTraceThreads[debugThreadStackTraceThreadIndex].id));
+                  HALT_INTERNAL_ERROR("Process signal QUIT for thread %s ==-- %s fail %d %s",
+                  Thread_getIdString(debugThreadStackTraceThreads[debugThreadStackTraceThreadIndex].id),
+                  Thread_getCurrentIdString(),
+                  errno,strerror(errno));
                 }
               }
               else
@@ -804,6 +807,27 @@ void __Thread_done(const char *__fileName__,
   #endif /* NDEBUG */
 
   UNUSED_VARIABLE(thread);
+}
+
+int Thread_getPriority(Thread *thread)
+{
+  int                policy;
+  struct sched_param scheduleParameter;  
+
+  assert(thread != NULL);
+  DEBUG_CHECK_RESOURCE_TRACE(thread);
+
+  pthread_getschedparam(thread->handle,&policy,&scheduleParameter);
+
+  return scheduleParameter.sched_priority;
+}
+
+void Thread_setPriority(Thread *thread, int priority)
+{
+  assert(thread != NULL);
+  DEBUG_CHECK_RESOURCE_TRACE(thread);
+  
+  pthread_setschedprio(thread->handle,priority);
 }
 
 bool Thread_join(Thread *thread)
