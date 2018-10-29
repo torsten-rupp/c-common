@@ -45,7 +45,8 @@
 #include "common/strings.h"
 #include "common/stringlists.h"
 
-#include "files.h"
+//#include "bar.h"
+#include "common/files.h"
 
 #include "common/misc.h"
 
@@ -661,7 +662,7 @@ uint64 Misc_getTimestamp(void)
 
   if (gettimeofday(&tv,NULL) == 0)
   {
-    return (uint64)tv.tv_usec+((uint64)tv.tv_sec)*1000000ULL;
+    return (uint64)tv.tv_usec+((uint64)tv.tv_sec)*US_PER_S;
   }
   else
   {
