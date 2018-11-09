@@ -16,6 +16,8 @@
 #endif
 
 /****************************** Includes *******************************/
+#include <config.h>  // use <...> to support separated build directory
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -484,6 +486,9 @@ typedef void(*DebugDumpStackTraceOutputFunction)(const char *text, void *userDat
 
 #define UNUSED_VARIABLE(variable) (void)variable
 
+//#define UNUSED_FUNCTION(function) (void)&function;
+#define UNUSED_FUNCTION(function)
+
 /***********************************************************************\
 * Name   : SIZE_OF_MEMBER
 * Purpose: get size of struct member
@@ -509,7 +514,7 @@ typedef void(*DebugDumpStackTraceOutputFunction)(const char *text, void *userDat
 
 /***********************************************************************\
 * Name   : FOR_ARRAY
-* Purpose: iterated over array and execute block
+* Purpose: iterate over array and execute block
 * Input  : array    - array
 *          variable - iteration variable
 * Output : -
@@ -551,6 +556,30 @@ typedef void(*DebugDumpStackTraceOutputFunction)(const char *text, void *userDat
 
 #define ARRAY_LAST(array) \
   array[SIZE_OF_ARRAY(array)-1]
+
+/***********************************************************************\
+* Name   : FOR_ENUM
+* Purpose: iterate over enum and execute block
+* Input  : enumMin,enumMax - enum min./max.
+*          variable        - iteration variable
+* Output : -
+* Return : -
+* Notes  : value will contain enum values
+*          usage:
+*            unsigned int i;
+*
+*            FOR_ENUM(variable,value,enum1,enum2,...)
+*            {
+*              ... = value
+*            }
+\***********************************************************************/
+
+#define FOR_ENUM(variable,value,...) \
+  typeof(value) __enum_values ## __COUNTER__ ## __[] = {__VA_ARGS__}; \
+  for ((variable) = 0, value = __enum_values ## __COUNTER__ ## __[variable]; \
+       (variable) < SIZE_OF_ARRAY(__enum_values ## __COUNTER__ ## __); \
+       (variable)++, (value) = __enum_values ## __COUNTER__ ## __[variable] \
+      )
 
 /***********************************************************************\
 * Name   : ALIGN
@@ -2053,7 +2082,7 @@ static inline char* stringSet(char *destination, size_t n, const char *source)
 
 /***********************************************************************\
 * Name   : stringFormat
-* Purpose: formated string
+* Purpose: format string
 * Input  : string - string
 *          n      - size of string
 *          format - format string
@@ -2074,6 +2103,38 @@ static inline char* stringFormat(char *string, size_t n, const char *format, ...
   va_start(arguments,format);
   vsnprintf(string,n,format,arguments);
   va_end(arguments);
+
+  return string;
+}
+
+/***********************************************************************\
+* Name   : stringFormatAppend
+* Purpose: format string and append
+* Input  : string - string
+*          n      - size of string
+*          format - format string
+*          ...    - optional arguments
+* Output : -
+* Return : destination string
+* Notes  : string is always NULL or NUL-terminated
+\***********************************************************************/
+
+static inline char* stringFormatAppend(char *string, size_t n, const char *format, ...)
+{
+  size_t  length;
+  va_list arguments;
+
+  assert(string != NULL);
+  assert(n > 0);
+  assert(format != NULL);
+
+  length = strlen(string);
+  if (length < n)
+  {
+    va_start(arguments,format);
+    vsnprintf(string+length,n-length,format,arguments);
+    va_end(arguments);
+  }
 
   return string;
 }
@@ -2105,38 +2166,6 @@ static inline char* stringAppend(char *destination, size_t n, const char *source
   }
 
   return destination;
-}
-
-/***********************************************************************\
-* Name   : stringAppendFormat
-* Purpose: append formated string
-* Input  : string - string
-*          n      - size of string
-*          format - format string
-*          ...    - optional arguments
-* Output : -
-* Return : destination string
-* Notes  : string is always NULL or NUL-terminated
-\***********************************************************************/
-
-static inline char* stringAppendFormat(char *string, size_t n, const char *format, ...)
-{
-  size_t  length;
-  va_list arguments;
-
-  assert(string != NULL);
-  assert(n > 0);
-  assert(format != NULL);
-
-  length = strlen(string);
-  if (length < n)
-  {
-    va_start(arguments,format);
-    vsnprintf(string+length,n-length,format,arguments);
-    va_end(arguments);
-  }
-
-  return string;
 }
 
 /***********************************************************************\

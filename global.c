@@ -994,6 +994,7 @@ void debugResourceDumpInfo(FILE                     *handle,
   DebugResourceNode     *debugResourceNode;
   ResourceHistogramList resourceHistogramList;
   ResourceHistogramNode *resourceHistogramNode;
+  char                  s[34+1];
 
   pthread_once(&debugResourceInitFlag,debugResourceInit);
 
@@ -1084,8 +1085,11 @@ void debugResourceDumpInfo(FILE                     *handle,
     {
       LIST_ITERATE(&resourceHistogramList,resourceHistogramNode)
       {
-        fprintf(handle,"DEBUG: resource '%32s' 0x%016"PRIxPTR" (%ld bytes) allocated %u times at %s, line %lu\n",
-                resourceHistogramNode->debugResourceNode->variableName,
+        stringSet(s,sizeof(s),"'");
+        stringAppend(s,sizeof(s),resourceHistogramNode->debugResourceNode->variableName);
+        stringAppend(s,sizeof(s),"'");
+        fprintf(handle,"DEBUG: resource %-32s 0x%016"PRIxPTR" (%ld bytes) allocated %u times at %s, line %lu\n",
+                s,
                 (uintptr_t)resourceHistogramNode->debugResourceNode->resource,
                 resourceHistogramNode->debugResourceNode->size,
                 resourceHistogramNode->count,
@@ -1332,8 +1336,8 @@ void debugDumpCurrentStackTrace(FILE                           *handle,
   #if defined(HAVE_BACKTRACE)
     const int MAX_STACK_TRACE_SIZE = 256;
 
-    void **currentStackTrace;
-    int  currentStackTraceSize;
+    void const** currentStackTrace;
+    int          currentStackTraceSize;
   #else /* not defined(HAVE_BACKTRACE) */
     uint i;
   #endif /* defined(HAVE_BACKTRACE) */
@@ -1341,10 +1345,10 @@ void debugDumpCurrentStackTrace(FILE                           *handle,
   assert(handle != NULL);
 
   #if defined(HAVE_BACKTRACE)
-    currentStackTrace = (void**)malloc(sizeof(void*)*MAX_STACK_TRACE_SIZE);
+    currentStackTrace = (void const**)malloc(sizeof(void*)*MAX_STACK_TRACE_SIZE);
     if (currentStackTrace == NULL) return;
 
-    currentStackTraceSize = backtrace(currentStackTrace,MAX_STACK_TRACE_SIZE);
+    currentStackTraceSize = backtrace((void*)currentStackTrace,MAX_STACK_TRACE_SIZE);
     debugDumpStackTrace(handle,indent,type,currentStackTrace,currentStackTraceSize,1+skipFrameCount);
 
     free(currentStackTrace);
