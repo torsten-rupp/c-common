@@ -43,7 +43,7 @@
 
 /****************** Conditional compilation switches *******************/
 #define HALT_ON_INSUFFICIENT_MEMORY   // halt on insufficient memory
-#define TRACE_STRING_ALLOCATIONS      // trace all allocated strings
+#define _TRACE_STRING_ALLOCATIONS      // trace all allocated strings
 #define _FILL_MEMORY                   // fill memory
 
 #ifndef NDEBUG
@@ -2415,8 +2415,8 @@ String __String_new(const char *__fileName__, ulong __lineNb__)
           {
             fprintf(stderr,"DEBUG WARNING: %lu strings allocated!\n",debugStringCount);
             debugMaxStringNextWarningCount += WARN_MAX_STRINGS_DELTA;
-  //String_debugDumpInfo(stderr);
-  //          sleep(1);
+//String_debugDumpInfo(stderr);
+//          sleep(1);
           }
         #endif /* MAX_STRINGS_CHECK */
       #else /* not TRACE_STRING_ALLOCATIONS */
@@ -2858,6 +2858,42 @@ String String_vformat(String string, const char *format, va_list arguments)
     string->length = 0;
     STRING_UPDATE_VALID(string);
 
+    formatString(string,format,arguments);
+  }
+
+  return string;
+}
+
+String String_formatAppend(String string, const char *format, ...)
+{
+  va_list arguments;
+
+  assert(string != NULL);
+  assert(format != NULL);
+
+  STRING_CHECK_VALID(string);
+  STRING_CHECK_ASSIGNABLE(string);
+
+  if (string != NULL)
+  {
+    va_start(arguments,format);
+    formatString(string,format,arguments);
+    va_end(arguments);
+  }
+
+  return string;
+}
+
+String String_vformatAppend(String string, const char *format, va_list arguments)
+{
+  assert(string != NULL);
+  assert(format != NULL);
+
+  STRING_CHECK_VALID(string);
+  STRING_CHECK_ASSIGNABLE(string);
+
+  if (string != NULL)
+  {
     formatString(string,format,arguments);
   }
 
@@ -5622,44 +5658,44 @@ void String_debugDumpInfo(FILE                   *handle,
                           uint                   stringDumpInfoTypes
                          )
 {
-  typedef struct StringHistogramNode
-  {
-    LIST_NODE_HEADER(struct StringHistogramNode);
-
-    const DebugStringNode *debugStringNode;
-    uint                  count;
-
-  } StringHistogramNode;
-  typedef struct
-  {
-    LIST_HEADER(StringHistogramNode);
-  } StringHistogramList;
-
-  /***********************************************************************\
-  * Name   : compareStringHistogramNodes
-  * Purpose: compare string histogram nodes
-  * Input  : node1,node2 - string histogram nodes to compare
-  * Output : -
-  * Return : -1 iff node1->count > node2->count
-  *           1 iff node1->count < node2->count
-  *           0 iff node1->count == node2->count
-  * Notes  : -
-  \***********************************************************************/
-
-  auto int compareStringHistogramNodes(const StringHistogramNode *node1, const StringHistogramNode *node2, void *userData);
-  int compareStringHistogramNodes(const StringHistogramNode *node1, const StringHistogramNode *node2, void *userData)
-  {
-    assert(node1 != NULL);
-    assert(node2 != NULL);
-
-    UNUSED_VARIABLE(userData);
-
-    if      (node1->count > node2->count) return -1;
-    else if (node1->count < node2->count) return  1;
-    else                                  return  0;
-  }
-
   #ifdef TRACE_STRING_ALLOCATIONS
+    typedef struct StringHistogramNode
+    {
+      LIST_NODE_HEADER(struct StringHistogramNode);
+
+      const DebugStringNode *debugStringNode;
+      uint                  count;
+
+    } StringHistogramNode;
+    typedef struct
+    {
+      LIST_HEADER(StringHistogramNode);
+    } StringHistogramList;
+
+    /***********************************************************************\
+    * Name   : compareStringHistogramNodes
+    * Purpose: compare string histogram nodes
+    * Input  : node1,node2 - string histogram nodes to compare
+    * Output : -
+    * Return : -1 iff node1->count > node2->count
+    *           1 iff node1->count < node2->count
+    *           0 iff node1->count == node2->count
+    * Notes  : -
+    \***********************************************************************/
+
+    auto int compareStringHistogramNodes(const StringHistogramNode *node1, const StringHistogramNode *node2, void *userData);
+    int compareStringHistogramNodes(const StringHistogramNode *node1, const StringHistogramNode *node2, void *userData)
+    {
+      assert(node1 != NULL);
+      assert(node2 != NULL);
+
+      UNUSED_VARIABLE(userData);
+
+      if      (node1->count > node2->count) return -1;
+      else if (node1->count < node2->count) return  1;
+      else                                  return  0;
+    }
+
     ulong               n;
     ulong               count;
     DebugStringNode     *debugStringNode;
@@ -5793,7 +5829,7 @@ void String_debugDumpInfo(FILE                   *handle,
     UNUSED_VARIABLE(handle);
     UNUSED_VARIABLE(stringDumpInfoFunction);
     UNUSED_VARIABLE(stringDumpInfoUserData);
-    UNUSED_VARIABLE(stringDumpInfoMode);
+    UNUSED_VARIABLE(stringDumpInfoTypes);
   #endif /* TRACE_STRING_ALLOCATIONS */
 }
 
