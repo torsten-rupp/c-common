@@ -1,7 +1,7 @@
 /***********************************************************************\
 *
-* $Revision: 8219 $
-* $Date: 2017-12-26 17:03:06 +0100 (Tue, 26 Dec 2017) $
+* $Revision: 8814 $
+* $Date: 2018-10-31 07:47:59 +0100 (Wed, 31 Oct 2018) $
 * $Author: torsten $
 * Contents: Database functions
 * Systems: all
@@ -17,6 +17,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <ctype.h>
+#include <inttypes.h>
 #include <unistd.h>
 #include <time.h>
 #include <signal.h>
@@ -31,12 +32,13 @@
 #include <assert.h>
 
 #include "common/global.h"
-#include "strings.h"
+#include "common/strings.h"
 #include "common/lists.h"
 #include "common/arrays.h"
 #include "common/files.h"
 #include "common/misc.h"
-#include "semaphores.h"
+#include "common/threads.h"
+#include "common/semaphores.h"
 #include "errors.h"
 
 #include "sqlite3.h"
@@ -46,12 +48,10 @@
 /****************** Conditional compilation switches *******************/
 #define DATABASE_SUPPORT_TRANSACTIONS
 #define DATABASE_SUPPORT_INTERRUPT
-#define _DATABASE_DEBUG_COPY_TABLE
+#define DATABASE_DEBUG_COPY_TABLE
 
 #define DATABASE_USE_ATOMIC_INCREMENT
 #define _DATABASE_DEBUG_LOCK
-
-#define DATABASE_SINGLE_LOCK
 
 /***************************** Constants *******************************/
 #define MAX_FORCE_CHECKPOINT_TIME (10LL*60LL*1000LL) // timeout for force execution of a checkpoint [ms]
@@ -109,14 +109,6 @@ LOCAL DatabaseList databaseList;
 #ifndef DATABASE_LOCK_PER_INSTANCE
   LOCAL pthread_mutex_t databaseLock;
 #endif /* DATABASE_LOCK_PER_INSTANCE */
-
-//TODO: remove
-#if 0
-LOCAL Semaphore          databaseRequestLock;
-LOCAL DatabaseHandleList databaseRequestList;
-LOCAL uint               databaseRequestHighestPiority;
-uint transactionCount = 0;
-#endif
 
 #ifndef NDEBUG
   LOCAL uint                databaseDebugCounter = 0;
@@ -205,7 +197,7 @@ uint transactionCount = 0;
       } \
     } \
     while (0)
-#else /* not NDEBUG */
+#else /* NDEBUG */
   #define DATABASE_DEBUG_SQL(databaseHandle,sqlString) \
     do \
     { \
@@ -239,57 +231,69 @@ uint transactionCount = 0;
 #endif /* not NDEBUG */
 
 #ifdef DATABASE_LOCK_PER_INSTANCE
-  #define DATABASE_LOCK(databaseHandle) \
+  #define DATABASE_HANDLE_DO(databaseHandle,block) \
     do \
     { \
+      assert(databaseHandle != NULL); \
       assert(databaseHandle->databaseNode != NULL); \
       \
       pthread_mutex_lock(databaseHandle->databaseNode->lock); \
-    } \
-    while (0)
-
-  #define DATABASE_UNLOCK(databaseHandle) \
-    do \
-    { \
-      assert(databaseHandle->databaseNode != NULL); \
-      \
+      ({ \
+        auto void __closure__(void); \
+        \
+        void __closure__(void)block; __closure__; \
+      })(); \
       pthread_mutex_unlock(databaseHandle->databaseNode->lock); \
     } \
     while (0)
-
-  #define DATABASE_WAIT_TRIGGER(databaseHandle,trigger) \
+  #define DATABASE_HANDLE_DOX(result,databaseHandle,block) \
     do \
     { \
+      assert(databaseHandle != NULL); \
       assert(databaseHandle->databaseNode != NULL); \
       \
-      pthread_cond_wait(trigger,databaseHandle->databaseNode->lock); \
+      pthread_mutex_lock(databaseHandle->databaseNode->lock); \
+      result = ({ \
+                 auto typeof(result) __closure__(void); \
+                 \
+                 typeof(result) __closure__(void)block; __closure__; \
+               })(); \
+      pthread_mutex_unlock(databaseHandle->databaseNode->lock); \
     } \
     while (0)
 #else /* not DATABASE_LOCK_PER_INSTANCE */
-  #define DATABASE_LOCK(databaseHandle) \
+  #define DATABASE_HANDLE_DO(databaseHandle,block) \
     do \
     { \
+      assert(databaseHandle != NULL); \
+      assert(databaseHandle->databaseNode != NULL); \
+      \
       UNUSED_VARIABLE(databaseHandle); \
       \
       pthread_mutex_lock(&databaseLock); \
-    } \
-    while (0)
-
-  #define DATABASE_UNLOCK(databaseHandle) \
-    do \
-    { \
-      UNUSED_VARIABLE(databaseHandle); \
-      \
+      ({ \
+        auto void __closure__(void); \
+        \
+        void __closure__(void)block; __closure__; \
+      })(); \
       pthread_mutex_unlock(&databaseLock); \
     } \
     while (0)
-
-  #define DATABASE_WAIT_TRIGGER(databaseHandle,trigger) \
+  #define DATABASE_HANDLE_DOX(result,databaseHandle,block) \
     do \
     { \
+      assert(databaseHandle != NULL); \
+      assert(databaseHandle->databaseNode != NULL); \
+      \
       UNUSED_VARIABLE(databaseHandle); \
       \
-      pthread_cond_wait(trigger,&databaseLock); \
+      pthread_mutex_lock(&databaseLock); \
+      result = ({ \
+                 auto typeof(result) __closure__(void); \
+                 \
+                 typeof(result) __closure__(void)block; __closure__; \
+               })(); \
+      pthread_mutex_unlock(&databaseLock); \
     } \
     while (0)
 #endif /* DATABASE_LOCK_PER_INSTANCE */
@@ -371,10 +375,33 @@ uint transactionCount = 0;
     } \
     while (0)
 #endif /* not NDEBUG */
+  #define DATABASE_DOXXX(result,databaseHandle,lockType,block) \
+    do \
+    { \
+      result = ({ \
+                 auto typeof(result) __closure__(void); \
+                 \
+                 typeof(result) __closure__(void)block; __closure__; \
+               })(); \
+    } \
+    while (0)
 
 #ifndef NDEBUG
-  #define begin(...) __begin(__FILE__,__LINE__, ## __VA_ARGS__)
-  #define end(...)   __end  (__FILE__,__LINE__, ## __VA_ARGS__)
+  #define begin(...)                      __begin                     (__FILE__,__LINE__, ## __VA_ARGS__)
+  #define end(...)                        __end                       (__FILE__,__LINE__, ## __VA_ARGS__)
+
+  #define pendingReadsIncrement(...)      __pendingReadsIncrement     (__FILE__,__LINE__, ## __VA_ARGS__)
+  #define pendingReadWritesIncrement(...) __pendingReadWritesIncrement(__FILE__,__LINE__, ## __VA_ARGS__)
+  #define readsIncrement(...)             __readsIncrement            (__FILE__,__LINE__, ## __VA_ARGS__)
+  #define readWritesIncrement(...)        __readWritesIncrement       (__FILE__,__LINE__, ## __VA_ARGS__)
+
+  #define waitTriggerRead(...)            __waitTriggerRead           (__FILE__,__LINE__, ## __VA_ARGS__)
+  #define waitTriggerReadWrite(...)       __waitTriggerReadWrite      (__FILE__,__LINE__, ## __VA_ARGS__)
+  #define waitTriggerTransaction(...)     __waitTriggerTransaction    (__FILE__,__LINE__, ## __VA_ARGS__)
+
+  #define triggerUnlockRead(...)          __triggerUnlockRead         (__FILE__,__LINE__, ## __VA_ARGS__)
+  #define triggerUnlockReadWrite(...)     __triggerUnlockReadWrite    (__FILE__,__LINE__, ## __VA_ARGS__)
+  #define triggerUnlockTransaction(...)   __triggerUnlockTransaction  (__FILE__,__LINE__, ## __VA_ARGS__)
 #endif /* not NDEBUG */
 
 /***************************** Forwards ********************************/
@@ -401,13 +428,605 @@ LOCAL void freeDatabaseNode(DatabaseNode *databaseNode, void *userData)
 
   UNUSED_VARIABLE(userData);
 
+  DEBUG_REMOVE_RESOURCE_TRACE(databaseNode,sizeof(DatabaseNode));
+
+  Semaphore_done(&databaseNode->progressHandlerList.lock);
   List_done(&databaseNode->progressHandlerList,CALLBACK(NULL,NULL));
+  Semaphore_done(&databaseNode->busyHandlerList.lock);
   List_done(&databaseNode->busyHandlerList,CALLBACK(NULL,NULL));
   pthread_cond_destroy(&databaseNode->readWriteTrigger);
   #ifdef DATABASE_LOCK_PER_INSTANCE
      pthread_mutex_destroy(&databaseNode->lock);
   #endif /* DATABASE_LOCK_PER_INSTANCE */
   String_delete(databaseNode->fileName);
+}
+
+#ifndef NDEBUG
+/***********************************************************************\
+* Name   : debugSetDatabaseThreadInfo
+* Purpose: set database thread info
+* Input  : databaseThreadInfo     - database thread info
+*          databaseThreadInfoSize - size of database thread info
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+LOCAL_INLINE void debugSetDatabaseThreadInfo(const char *__fileName__, ulong __lineNb__, DatabaseThreadInfo databaseThreadInfo[], uint databaseThreadInfoSize)
+{
+  uint i;
+
+  i = 0;
+  while (i < databaseThreadInfoSize)
+  {
+    if (Thread_isCurrentThread(databaseThreadInfo[i].threadId))
+    {
+       databaseThreadInfo[i].fileName     = __fileName__;
+       databaseThreadInfo[i].lineNb       = __lineNb__;
+       databaseThreadInfo[i].cycleCounter = getCycleCounter();
+       BACKTRACE(databaseThreadInfo[i].stackTrace,databaseThreadInfo[i].stackTraceSize);
+       break;
+    }
+    i++;
+  }
+  if (i >= databaseThreadInfoSize)
+  {
+    i = 0;
+    while (i < databaseThreadInfoSize)
+    {
+      if (Thread_equalThreads(databaseThreadInfo[i].threadId,THREAD_ID_NONE))
+      {
+        databaseThreadInfo[i].threadId     = Thread_getCurrentId();
+        databaseThreadInfo[i].fileName     = __fileName__;
+        databaseThreadInfo[i].lineNb       = __lineNb__;
+        databaseThreadInfo[i].cycleCounter = getCycleCounter();
+        BACKTRACE(databaseThreadInfo[i].stackTrace,databaseThreadInfo[i].stackTraceSize);
+        break;
+      }
+      i++;
+    }
+  }
+}
+
+/***********************************************************************\
+* Name   : debugClearDatabaseThreadInfo
+* Purpose: clear database thread info
+* Input  : databaseThreadInfo     - database thread info
+*          databaseThreadInfoSize - size of database thread info
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+LOCAL_INLINE void debugClearDatabaseThreadInfo(DatabaseThreadInfo databaseThreadInfo[], uint databaseThreadInfoSize)
+{
+  uint i;
+
+  i = 0;
+  while (i < databaseThreadInfoSize)
+  {
+    if (Thread_isCurrentThread(databaseThreadInfo[i].threadId))
+    {
+       databaseThreadInfo[i].threadId = THREAD_ID_NONE;
+       break;
+    }
+    i++;
+  }
+}
+#endif /* not NDEBUG */
+
+/***********************************************************************\
+* Name   : isReadLock
+* Purpose: check if read lock
+* Input  : databaseNode - database node
+* Output : -
+* Return : TRUE iff read lock
+* Notes  : -
+\***********************************************************************/
+
+LOCAL_INLINE bool isReadLock(DatabaseNode *databaseNode)
+{
+  assert(databaseNode != NULL);
+
+  return (databaseNode->readCount > 0);
+}
+
+/***********************************************************************\
+* Name   : isReadWriteLock
+* Purpose: check if read/write lock
+* Input  : databaseNode - database node
+* Output : -
+* Return : TRUE iff read/write lock
+* Notes  : -
+\***********************************************************************/
+
+LOCAL_INLINE bool isReadWriteLock(DatabaseNode *databaseNode)
+{
+  assert(databaseNode != NULL);
+
+  return (databaseNode->readWriteCount > 0);
+}
+
+/***********************************************************************\
+* Name   : isTransactionLock
+* Purpose: check if transaction lock
+* Input  : databaseNode - database node
+* Output : -
+* Return : TRUE iff transaction lock
+* Notes  : -
+\***********************************************************************/
+
+LOCAL_INLINE bool isTransactionLock(DatabaseNode *databaseNode)
+{
+  assert(databaseNode != NULL);
+
+  return (databaseNode->transactionCount > 0);
+}
+
+/***********************************************************************\
+* Name   : isOwnReadWriteLock
+* Purpose: check if owner of read/write lock
+* Input  : databaseNode - database node
+* Output : -
+* Return : TRUE iff owner of read/write lock
+* Notes  : -
+\***********************************************************************/
+
+LOCAL_INLINE bool isOwnReadWriteLock(DatabaseNode *databaseNode)
+{
+  assert(databaseNode != NULL);
+
+  return    (databaseNode->readWriteCount > 0)
+         && Thread_isCurrentThread(databaseNode->readWriteLockedBy);
+}
+
+/***********************************************************************\
+* Name   : pendingReadsIncrement
+* Purpose: increment database pending read
+* Input  : databaseNode - database node
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+#ifdef NDEBUG
+LOCAL_INLINE void pendingReadsIncrement(DatabaseNode *databaseNode)
+#else /* not NDEBUG */
+LOCAL_INLINE void __pendingReadsIncrement(const char *__fileName__, ulong __lineNb__, DatabaseNode *databaseNode)
+#endif /* NDEBUG */
+{
+  assert(databaseNode != NULL);
+  DEBUG_CHECK_RESOURCE_TRACE(databaseNode);
+
+//TODO: required/useful?
+#ifdef DATABASE_USE_ATOMIC_INCREMENT
+#else /* not DATABASE_USE_ATOMIC_INCREMENT */
+#endif /* DATABASE_USE_ATOMIC_INCREMENT */
+  databaseNode->pendingReadCount++;
+  #ifndef NDEBUG
+    debugSetDatabaseThreadInfo(__fileName__,__lineNb__,databaseNode->pendingReads,SIZE_OF_ARRAY(databaseNode->pendingReads));
+  #endif /* not NDEBUG */
+}
+
+/***********************************************************************\
+* Name   : pendingReadsDecrement
+* Purpose: decrement database pending read
+* Input  : databaseNode - database node
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+LOCAL_INLINE void pendingReadsDecrement(DatabaseNode *databaseNode)
+{
+  assert(databaseNode != NULL);
+  DEBUG_CHECK_RESOURCE_TRACE(databaseNode);
+  assert(databaseNode->pendingReadCount > 0);
+
+//TODO: required/useful?
+#ifdef DATABASE_USE_ATOMIC_INCREMENT
+#else /* not DATABASE_USE_ATOMIC_INCREMENT */
+#endif /* DATABASE_USE_ATOMIC_INCREMENT */
+  databaseNode->pendingReadCount--;
+  #ifndef NDEBUG
+    debugClearDatabaseThreadInfo(databaseNode->pendingReads,SIZE_OF_ARRAY(databaseNode->pendingReads));
+  #endif /* not NDEBUG */
+}
+
+/***********************************************************************\
+* Name   : pendingReadWritesIncrement
+* Purpose: increment database pending read/write
+* Input  : databaseNode - database node
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+#ifdef NDEBUG
+LOCAL_INLINE void pendingReadWritesIncrement(DatabaseNode *databaseNode)
+#else /* not NDEBUG */
+LOCAL_INLINE void __pendingReadWritesIncrement(const char *__fileName__, ulong __lineNb__, DatabaseNode *databaseNode)
+#endif /* NDEBUG */
+{
+  assert(databaseNode != NULL);
+  DEBUG_CHECK_RESOURCE_TRACE(databaseNode);
+
+//TODO: required/useful?
+#ifdef DATABASE_USE_ATOMIC_INCREMENT
+#else /* not DATABASE_USE_ATOMIC_INCREMENT */
+#endif /* DATABASE_USE_ATOMIC_INCREMENT */
+  databaseNode->pendingReadWriteCount++;
+  #ifndef NDEBUG
+    debugSetDatabaseThreadInfo(__fileName__,__lineNb__,databaseNode->pendingReadWrites,SIZE_OF_ARRAY(databaseNode->pendingReadWrites));
+  #endif /* not NDEBUG */
+}
+
+/***********************************************************************\
+* Name   : pendingReadWritesIncrement
+* Purpose: increment database pending read/write
+* Input  : databaseNode - database node
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+LOCAL_INLINE void pendingReadWritesDecrement(DatabaseNode *databaseNode)
+{
+  assert(databaseNode != NULL);
+  DEBUG_CHECK_RESOURCE_TRACE(databaseNode);
+  assert(databaseNode->pendingReadWriteCount > 0);
+
+//TODO: required/useful?
+#ifdef DATABASE_USE_ATOMIC_INCREMENT
+#else /* not DATABASE_USE_ATOMIC_INCREMENT */
+#endif /* DATABASE_USE_ATOMIC_INCREMENT */
+  databaseNode->pendingReadWriteCount--;
+  #ifndef NDEBUG
+    debugClearDatabaseThreadInfo(databaseNode->pendingReadWrites,SIZE_OF_ARRAY(databaseNode->pendingReadWrites));
+  #endif /* not NDEBUG */
+}
+
+/***********************************************************************\
+* Name   : readsIncrement
+* Purpose: increment database pending read
+* Input  : databaseNode - database node
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+#ifdef NDEBUG
+LOCAL_INLINE void readsIncrement(DatabaseNode *databaseNode)
+#else /* not NDEBUG */
+LOCAL_INLINE void __readsIncrement(const char *__fileName__, ulong __lineNb__, DatabaseNode *databaseNode)
+#endif /* NDEBUG */
+{
+  assert(databaseNode != NULL);
+  DEBUG_CHECK_RESOURCE_TRACE(databaseNode);
+
+//TODO: required/useful?
+#ifdef DATABASE_USE_ATOMIC_INCREMENT
+#else /* not DATABASE_USE_ATOMIC_INCREMENT */
+#endif /* DATABASE_USE_ATOMIC_INCREMENT */
+  databaseNode->readCount++;
+  #ifndef NDEBUG
+    debugSetDatabaseThreadInfo(__fileName__,__lineNb__,databaseNode->reads,SIZE_OF_ARRAY(databaseNode->reads));
+  #endif /* not NDEBUG */
+}
+
+/***********************************************************************\
+* Name   : readsDecrement
+* Purpose: decrement database read
+* Input  : databaseNode - database node
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+LOCAL_INLINE void readsDecrement(DatabaseNode *databaseNode)
+{
+  assert(databaseNode != NULL);
+  DEBUG_CHECK_RESOURCE_TRACE(databaseNode);
+  assert(isReadLock(databaseNode));
+
+//TODO: required/useful?
+#ifdef DATABASE_USE_ATOMIC_INCREMENT
+#else /* not DATABASE_USE_ATOMIC_INCREMENT */
+#endif /* DATABASE_USE_ATOMIC_INCREMENT */
+  databaseNode->readCount--;
+  #ifndef NDEBUG
+    debugClearDatabaseThreadInfo(databaseNode->reads,SIZE_OF_ARRAY(databaseNode->reads));
+  #endif /* not NDEBUG */
+}
+
+/***********************************************************************\
+* Name   : readWritesIncrement
+* Purpose: increment database read/write
+* Input  : databaseNode - database node
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+#ifdef NDEBUG
+LOCAL_INLINE void readWritesIncrement(DatabaseNode *databaseNode)
+#else /* not NDEBUG */
+LOCAL_INLINE void __readWritesIncrement(const char *__fileName__, ulong __lineNb__, DatabaseNode *databaseNode)
+#endif /* NDEBUG */
+{
+  assert(databaseNode != NULL);
+  DEBUG_CHECK_RESOURCE_TRACE(databaseNode);
+
+//TODO: required/useful?
+#ifdef DATABASE_USE_ATOMIC_INCREMENT
+#else /* not DATABASE_USE_ATOMIC_INCREMENT */
+#endif /* DATABASE_USE_ATOMIC_INCREMENT */
+  databaseNode->readWriteCount++;
+  #ifndef NDEBUG
+    assert(   Thread_isCurrentThread(databaseNode->readWriteLockedBy)
+           || Thread_equalThreads(databaseNode->readWriteLockedBy,THREAD_ID_NONE)
+          );
+    if (databaseNode->readWriteCount == 1)
+    {
+      databaseNode->readWriteLockedBy = Thread_getCurrentId();
+      debugSetDatabaseThreadInfo(__fileName__,__lineNb__,databaseNode->readWrites,SIZE_OF_ARRAY(databaseNode->readWrites));
+    }
+  #endif /* not NDEBUG */
+}
+
+/***********************************************************************\
+* Name   : readWritesIncrement
+* Purpose: increment database read/write
+* Input  : databaseNode - database node
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+LOCAL_INLINE void readWritesDecrement(DatabaseNode *databaseNode)
+{
+  assert(databaseNode != NULL);
+  DEBUG_CHECK_RESOURCE_TRACE(databaseNode);
+  assert(isReadWriteLock(databaseNode));
+
+//TODO: required/useful?
+#ifdef DATABASE_USE_ATOMIC_INCREMENT
+#else /* not DATABASE_USE_ATOMIC_INCREMENT */
+#endif /* DATABASE_USE_ATOMIC_INCREMENT */
+  databaseNode->readWriteCount--;
+  #ifndef NDEBUG
+    if (databaseNode->readWriteCount == 0)
+    {
+      databaseNode->readWriteLockedBy = THREAD_ID_NONE;
+      debugClearDatabaseThreadInfo(databaseNode->readWrites,SIZE_OF_ARRAY(databaseNode->readWrites));
+    }
+  #endif /* not NDEBUG */
+}
+
+/***********************************************************************\
+* Name   : waitTriggerRead
+* Purpose: wait trigger database read unlock
+* Input  : databaseNode - database node
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+#ifdef NDEBUG
+LOCAL_INLINE void waitTriggerRead(DatabaseNode *databaseNode)
+#else /* not NDEBUG */
+LOCAL_INLINE void __waitTriggerRead(const char *__fileName__, ulong __lineNb__, DatabaseNode *databaseNode)
+#endif /* NDEBUG */
+{
+  assert(databaseNode != NULL);
+  DEBUG_CHECK_RESOURCE_TRACE(databaseNode);
+
+  #ifndef NDEBUG
+    UNUSED_VARIABLE(__fileName__);
+    UNUSED_VARIABLE(__lineNb__);
+  #endif /* not NDEBUG */
+
+  #ifndef NDEBUG
+    #ifdef DATABASE_DEBUG_LOCK
+      fprintf(stderr,"%s, %d: %s                wait rw #%3u %p\n",__fileName__,__lineNb__,Thread_getCurrentIdString(),databaseNode->readWriteCount,&databaseNode->readWriteTrigger);
+    #endif /* DATABASE_DEBUG_LOCK */ 
+  #endif /* not NDEBUG */
+
+  #ifdef DATABASE_LOCK_PER_INSTANCE
+    pthread_cond_wait(&databaseNode->readTrigger,databaseNode->lock);
+  #else /* not DATABASE_LOCK_PER_INSTANCE */
+    pthread_cond_wait(&databaseNode->readTrigger,&databaseLock);
+  #endif /* DATABASE_LOCK_PER_INSTANCE */
+
+  #ifndef NDEBUG
+    #ifdef DATABASE_DEBUG_LOCK
+      fprintf(stderr,"%s, %d: %s                wait rw #%3u %p done\n",__fileName__,__lineNb__,Thread_getCurrentIdString(),databaseNode->readWriteCount,&databaseNode->readWriteTrigger);
+    #endif /* DATABASE_DEBUG_LOCK */ 
+  #endif /* not NDEBUG */
+}
+
+/***********************************************************************\
+* Name   : waitTriggerReadWrite
+* Purpose: wait trigger database read/write unlock
+* Input  : databaseNode - database node
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+#ifdef NDEBUG
+LOCAL_INLINE void waitTriggerReadWrite(DatabaseNode *databaseNode)
+#else /* not NDEBUG */
+LOCAL_INLINE void __waitTriggerReadWrite(const char *__fileName__, ulong __lineNb__, DatabaseNode *databaseNode)
+#endif /* NDEBUG */
+{
+  assert(databaseNode != NULL);
+  DEBUG_CHECK_RESOURCE_TRACE(databaseNode);
+
+  #ifndef NDEBUG
+    UNUSED_VARIABLE(__fileName__);
+    UNUSED_VARIABLE(__lineNb__);
+  #endif /* not NDEBUG */
+
+  #ifdef DATABASE_LOCK_PER_INSTANCE
+    pthread_cond_wait(&databaseNode->readWriteTrigger,databaseNode->lock);
+  #else /* not DATABASE_LOCK_PER_INSTANCE */
+    pthread_cond_wait(&databaseNode->readWriteTrigger,&databaseLock);
+  #endif /* DATABASE_LOCK_PER_INSTANCE */
+
+  #ifndef NDEBUG
+    #ifdef DATABASE_DEBUG_LOCK
+    #endif /* DATABASE_DEBUG_LOCK */ 
+  #endif /* not NDEBUG */
+}
+
+/***********************************************************************\
+* Name   : waitTriggerTransaction
+* Purpose: wait trigger database transaction unlock
+* Input  : databaseNode - database node
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+#if 0
+//TODO: not used - remove?
+#ifdef NDEBUG
+LOCAL_INLINE void waitTriggerTransaction(DatabaseNode *databaseNode)
+#else /* not NDEBUG */
+LOCAL_INLINE void __waitTriggerTransaction(const char   *__fileName__,
+                                           ulong        __lineNb__,
+                                           DatabaseNode *databaseNode
+                                          )
+#endif /* NDEBUG */
+{
+  assert(databaseNode != NULL);
+  DEBUG_CHECK_RESOURCE_TRACE(databaseNode);
+
+  #ifndef NDEBUG
+    UNUSED_VARIABLE(__fileName__);
+    UNUSED_VARIABLE(__lineNb__);
+  #endif /* not NDEBUG */
+
+  #ifdef DATABASE_LOCK_PER_INSTANCE
+    pthread_cond_wait(&databaseNode->transactionTrigger,databaseNode->lock);
+  #else /* not DATABASE_LOCK_PER_INSTANCE */
+    pthread_cond_wait(&databaseNode->transactionTrigger,&databaseLock);
+  #endif /* DATABASE_LOCK_PER_INSTANCE */
+
+  #ifndef NDEBUG
+    #ifdef DATABASE_DEBUG_LOCK
+    #endif /* DATABASE_DEBUG_LOCK */ 
+  #endif /* not NDEBUG */
+}
+#endif // 0
+
+/***********************************************************************\
+* Name   : triggerUnlockRead
+* Purpose: trigger database read/write unlock all
+* Input  : databaseNode - database node
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+#ifdef NDEBUG
+LOCAL_INLINE void triggerUnlockRead(DatabaseNode *databaseNode)
+#else /* not NDEBUG */
+LOCAL_INLINE void __triggerUnlockRead(const char *__fileName__, ulong __lineNb__, DatabaseNode *databaseNode)
+#endif /* NDEBUG */
+{
+  assert(databaseNode != NULL);
+  DEBUG_CHECK_RESOURCE_TRACE(databaseNode);
+
+  #ifndef NDEBUG
+//fprintf(stderr,"%s, %d: trigger r %d\n",__FILE__,__LINE__,databaseNode->readTrigger);
+    databaseNode->lastTrigger.threadId                = Thread_getCurrentId();
+    databaseNode->lastTrigger.fileName                = __fileName__;
+    databaseNode->lastTrigger.lineNb                  = __lineNb__;
+    databaseNode->lastTrigger.cycleCounter            = getCycleCounter();
+    databaseNode->lastTrigger.type                    = DATABASE_LOCK_TYPE_READ;
+    databaseNode->lastTrigger.pendingReadCount        = databaseNode->pendingReadCount;
+    databaseNode->lastTrigger.readCount               = databaseNode->readCount;
+    databaseNode->lastTrigger.pendingReadWriteCount   = databaseNode->pendingReadWriteCount;
+    databaseNode->lastTrigger.readWriteCount          = databaseNode->readWriteCount;
+    databaseNode->lastTrigger.pendingTransactionCount = databaseNode->pendingTransactionCount;
+    databaseNode->lastTrigger.transactionCount        = databaseNode->transactionCount;
+    BACKTRACE(databaseNode->lastTrigger.stackTrace,databaseNode->lastTrigger.stackTraceSize);
+  #endif /* not NDEBUG */
+  pthread_cond_broadcast(&databaseNode->readTrigger);
+}
+
+/***********************************************************************\
+* Name   : triggerUnlockReadWrite
+* Purpose: trigger database read/write unlock
+* Input  : databaseNode - database node
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+#ifdef NDEBUG
+LOCAL_INLINE void triggerUnlockReadWrite(DatabaseNode *databaseNode)
+#else /* not NDEBUG */
+LOCAL_INLINE void __triggerUnlockReadWrite(const char *__fileName__, ulong __lineNb__, DatabaseNode *databaseNode)
+#endif /* NDEBUG */
+{
+  assert(databaseNode != NULL);
+  DEBUG_CHECK_RESOURCE_TRACE(databaseNode);
+
+  #ifndef NDEBUG
+//fprintf(stderr,"%s, %d: trigger rw %d\n",__FILE__,__LINE__,databaseNode->readWriteTrigger);
+    databaseNode->lastTrigger.threadId                = Thread_getCurrentId();
+    databaseNode->lastTrigger.fileName                = __fileName__;
+    databaseNode->lastTrigger.lineNb                  = __lineNb__;
+    databaseNode->lastTrigger.cycleCounter            = getCycleCounter();
+    databaseNode->lastTrigger.type                    = DATABASE_LOCK_TYPE_READ_WRITE;
+    databaseNode->lastTrigger.pendingReadCount        = databaseNode->pendingReadCount;
+    databaseNode->lastTrigger.readCount               = databaseNode->readCount;
+    databaseNode->lastTrigger.pendingReadWriteCount   = databaseNode->pendingReadWriteCount;
+    databaseNode->lastTrigger.readWriteCount          = databaseNode->readWriteCount;
+    databaseNode->lastTrigger.pendingTransactionCount = databaseNode->pendingTransactionCount;
+    databaseNode->lastTrigger.transactionCount        = databaseNode->transactionCount;
+    BACKTRACE(databaseNode->lastTrigger.stackTrace,databaseNode->lastTrigger.stackTraceSize);
+  #endif /* not NDEBUG */
+  pthread_cond_broadcast(&databaseNode->readWriteTrigger);
+}
+
+/***********************************************************************\
+* Name   : triggerUnlockTransaction
+* Purpose: trigger database read/write unlock
+* Input  : databaseNode - database node
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+#ifdef NDEBUG
+LOCAL_INLINE void triggerUnlockTransaction(DatabaseNode *databaseNode)
+#else /* not NDEBUG */
+LOCAL_INLINE void __triggerUnlockTransaction(const char *__fileName__, ulong __lineNb__, DatabaseNode *databaseNode)
+#endif /* NDEBUG */
+{
+  assert(databaseNode != NULL);
+  DEBUG_CHECK_RESOURCE_TRACE(databaseNode);
+
+  #ifndef NDEBUG
+//fprintf(stderr,"%s, %d: trigger trans %d\n",__FILE__,__LINE__,databaseNode->readWriteTrigger);
+    databaseNode->lastTrigger.threadId                = Thread_getCurrentId();
+    databaseNode->lastTrigger.fileName                = __fileName__;
+    databaseNode->lastTrigger.lineNb                  = __lineNb__;
+    databaseNode->lastTrigger.cycleCounter            = getCycleCounter();
+    databaseNode->lastTrigger.type                    = DATABASE_LOCK_TYPE_READ_WRITE;
+    databaseNode->lastTrigger.pendingReadCount        = databaseNode->pendingReadCount;
+    databaseNode->lastTrigger.readCount               = databaseNode->readCount;
+    databaseNode->lastTrigger.pendingReadWriteCount   = databaseNode->pendingReadWriteCount;
+    databaseNode->lastTrigger.readWriteCount          = databaseNode->readWriteCount;
+    databaseNode->lastTrigger.pendingTransactionCount = databaseNode->pendingTransactionCount;
+    databaseNode->lastTrigger.transactionCount        = databaseNode->transactionCount;
+    BACKTRACE(databaseNode->lastTrigger.stackTrace,databaseNode->lastTrigger.stackTraceSize);
+  #endif /* not NDEBUG */
+  pthread_cond_broadcast(&databaseNode->transactionTrigger);
 }
 
 /***********************************************************************\
@@ -461,8 +1080,6 @@ LOCAL_INLINE void __end(const char *__fileName__, ulong __lineNb__, DatabaseHand
   DEBUG_CHECK_RESOURCE_TRACE(databaseHandle);
 
   #ifndef NDEBUG
-    // clear SQL command, backtrace
-    String_clear(databaseHandle->current.sqlCommand);
     #ifdef HAVE_BACKTRACE
       databaseHandle->current.stackTraceSize = 0;
     #endif /* HAVE_BACKTRACE */
@@ -476,7 +1093,6 @@ LOCAL_INLINE void __end(const char *__fileName__, ulong __lineNb__, DatabaseHand
 }
 
 #ifndef NDEBUG
-//TODO
 #ifndef WERROR
 /***********************************************************************\
 * Name   : debugPrintQueryPlanCallback
@@ -1057,7 +1673,7 @@ LOCAL int progressHandler(void *userData)
 {
   DatabaseHandle                    *databaseHandle = (DatabaseHandle*)userData;
   bool                              interruptFlag;
-  const DatabaseNode                *databaseNode;
+  SemaphoreLock                     semaphoreLock;
   const DatabaseProgressHandlerNode *progressHandlerNode;
 
   assert(databaseHandle != NULL);
@@ -1066,9 +1682,12 @@ LOCAL int progressHandler(void *userData)
 
   // execute registered progress handlers
   interruptFlag = FALSE;
-  LIST_ITERATEX(&databaseHandle->databaseNode->progressHandlerList,progressHandlerNode,!interruptFlag)
+  SEMAPHORE_LOCKED_DO(semaphoreLock,&databaseHandle->databaseNode->progressHandlerList.lock,SEMAPHORE_LOCK_TYPE_READ,WAIT_FOREVER)
   {
-    interruptFlag = progressHandlerNode->function(progressHandlerNode->userData);
+    LIST_ITERATEX(&databaseHandle->databaseNode->progressHandlerList,progressHandlerNode,!interruptFlag)
+    {
+      interruptFlag = progressHandlerNode->function(progressHandlerNode->userData);
+    }
   }
 
   return interruptFlag ? 1 : 0;
@@ -1201,7 +1820,7 @@ LOCAL Errors sqliteExecute(DatabaseHandle      *databaseHandle,
                            long                timeout
                           )
 {
-  #define SLEEP_TIME 500L
+  #define SLEEP_TIME 500L  // [ms]
 
   uint                          maxRetryCount;
   uint                          retryCount;
@@ -1218,6 +1837,7 @@ LOCAL Errors sqliteExecute(DatabaseHandle      *databaseHandle,
   DEBUG_CHECK_RESOURCE_TRACE(databaseHandle);
   assert(databaseHandle->databaseNode != NULL);
   assert(databaseHandle->handle != NULL);
+  assert ((databaseHandle->databaseNode->readCount > 0) || (databaseHandle->databaseNode->readWriteCount > 0));
 
   if (changedRowCount != NULL) (*changedRowCount) = 0L;
 
@@ -1230,110 +1850,115 @@ LOCAL Errors sqliteExecute(DatabaseHandle      *databaseHandle,
          && ((timeout == WAIT_FOREVER) || (retryCount <= maxRetryCount))
         )
   {
-    DATABASE_DOX(error,
-                 databaseHandle,
-                 DATABASE_LOCK_TYPE_READ_WRITE,
-    {
-      assert(Thread_isCurrentThread(databaseHandle->databaseNode->readWriteLockedBy));
-      #ifndef NDEBUG
-        String_setCString(databaseHandle->current.sqlCommand,sqlString);
-      #endif /* NDEBUG */
+    assert(Thread_isCurrentThread(databaseHandle->databaseNode->readWriteLockedBy));
+
+    #ifndef NDEBUG
+      String_setCString(databaseHandle->current.sqlCommand,sqlString);
+    #endif /* not NDEBUG */
 
 //fprintf(stderr,"%s, %d: sqlCommands='%s'\n",__FILE__,__LINE__,sqlCommand);
-      // prepare SQL statement
-      sqliteResult = sqlite3_prepare_v2(databaseHandle->handle,
-                                        sqlCommand,
-                                        -1,
-                                        &statementHandle,
-                                        &nextSqlCommand
-                                       );
-      if      (sqliteResult == SQLITE_MISUSE)
-      {
-        HALT_INTERNAL_ERROR("SQLite library reported misuse %d %d",sqliteResult,sqlite3_extended_errcode(databaseHandle->handle));
-      }
-      else if (sqliteResult != SQLITE_OK)
-      {
-        return ERRORX_(DATABASE,sqlite3_errcode(databaseHandle->handle),"%s: %s",sqlite3_errmsg(databaseHandle->handle),sqlString);
-      }
-      assert(statementHandle != NULL);
+    // prepare SQL statement
+    sqliteResult = sqlite3_prepare_v2(databaseHandle->handle,
+                                      sqlCommand,
+                                      -1,
+                                      &statementHandle,
+                                      &nextSqlCommand
+                                     );
+//fprintf(stderr,"%s, %d: nextSqlCommand='%s'\n",__FILE__,__LINE__,nextSqlCommand);
+    if      (sqliteResult == SQLITE_MISUSE)
+    {
+      HALT_INTERNAL_ERROR("SQLite library reported misuse %d %d",sqliteResult,sqlite3_extended_errcode(databaseHandle->handle));
+    }
+    else if (sqliteResult == SQLITE_INTERRUPT)
+    {
+      return ERRORX_(INTERRUPTED,sqlite3_errcode(databaseHandle->handle),"%s: %s",sqlite3_errmsg(databaseHandle->handle),sqlString);
+    }
+    else if (sqliteResult != SQLITE_OK)
+    {
+      return ERRORX_(DATABASE,sqlite3_errcode(databaseHandle->handle),"%s: %s",sqlite3_errmsg(databaseHandle->handle),sqlString);
+    }
+    assert(statementHandle != NULL);
 
-      // allocate call-back data
-      names  = NULL;
-      values = NULL;
-      count  = 0;
-      if (databaseRowFunction != NULL)
+    // allocate call-back data
+    names  = NULL;
+    values = NULL;
+    count  = 0;
+    if (databaseRowFunction != NULL)
+    {
+      count = sqlite3_column_count(statementHandle);
+      names = (const char**)malloc(count*sizeof(const char*));
+      if (names == NULL)
       {
-        count = sqlite3_column_count(statementHandle);
-        names = (const char**)malloc(count*sizeof(const char*));
-        if (names == NULL)
-        {
-          HALT_INSUFFICIENT_MEMORY();
-        }
-        values = (const char**)malloc(count*sizeof(const char*));
-        if (values == NULL)
-        {
-          HALT_INSUFFICIENT_MEMORY();
-        }
+        HALT_INSUFFICIENT_MEMORY();
       }
+      values = (const char**)malloc(count*sizeof(const char*));
+      if (values == NULL)
+      {
+        HALT_INSUFFICIENT_MEMORY();
+      }
+    }
 
-      // step and process rows
+    // step and process rows
+    do
+    {
+      // step
       do
       {
-        // step
-        do
+        sqliteResult = sqlite3_step(statementHandle);
+        if      (sqliteResult == SQLITE_LOCKED)
         {
-          sqliteResult = sqlite3_step(statementHandle);
-          if      (sqliteResult == SQLITE_LOCKED)
-          {
-            waitUnlockNotify(databaseHandle->handle);
-            sqlite3_reset(statementHandle);
-          }
-          else if (sqliteResult == SQLITE_MISUSE)
-          {
-            HALT_INTERNAL_ERROR("SQLite library reported misuse %d %d",sqliteResult,sqlite3_extended_errcode(databaseHandle->handle));
-          }
+          waitUnlockNotify(databaseHandle->handle);
+          sqlite3_reset(statementHandle);
         }
-        while (sqliteResult == SQLITE_LOCKED);
-
-        // process row
-        if      (sqliteResult == SQLITE_ROW)
+        else if (sqliteResult == SQLITE_MISUSE)
         {
-          if (databaseRowFunction != NULL)
-          {
-            for (i = 0; i < count; i++)
-            {
-              names[i]  = sqlite3_column_name(statementHandle,i);
-              values[i] = (const char*)sqlite3_column_text(statementHandle,i);
-            }
-            error = databaseRowFunction(count,names,values,databaseRowUserData);
-//TODO callback
-          }
-        }
-
-        if (changedRowCount != NULL)
-        {
-          (*changedRowCount) += (ulong)sqlite3_changes(databaseHandle->handle);
+          HALT_INTERNAL_ERROR("SQLite library reported misuse %d %d",sqliteResult,sqlite3_extended_errcode(databaseHandle->handle));
         }
       }
-      while ((error == ERROR_NONE) && (sqliteResult == SQLITE_ROW));
+      while (sqliteResult == SQLITE_LOCKED);
 
-      // free call-back data
-      if (databaseRowFunction != NULL)
+      // process row
+      if      (sqliteResult == SQLITE_ROW)
       {
-        free(values);
-        free(names);
+        if (databaseRowFunction != NULL)
+        {
+          for (i = 0; i < count; i++)
+          {
+            names[i]  = sqlite3_column_name(statementHandle,i);
+            values[i] = (const char*)sqlite3_column_text(statementHandle,i);
+          }
+          error = databaseRowFunction(count,names,values,databaseRowUserData);
+//TODO callback
+        }
       }
 
-      // done SQL statement
-      sqlite3_finalize(statementHandle);
+      if (changedRowCount != NULL)
+      {
+        (*changedRowCount) += (ulong)sqlite3_changes(databaseHandle->handle);
+      }
+    }
+    while ((error == ERROR_NONE) && (sqliteResult == SQLITE_ROW));
 
-      return error;
-    });
+    // free call-back data
+    if (databaseRowFunction != NULL)
+    {
+      free(values);
+      free(names);
+    }
+
+    // done SQL statement
+    sqlite3_finalize(statementHandle);
+
+    #ifndef NDEBUG
+      // clear SQL command, backtrace
+      String_clear(databaseHandle->current.sqlCommand);
+    #endif /* not NDEBUG */
 
     // check result
     if      (sqliteResult == SQLITE_BUSY)
     {
 //fprintf(stderr,"%s, %d: database busy %ld < %ld\n",__FILE__,__LINE__,retryCount*SLEEP_TIME,timeout);
+//Database_debugPrintLockInfo(databaseHandle);
       // execute registered busy handlers
 //TODO: lock list?
       LIST_ITERATE(&databaseHandle->databaseNode->busyHandlerList,busyHandlerNode)
@@ -1341,6 +1966,8 @@ LOCAL Errors sqliteExecute(DatabaseHandle      *databaseHandle,
         assert(busyHandlerNode->function != NULL);
         busyHandlerNode->function(busyHandlerNode->userData);
       }
+
+      Misc_mdelay(SLEEP_TIME);
 
       // retry
       retryCount++;
@@ -1369,8 +1996,7 @@ LOCAL Errors sqliteExecute(DatabaseHandle      *databaseHandle,
   }
   else if (retryCount > maxRetryCount)
   {
-//fprintf(stderr,"%s, %d: \n",__FILE__,__LINE__); asm("int3");
-    return ERROR_DATABASE_TIMEOUT;
+    return ERROR_(DATABASE_TIMEOUT,0);
   }
   else
   {
@@ -1410,6 +2036,7 @@ LOCAL void freeColumnNode(DatabaseColumnNode *columnNode, void *userData)
       String_delete(columnNode->value.d);
       break;
     case DATABASE_TYPE_DATETIME:
+      String_delete(columnNode->value.i);
       break;
     case DATABASE_TYPE_TEXT:
       String_delete(columnNode->value.text);
@@ -1425,7 +2052,7 @@ LOCAL void freeColumnNode(DatabaseColumnNode *columnNode, void *userData)
     default:
       #ifndef NDEBUG
         HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
-      #endif /* NDEBUG */
+      #endif /* not NDEBUG */
       break; // not reached
   }
   free(columnNode->name);
@@ -1455,7 +2082,8 @@ LOCAL Errors getTableList(StringList     *tableList,
 
   StringList_init(tableList);
 
-  DATABASE_DOX(error,
+//TODO: remove
+  DATABASE_DOXXX(error,
                databaseHandle,
                DATABASE_LOCK_TYPE_READ,
   {
@@ -1511,7 +2139,8 @@ LOCAL Errors getTableColumnList(DatabaseColumnList *columnList,
 
   List_init(columnList);
 
-  DATABASE_DOX(error,
+//TODO: remove
+  DATABASE_DOXXX(error,
                databaseHandle,
                DATABASE_LOCK_TYPE_READ,
   {
@@ -1669,66 +2298,11 @@ LOCAL const char *getDatabaseTypeString(DatabaseTypes type)
     default:
       #ifndef NDEBUG
         HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
-      #endif /* NDEBUG */
+      #endif /* not NDEBUG */
       break; // not reached
   }
 
   return string;
-}
-
-/***********************************************************************\
-* Name   : isReadWriteLock
-* Purpose: check if read/write lock
-* Input  : databaseHandle - database handle
-* Output : -
-* Return : TRUE iff read/write lock
-* Notes  : -
-\***********************************************************************/
-
-LOCAL_INLINE bool isReadWriteLock(DatabaseHandle *databaseHandle)
-{
-  assert(databaseHandle != NULL);
-  assert(databaseHandle->databaseNode != NULL);
-
-  return (databaseHandle->databaseNode->readWriteCount > 0);
-}
-
-#if 0
-//TODO: remove
-/***********************************************************************\
-* Name   : isTransactionLock
-* Purpose: check if transaction lock
-* Input  : databaseHandle - database handle
-* Output : -
-* Return : TRUE iff transaction lock
-* Notes  : -
-\***********************************************************************/
-
-LOCAL_INLINE bool isTransactionLock(DatabaseHandle *databaseHandle)
-{
-  assert(databaseHandle != NULL);
-  assert(databaseHandle->databaseNode != NULL);
-
-  return (databaseHandle->databaseNode->transactionCount > 0);
-}
-#endif
-
-/***********************************************************************\
-* Name   : isOwnReadWriteLock
-* Purpose: check if owner of read/write lock
-* Input  : databaseHandle - database handle
-* Output : -
-* Return : TRUE iff owner of read/write lock
-* Notes  : -
-\***********************************************************************/
-
-LOCAL_INLINE bool isOwnReadWriteLock(DatabaseHandle *databaseHandle)
-{
-  assert(databaseHandle != NULL);
-  assert(databaseHandle->databaseNode != NULL);
-
-  return    (databaseHandle->databaseNode->readWriteCount > 0)
-         && Thread_isCurrentThread(databaseHandle->databaseNode->readWriteLockedBy);
 }
 
 /*---------------------------------------------------------------------*/
@@ -1790,12 +2364,13 @@ void Database_doneAll(void)
   int           sqliteResult;
   SemaphoreLock semaphoreLock;
   DatabaseNode  *databaseNode;
-  uint          i;
+  #ifndef NDEBUG
+    uint          i;
+  #endif /* NDEBUG */
 
   assert(databaseHandle != NULL);
 
   // init variables
-  Semaphore_init(&databaseHandle->lock,SEMAPHORE_TYPE_BINARY);
   databaseHandle->handle                  = NULL;
   databaseHandle->timeout                 = timeout;
   databaseHandle->lastCheckpointTimestamp = Misc_getTimestamp();
@@ -1817,7 +2392,6 @@ void Database_doneAll(void)
       if (error != ERROR_NONE)
       {
         File_deleteFileName(directoryName);
-        Semaphore_done(&databaseHandle->lock);
         sem_destroy(&databaseHandle->wakeUp);
         return error;
       }
@@ -1854,17 +2428,11 @@ void Database_doneAll(void)
 //sqliteMode |= SQLITE_OPEN_NOMUTEX;
 
   // open database
-  if (stringIsEmpty(fileName))
-  {
-    fileName   = ":memory:";
-    sqliteMode |= SQLITE_OPEN_SHAREDCACHE;
-  }
-  sqliteResult = sqlite3_open_v2(fileName,&databaseHandle->handle,sqliteMode,NULL);
+  sqliteResult = sqlite3_open_v2(String_cString(databaseFileName),&databaseHandle->handle,sqliteMode,NULL);
   if (sqliteResult != SQLITE_OK)
   {
     error = ERRORX_(DATABASE,sqlite3_errcode(databaseHandle->handle),"%s",sqlite3_errmsg(databaseHandle->handle));
     String_delete(databaseFileName);
-    Semaphore_done(&databaseHandle->lock);
     sem_destroy(&databaseHandle->wakeUp);
     return error;
   }
@@ -1872,11 +2440,7 @@ void Database_doneAll(void)
   // get database node
   SEMAPHORE_LOCKED_DO(semaphoreLock,&databaseList.lock,SEMAPHORE_LOCK_TYPE_READ_WRITE,WAIT_FOREVER)
   {
-#ifdef DATABASE_SINGLE_LOCK
-    databaseNode = databaseList.head;
-#else
-    databaseNode = LIST_FIND(&databaseList,databaseNode,String_equalsCString(databaseNode->fileName,fileName));
-#endif
+    databaseNode = LIST_FIND(&databaseList,databaseNode,String_equals(databaseNode->fileName,databaseFileName));
     if (databaseNode != NULL)
     {
       databaseNode->openCount++;
@@ -1902,7 +2466,6 @@ void Database_doneAll(void)
       databaseNode->pendingReadWriteCount   = 0;
       databaseNode->readWriteCount          = 0;
       pthread_cond_init(&databaseNode->readWriteTrigger,NULL);
-//TODO: debug info
       databaseNode->readWriteLockedBy       = THREAD_ID_NONE;
 
       databaseNode->pendingTransactionCount = 0;
@@ -1910,7 +2473,10 @@ void Database_doneAll(void)
       pthread_cond_init(&databaseNode->transactionTrigger,NULL);
 
       List_init(&databaseNode->busyHandlerList);
+      Semaphore_init(&databaseNode->busyHandlerList.lock,SEMAPHORE_TYPE_BINARY);
+
       List_init(&databaseNode->progressHandlerList);
+      Semaphore_init(&databaseNode->progressHandlerList.lock,SEMAPHORE_TYPE_BINARY);
 
       #ifndef NDEBUG
         for (i = 0; i < SIZE_OF_ARRAY(databaseNode->pendingReads);      i++) databaseNode->pendingReads[i].threadId      = THREAD_ID_NONE;
@@ -1922,6 +2488,12 @@ void Database_doneAll(void)
       #endif /* not NDEBUG */
 
       List_append(&databaseList,databaseNode);
+
+      #ifdef NDEBUG
+        DEBUG_ADD_RESOURCE_TRACE(databaseNode,sizeof(DatabaseNode));
+      #else /* not NDEBUG */
+        DEBUG_ADD_RESOURCE_TRACEX(__fileName__,__lineNb__,databaseNode,sizeof(DatabaseNode));
+      #endif /* NDEBUG */
     }
 
     databaseHandle->databaseNode = databaseNode;
@@ -1998,13 +2570,13 @@ void Database_doneAll(void)
       #ifdef HAVE_BACKTRACE
         databaseHandle->stackTraceSize = backtrace((void*)databaseHandle->stackTrace,SIZE_OF_ARRAY(databaseHandle->stackTrace));
       #endif /* HAVE_BACKTRACE */
-      databaseHandle->stackTraceSize           = 0;
+
       databaseHandle->locked.threadId          = THREAD_ID_NONE;
       databaseHandle->locked.lineNb            = 0;
       databaseHandle->locked.t0                = 0ULL;
       databaseHandle->locked.t1                = 0ULL;
       databaseHandle->current.sqlCommand       = String_new();
-      Semaphore_init(&databaseHandle->current.lock,SEMAPHORE_TYPE_BINARY);
+//      Semaphore_init(&databaseHandle->current.lock,SEMAPHORE_TYPE_BINARY);
       #ifdef HAVE_BACKTRACE
         databaseHandle->current.stackTraceSize = 0;
       #endif /* HAVE_BACKTRACE */
@@ -2013,7 +2585,7 @@ void Database_doneAll(void)
       List_append(&debugDatabaseHandleList,databaseHandle);
     }
     pthread_mutex_unlock(&debugDatabaseLock);
-  #endif /* NDEBUG */
+  #endif /* not NDEBUG */
 
   // free resources
   String_delete(databaseFileName);
@@ -2030,7 +2602,9 @@ void Database_doneAll(void)
                        )
 #endif /* NDEBUG */
 {
-  DatabaseHandle *debugDatabaseHandle;
+  #ifndef NDEBUG
+    DatabaseHandle *debugDatabaseHandle;
+  #endif /* not NDEBUG */
 
   assert(databaseHandle != NULL);
   DEBUG_CHECK_RESOURCE_TRACE(databaseHandle);
@@ -2073,11 +2647,11 @@ void Database_doneAll(void)
       List_remove(&debugDatabaseHandleList,databaseHandle);
 
       // free resources
-      Semaphore_done(&databaseHandle->current.lock);
+//      Semaphore_done(&databaseHandle->current.lock);
       String_delete(databaseHandle->current.sqlCommand);
     }
     pthread_mutex_unlock(&debugDatabaseLock);
-  #endif /* NDEBUG */
+  #endif /* not NDEBUG */
 
   // clear progress handler
   sqlite3_progress_handler(databaseHandle->handle,0,NULL,NULL);
@@ -2090,7 +2664,6 @@ void Database_doneAll(void)
 
   // free resources
 //TODO: remove?
-  Semaphore_done(&databaseHandle->lock);
   sem_destroy(&databaseHandle->wakeUp);
 }
 
@@ -2099,6 +2672,7 @@ void Database_addBusyHandler(DatabaseHandle              *databaseHandle,
                              void                        *busyHandlerUserData
                             )
 {
+  SemaphoreLock           semaphoreLock;
   DatabaseBusyHandlerNode *busyHandlerNode;
 
   assert(databaseHandle != NULL);
@@ -2107,24 +2681,27 @@ void Database_addBusyHandler(DatabaseHandle              *databaseHandle,
   assert(databaseHandle->handle != NULL);
   assert(busyHandlerFunction != NULL);
 
-  // find existing busy handler
-  busyHandlerNode = LIST_FIND(&databaseHandle->databaseNode->busyHandlerList,
-                              busyHandlerNode,
-                                 (busyHandlerNode->function == busyHandlerFunction)
-                              && (busyHandlerNode->userData == busyHandlerUserData)
-                             );
-
-  // add busy handler
-  if (busyHandlerNode == NULL)
+  SEMAPHORE_LOCKED_DO(semaphoreLock,&databaseHandle->databaseNode->busyHandlerList.lock,SEMAPHORE_LOCK_TYPE_READ_WRITE,WAIT_FOREVER)
   {
-    busyHandlerNode = LIST_NEW_NODE(DatabaseBusyHandlerNode);
+    // find existing busy handler
+    busyHandlerNode = LIST_FIND(&databaseHandle->databaseNode->busyHandlerList,
+                                busyHandlerNode,
+                                   (busyHandlerNode->function == busyHandlerFunction)
+                                && (busyHandlerNode->userData == busyHandlerUserData)
+                               );
+
+    // add busy handler
     if (busyHandlerNode == NULL)
     {
-      HALT_INSUFFICIENT_MEMORY();
+      busyHandlerNode = LIST_NEW_NODE(DatabaseBusyHandlerNode);
+      if (busyHandlerNode == NULL)
+      {
+        HALT_INSUFFICIENT_MEMORY();
+      }
+      busyHandlerNode->function = busyHandlerFunction;
+      busyHandlerNode->userData = busyHandlerUserData;
+      List_append(&databaseHandle->databaseNode->busyHandlerList,busyHandlerNode);
     }
-    busyHandlerNode->function = busyHandlerFunction;
-    busyHandlerNode->userData = busyHandlerUserData;
-    List_append(&databaseHandle->databaseNode->busyHandlerList,busyHandlerNode);
   }
 }
 
@@ -2133,6 +2710,7 @@ void Database_removeBusyHandler(DatabaseHandle              *databaseHandle,
                                 void                        *busyHandlerUserData
                                )
 {
+  SemaphoreLock           semaphoreLock;
   DatabaseBusyHandlerNode *busyHandlerNode;
 
   assert(databaseHandle != NULL);
@@ -2141,18 +2719,21 @@ void Database_removeBusyHandler(DatabaseHandle              *databaseHandle,
   assert(databaseHandle->handle != NULL);
   assert(busyHandlerFunction != NULL);
 
-  // find existing busy handler
-  busyHandlerNode = LIST_FIND(&databaseHandle->databaseNode->busyHandlerList,
-                              busyHandlerNode,
-                                 (busyHandlerNode->function == busyHandlerFunction)
-                              && (busyHandlerNode->userData == busyHandlerUserData)
-                             );
-
-  // remove busy handler
-  if (busyHandlerNode != NULL)
+  SEMAPHORE_LOCKED_DO(semaphoreLock,&databaseHandle->databaseNode->busyHandlerList.lock,SEMAPHORE_LOCK_TYPE_READ_WRITE,WAIT_FOREVER)
   {
-    List_remove(&databaseHandle->databaseNode->busyHandlerList,busyHandlerNode);
-    LIST_DELETE_NODE(busyHandlerNode);
+    // find existing busy handler
+    busyHandlerNode = LIST_FIND(&databaseHandle->databaseNode->busyHandlerList,
+                                busyHandlerNode,
+                                   (busyHandlerNode->function == busyHandlerFunction)
+                                && (busyHandlerNode->userData == busyHandlerUserData)
+                               );
+
+    // remove busy handler
+    if (busyHandlerNode != NULL)
+    {
+      List_remove(&databaseHandle->databaseNode->busyHandlerList,busyHandlerNode);
+      LIST_DELETE_NODE(busyHandlerNode);
+    }
   }
 }
 
@@ -2161,6 +2742,7 @@ void Database_addProgressHandler(DatabaseHandle                  *databaseHandle
                                  void                            *progressHandlerUserData
                                 )
 {
+  SemaphoreLock               semaphoreLock;
   DatabaseProgressHandlerNode *progressHandlerNode;
 
   assert(databaseHandle != NULL);
@@ -2169,24 +2751,27 @@ void Database_addProgressHandler(DatabaseHandle                  *databaseHandle
   assert(databaseHandle->handle != NULL);
   assert(progressHandlerFunction != NULL);
 
-  // find existing busy handler
-  progressHandlerNode = LIST_FIND(&databaseHandle->databaseNode->progressHandlerList,
-                                  progressHandlerNode,
-                                     (progressHandlerNode->function == progressHandlerFunction)
-                                  && (progressHandlerNode->userData == progressHandlerUserData)
-                                 );
-
-  // add progress handler
-  if (progressHandlerNode == NULL)
+  SEMAPHORE_LOCKED_DO(semaphoreLock,&databaseHandle->databaseNode->progressHandlerList.lock,SEMAPHORE_LOCK_TYPE_READ_WRITE,WAIT_FOREVER)
   {
-    progressHandlerNode = LIST_NEW_NODE(DatabaseProgressHandlerNode);
+    // find existing busy handler
+    progressHandlerNode = LIST_FIND(&databaseHandle->databaseNode->progressHandlerList,
+                                    progressHandlerNode,
+                                       (progressHandlerNode->function == progressHandlerFunction)
+                                    && (progressHandlerNode->userData == progressHandlerUserData)
+                                   );
+
+    // add progress handler
     if (progressHandlerNode == NULL)
     {
-      HALT_INSUFFICIENT_MEMORY();
+      progressHandlerNode = LIST_NEW_NODE(DatabaseProgressHandlerNode);
+      if (progressHandlerNode == NULL)
+      {
+        HALT_INSUFFICIENT_MEMORY();
+      }
+      progressHandlerNode->function = progressHandlerFunction;
+      progressHandlerNode->userData = progressHandlerUserData;
+      List_append(&databaseHandle->databaseNode->progressHandlerList,progressHandlerNode);
     }
-    progressHandlerNode->function = progressHandlerFunction;
-    progressHandlerNode->userData = progressHandlerUserData;
-    List_append(&databaseHandle->databaseNode->progressHandlerList,progressHandlerNode);
   }
 }
 
@@ -2195,6 +2780,7 @@ void Database_removeProgressHandler(DatabaseHandle                  *databaseHan
                                     void                            *progressHandlerUserData
                                    )
 {
+  SemaphoreLock               semaphoreLock;
   DatabaseProgressHandlerNode *progressHandlerNode;
 
   assert(databaseHandle != NULL);
@@ -2203,18 +2789,21 @@ void Database_removeProgressHandler(DatabaseHandle                  *databaseHan
   assert(databaseHandle->handle != NULL);
   assert(progressHandlerFunction != NULL);
 
-  // find existing progress handler
-  progressHandlerNode = LIST_FIND(&databaseHandle->databaseNode->progressHandlerList,
-                                  progressHandlerNode,
-                                     (progressHandlerNode->function == progressHandlerFunction)
-                                  && (progressHandlerNode->userData == progressHandlerUserData)
-                                 );
-
-  // remove progress handler
-  if (progressHandlerNode != NULL)
+  SEMAPHORE_LOCKED_DO(semaphoreLock,&databaseHandle->databaseNode->progressHandlerList.lock,SEMAPHORE_LOCK_TYPE_READ_WRITE,WAIT_FOREVER)
   {
-    List_remove(&databaseHandle->databaseNode->progressHandlerList,progressHandlerNode);
-    LIST_DELETE_NODE(progressHandlerNode);
+    // find existing progress handler
+    progressHandlerNode = LIST_FIND(&databaseHandle->databaseNode->progressHandlerList,
+                                    progressHandlerNode,
+                                       (progressHandlerNode->function == progressHandlerFunction)
+                                    && (progressHandlerNode->userData == progressHandlerUserData)
+                                   );
+
+    // remove progress handler
+    if (progressHandlerNode != NULL)
+    {
+      List_remove(&databaseHandle->databaseNode->progressHandlerList,progressHandlerNode);
+      LIST_DELETE_NODE(progressHandlerNode);
+    }
   }
 }
 
@@ -2243,9 +2832,6 @@ void Database_interrupt(DatabaseHandle *databaseHandle)
   #ifdef DATABASE_DEBUG_LOCK
     ulong debugLockCounter = 0L;
   #endif /* DATABASE_DEBUG_LOCK */
-  #ifndef NDEBUG
-    uint  i;
-  #endif /* not NDEBUG */
 
   assert(databaseHandle != NULL);
   DEBUG_CHECK_RESOURCE_TRACE(databaseHandle);
@@ -2256,7 +2842,7 @@ void Database_interrupt(DatabaseHandle *databaseHandle)
     case DATABASE_LOCK_TYPE_NONE:
       break;
     case DATABASE_LOCK_TYPE_READ:
-      DATABASE_LOCK(&databaseHandle);
+      DATABASE_HANDLE_DO(databaseHandle,
       {
         #ifdef DATABASE_DEBUG_LOCK
           fprintf(stderr,
@@ -2274,99 +2860,28 @@ void Database_interrupt(DatabaseHandle *databaseHandle)
         #endif /* DATABASE_DEBUG_LOCK */
 
         // check if there is no writer
-        if (isReadWriteLock(databaseHandle) && !isOwnReadWriteLock(databaseHandle))
+        if (   isReadWriteLock(databaseHandle->databaseNode)
+            && !isOwnReadWriteLock(databaseHandle->databaseNode)
+           )
         {
           // request read lock
-          #ifdef DATABASE_USE_ATOMIC_INCREMENT
-          #else /* not DATABASE_USE_ATOMIC_INCREMENT */
-          #endif /* DATABASE_USE_ATOMIC_INCREMENT */
-//          ATOMIC_INCREMENT(databaseHandle->databaseNode->pendingReadCount);
-          databaseHandle->databaseNode->pendingReadCount++;
-          #ifndef NDEBUG
-            for (i = 0; i < SIZE_OF_ARRAY(databaseHandle->databaseNode->pendingReads); i++)
-            {
-              if (Thread_equalThreads(databaseHandle->databaseNode->pendingReads[i].threadId,THREAD_ID_NONE))
-              {
-                 databaseHandle->databaseNode->pendingReads[i].threadId = Thread_getCurrentId();
-                 databaseHandle->databaseNode->pendingReads[i].fileName = __fileName__;
-                 databaseHandle->databaseNode->pendingReads[i].lineNb   = __lineNb__;
-                 BACKTRACE(databaseHandle->databaseNode->pendingReads[i].stackTrace,databaseHandle->databaseNode->pendingReads[i].stackTraceSize);
-                 break;
-              }
-            }
-          #endif /* not NDEBUG */
+          pendingReadsIncrement(databaseHandle->databaseNode);
 
-          // wait read/write end, transaction end
+          // wait read/write end
           do
           {
-            #ifdef DATABASE_DEBUG_LOCK
-              fprintf(stderr,"%s, %d: %s                wait rw %p\n",__FILE__,__LINE__,Thread_getCurrentIdString(),&databaseHandle->databaseNode->readTrigger);
-            #endif /* DATABASE_DEBUG_LOCK */ 
-            DATABASE_WAIT_TRIGGER(&databaseHandle,&databaseHandle->databaseNode->readTrigger);
-            #ifdef DATABASE_DEBUG_LOCK
-              fprintf(stderr,"%s, %d: %s                wait rw done %p\n",__FILE__,__LINE__,Thread_getCurrentIdString(),&databaseHandle->databaseNode->readTrigger);
-            #endif /* DATABASE_DEBUG_LOCK */ 
-//TODO: remove
-#if 0
-fprintf(stderr,"%s, %d: wakup\n",__FILE__,__LINE__);
-if (isReadWriteLock(databaseHandle) || isTransactionLock(databaseHandle))
-{
-fprintf(stderr,"%s, %d: !!!!!!!!!!!!!\n",__FILE__,__LINE__);
-          fprintf(stderr,
-                  "%s, %d: r -- pending r %2d, r %2d, pending rw %2d, rw %2d, rw current locked by %s, transaction %2d at %s %d\n",
-                  __FILE__,__LINE__,
-                  databaseHandle->databaseNode->pendingReadCount,
-                  databaseHandle->databaseNode->readCount,
-                  databaseHandle->databaseNode->pendingReadWriteCount,
-                  databaseHandle->databaseNode->readWriteCount,
-                  (databaseHandle->databaseNode->readWriteCount > 0) ? Thread_getIdString(databaseHandle->databaseNode->readWriteLockedBy) : "none",
-                  databaseHandle->databaseNode->transactionCount,
-                  __fileName__,__lineNb__
-                 );
-}
-#endif
+            assert(isReadWriteLock(databaseHandle->databaseNode));
+            waitTriggerRead(databaseHandle->databaseNode);
           }
-          while (isReadWriteLock(databaseHandle));
+          while (isReadWriteLock(databaseHandle->databaseNode));
 
           // done request read lock
-          assert(databaseHandle->databaseNode->pendingReadCount > 0);
-          #ifdef DATABASE_USE_ATOMIC_INCREMENT
-          #else /* not DATABASE_USE_ATOMIC_INCREMENT */
-          #endif /* DATABASE_USE_ATOMIC_INCREMENT */
-//          ATOMIC_DECREMENT(databaseHandle->databaseNode->pendingReadCount);
-          databaseHandle->databaseNode->pendingReadCount--;
-          #ifndef NDEBUG
-            for (i = 0; i < SIZE_OF_ARRAY(databaseHandle->databaseNode->pendingReads); i++)
-            {
-              if (Thread_isCurrentThread(databaseHandle->databaseNode->pendingReads[i].threadId))
-              {
-                 databaseHandle->databaseNode->pendingReads[i].threadId = THREAD_ID_NONE;
-                 break;
-              }
-            }
-          #endif /* not NDEBUG */
+          pendingReadsDecrement(databaseHandle->databaseNode);
         }
-        assert(isOwnReadWriteLock(databaseHandle) || (databaseHandle->databaseNode->readWriteCount == 0));
+        assert(isOwnReadWriteLock(databaseHandle->databaseNode) || (databaseHandle->databaseNode->readWriteCount == 0));
 
         // read lock aquired
-        #ifdef DATABASE_USE_ATOMIC_INCREMENT
-        #else /* not DATABASE_USE_ATOMIC_INCREMENT */
-        #endif /* DATABASE_USE_ATOMIC_INCREMENT */
-//        ATOMIC_INCREMENT(databaseHandle->databaseNode->readCount);
-        databaseHandle->databaseNode->readCount++;
-        #ifndef NDEBUG
-          for (i = 0; i < SIZE_OF_ARRAY(databaseHandle->databaseNode->reads); i++)
-          {
-            if (Thread_equalThreads(databaseHandle->databaseNode->reads[i].threadId,THREAD_ID_NONE))
-            {
-               databaseHandle->databaseNode->reads[i].threadId = Thread_getCurrentId();
-               databaseHandle->databaseNode->reads[i].fileName = __fileName__;
-               databaseHandle->databaseNode->reads[i].lineNb   = __lineNb__;
-               BACKTRACE(databaseHandle->databaseNode->reads[i].stackTrace,databaseHandle->databaseNode->reads[i].stackTraceSize);
-               break;
-            }
-          }
-        #endif /* not NDEBUG */
+        readsIncrement(databaseHandle->databaseNode);
 
         #ifdef DATABASE_DEBUG_LOCK
           fprintf(stderr,
@@ -2381,15 +2896,10 @@ fprintf(stderr,"%s, %d: !!!!!!!!!!!!!\n",__FILE__,__LINE__);
                   __fileName__,__lineNb__
                  );
         #endif /* DATABASE_DEBUG_LOCK */
-      }
-      #ifdef DATABASE_LOCK_PER_INSTANCE
-      #endif /* DATABASE_LOCK_PER_INSTANCE */
-      DATABASE_UNLOCK(&databaseHandle);
+      });
       break;
     case DATABASE_LOCK_TYPE_READ_WRITE:
-      #ifdef DATABASE_LOCK_PER_INSTANCE
-      #endif /* DATABASE_LOCK_PER_INSTANCE */
-      DATABASE_LOCK(&databaseHandle);
+      DATABASE_HANDLE_DO(databaseHandle,
       {
         #ifdef DATABASE_DEBUG_LOCK
           fprintf(stderr,
@@ -2407,106 +2917,30 @@ fprintf(stderr,"%s, %d: !!!!!!!!!!!!!\n",__FILE__,__LINE__);
         #endif /* DATABASE_DEBUG_LOCK */
 
         // check if there is no other writer
-        if (   isReadWriteLock(databaseHandle)
-            && !isOwnReadWriteLock(databaseHandle)
+        if (   isReadWriteLock(databaseHandle->databaseNode)
+            && !isOwnReadWriteLock(databaseHandle->databaseNode)
            )
         {
           // request read/write lock
-          #ifdef DATABASE_USE_ATOMIC_INCREMENT
-          #else /* not DATABASE_USE_ATOMIC_INCREMENT */
-          #endif /* DATABASE_USE_ATOMIC_INCREMENT */
-//          ATOMIC_INCREMENT(databaseHandle->databaseNode->pendingReadWriteCount);
-          databaseHandle->databaseNode->pendingReadWriteCount++;
-          #ifndef NDEBUG
-            for (i = 0; i < SIZE_OF_ARRAY(databaseHandle->databaseNode->pendingReadWrites); i++)
-            {
-              if (Thread_equalThreads(databaseHandle->databaseNode->pendingReadWrites[i].threadId,THREAD_ID_NONE))
-              {
-                 databaseHandle->databaseNode->pendingReadWrites[i].threadId = Thread_getCurrentId();
-                 databaseHandle->databaseNode->pendingReadWrites[i].fileName = __fileName__;
-                 databaseHandle->databaseNode->pendingReadWrites[i].lineNb   = __lineNb__;
-                 BACKTRACE(databaseHandle->databaseNode->pendingReadWrites[i].stackTrace,databaseHandle->databaseNode->pendingReadWrites[i].stackTraceSize);
-                 break;
-              }
-            }
-          #endif /* not NDEBUG */
+          pendingReadWritesIncrement(databaseHandle->databaseNode);
 
-          // wait read/write end
+          // wait other read/write end
           do
           {
-            #ifdef DATABASE_DEBUG_LOCK
-              fprintf(stderr,"%s, %d: %s                 wait rw %p\n",__FILE__,__LINE__,Thread_getCurrentIdString(),&databaseHandle->databaseNode->readWriteTrigger);
-            #endif /* DATABASE_DEBUG_LOCK */ 
-      #ifdef DATABASE_LOCK_PER_INSTANCE
-      #endif /* DATABASE_LOCK_PER_INSTANCE */
-            DATABASE_WAIT_TRIGGER(&databaseHandle,&databaseHandle->databaseNode->readWriteTrigger);
-            #ifdef DATABASE_DEBUG_LOCK
-              fprintf(stderr,"%s, %d: %s                 wait rw done %p\n",__FILE__,__LINE__,Thread_getCurrentIdString(),&databaseHandle->databaseNode->readWriteTrigger);
-            #endif /* DATABASE_DEBUG_LOCK */
-//TODO: remove
-#if 0
-fprintf(stderr,"%s, %d: wakup\n",__FILE__,__LINE__);
-if (isReadWriteLock(databaseHandle)) 
-{
-          fprintf(stderr,
-                  "%s, %d: rw -- pending r %2d, r %2d, pending rw %2d, rw %2d, rw current locked by %s, transaction %2d at %s %d\n",
-                  __FILE__,__LINE__,
-                  databaseHandle->databaseNode->pendingReadCount,
-                  databaseHandle->databaseNode->readCount,
-                  databaseHandle->databaseNode->pendingReadWriteCount,
-                  databaseHandle->databaseNode->readWriteCount,
-                  (databaseHandle->databaseNode->readWriteCount > 0) ? Thread_getIdString(databaseHandle->databaseNode->readWriteLockedBy) : "none",
-                  databaseHandle->databaseNode->transactionCount,
-                  __fileName__,__lineNb__
-                 );
-}
-#endif
+            assert(isReadWriteLock(databaseHandle->databaseNode));
+            waitTriggerReadWrite(databaseHandle->databaseNode);
           }
-          while (isReadWriteLock(databaseHandle));
+          while (isReadWriteLock(databaseHandle->databaseNode));
           assert(Thread_equalThreads(databaseHandle->databaseNode->readWriteLockedBy,THREAD_ID_NONE));
 
           // done request read/write lock
-          assert(databaseHandle->databaseNode->pendingReadWriteCount > 0);
-          #ifdef DATABASE_USE_ATOMIC_INCREMENT
-          #else /* not DATABASE_USE_ATOMIC_INCREMENT */
-          #endif /* DATABASE_USE_ATOMIC_INCREMENT */
-//          ATOMIC_DECREMENT(databaseHandle->databaseNode->pendingReadWriteCount);
-          databaseHandle->databaseNode->pendingReadWriteCount--;
-          assert(isOwnReadWriteLock(databaseHandle) || (databaseHandle->databaseNode->readWriteCount == 0));
-          assert(isOwnReadWriteLock(databaseHandle) || Thread_equalThreads(databaseHandle->databaseNode->readWriteLockedBy,THREAD_ID_NONE));
-          #ifndef NDEBUG
-            for (i = 0; i < SIZE_OF_ARRAY(databaseHandle->databaseNode->pendingReadWrites); i++)
-            {
-              if (Thread_isCurrentThread(databaseHandle->databaseNode->pendingReadWrites[i].threadId))
-              {
-                 databaseHandle->databaseNode->pendingReadWrites[i].threadId = THREAD_ID_NONE;
-                 break;
-              }
-            }
-          #endif /* not NDEBUG */
+          pendingReadWritesDecrement(databaseHandle->databaseNode);
+          assert(isOwnReadWriteLock(databaseHandle->databaseNode) || (databaseHandle->databaseNode->readWriteCount == 0));
+          assert(isOwnReadWriteLock(databaseHandle->databaseNode) || Thread_equalThreads(databaseHandle->databaseNode->readWriteLockedBy,THREAD_ID_NONE));
         }
 
         // read/write lock aquired
-        #ifdef DATABASE_USE_ATOMIC_INCREMENT
-        #else /* not DATABASE_USE_ATOMIC_INCREMENT */
-        #endif /* DATABASE_USE_ATOMIC_INCREMENT */
-//        ATOMIC_INCREMENT(databaseHandle->databaseNode->readWriteCount);
-        databaseHandle->databaseNode->readWriteCount++;
-        assert(Thread_isCurrentThread(databaseHandle->databaseNode->readWriteLockedBy) || Thread_equalThreads(databaseHandle->databaseNode->readWriteLockedBy,THREAD_ID_NONE));
-        databaseHandle->databaseNode->readWriteLockedBy = Thread_getCurrentId();
-        #ifndef NDEBUG
-          for (i = 0; i < SIZE_OF_ARRAY(databaseHandle->databaseNode->readWrites); i++)
-          {
-            if (Thread_equalThreads(databaseHandle->databaseNode->readWrites[i].threadId,THREAD_ID_NONE))
-            {
-               databaseHandle->databaseNode->readWrites[i].threadId = Thread_getCurrentId();
-               databaseHandle->databaseNode->readWrites[i].fileName = __fileName__;
-               databaseHandle->databaseNode->readWrites[i].lineNb   = __lineNb__;
-               BACKTRACE(databaseHandle->databaseNode->readWrites[i].stackTrace,databaseHandle->databaseNode->readWrites[i].stackTraceSize);
-               break;
-            }
-          }
-        #endif /* not NDEBUG */
+        readWritesIncrement(databaseHandle->databaseNode);
 
         #ifdef DATABASE_DEBUG_LOCK
           fprintf(stderr,
@@ -2521,10 +2955,7 @@ if (isReadWriteLock(databaseHandle))
                   __fileName__,__lineNb__
                  );
         #endif /* DATABASE_DEBUG_LOCK */
-      }
-      #ifdef DATABASE_LOCK_PER_INSTANCE
-      #endif /* DATABASE_LOCK_PER_INSTANCE */
-      DATABASE_UNLOCK(&databaseHandle);
+      });
       break;
   }
   #ifndef NDEBUG
@@ -2548,11 +2979,14 @@ if (isReadWriteLock(databaseHandle))
                         )
 #endif /* NDEBUG */
 {
-  uint i;
-
   assert(databaseHandle != NULL);
   DEBUG_CHECK_RESOURCE_TRACE(databaseHandle);
   assert(databaseHandle->databaseNode != NULL);
+
+  #ifndef NDEBUG
+    UNUSED_VARIABLE(__fileName__);
+    UNUSED_VARIABLE(__lineNb__);
+  #endif /* not NDEBUG */
 
   #ifndef NDEBUG
     databaseHandle->locked.threadId = THREAD_ID_NONE;
@@ -2567,9 +3001,7 @@ if (isReadWriteLock(databaseHandle))
     case DATABASE_LOCK_TYPE_NONE:
       break;
     case DATABASE_LOCK_TYPE_READ:
-      #ifdef DATABASE_LOCK_PER_INSTANCE
-      #endif /* DATABASE_LOCK_PER_INSTANCE */
-      DATABASE_LOCK(&databaseHandle);
+      DATABASE_HANDLE_DO(databaseHandle,
       {
         #ifdef DATABASE_DEBUG_LOCK
           fprintf(stderr,
@@ -2586,65 +3018,25 @@ if (isReadWriteLock(databaseHandle))
         #endif /* DATABASE_DEBUG_LOCK */
 
         // decrement read count
-        assert(databaseHandle->databaseNode->readCount > 0);
-        #ifdef DATABASE_USE_ATOMIC_INCREMENT
-        #else /* not DATABASE_USE_ATOMIC_INCREMENT */
-        #endif /* DATABASE_USE_ATOMIC_INCREMENT */
-//        ATOMIC_DECREMENT(databaseHandle->databaseNode->readCount);
-        databaseHandle->databaseNode->readCount--;
-        if (databaseHandle->databaseNode->readCount == 0)
-        {
-//TODO
-        }
-        #ifndef NDEBUG
-          for (i = 0; i < SIZE_OF_ARRAY(databaseHandle->databaseNode->reads); i++)
-          {
-            if (Thread_isCurrentThread(databaseHandle->databaseNode->reads[i].threadId))
-            {
-               databaseHandle->databaseNode->reads[i].threadId = THREAD_ID_NONE;
-               break;
-            }
-          }
-        #endif /* not NDEBUG */
+        readsDecrement(databaseHandle->databaseNode);
 
-//        if (databaseHandle->databaseNode->transactionCount == 0)
+        if      (!isTransactionLock(databaseHandle->databaseNode) && (databaseHandle->databaseNode->pendingReadCount > 0))
         {
-          if      ((databaseHandle->databaseNode->transactionCount == 0) && (databaseHandle->databaseNode->pendingReadCount > 0))
-          {
-//fprintf(stderr,"%s, %d: trigger r %p\n",__FILE__,__LINE__,&databaseHandle->databaseNode->readTrigger);
-            #ifndef NDEBUG
-              databaseHandle->databaseNode->lastTrigger.threadId = Thread_getCurrentId();
-              databaseHandle->databaseNode->lastTrigger.fileName = __fileName__;
-              databaseHandle->databaseNode->lastTrigger.lineNb   = __lineNb__;
-              databaseHandle->databaseNode->lastTrigger.type     = DATABASE_LOCK_TYPE_READ;
-databaseHandle->databaseNode->lastTrigger.pendingReadCount        = databaseHandle->databaseNode->pendingReadCount       ;
-databaseHandle->databaseNode->lastTrigger.readCount               = databaseHandle->databaseNode->readCount              ;
-databaseHandle->databaseNode->lastTrigger.pendingReadWriteCount   = databaseHandle->databaseNode->pendingReadWriteCount  ;
-databaseHandle->databaseNode->lastTrigger.readWriteCount          = databaseHandle->databaseNode->readWriteCount         ;
-databaseHandle->databaseNode->lastTrigger.pendingTransactionCount = databaseHandle->databaseNode->pendingTransactionCount;
-databaseHandle->databaseNode->lastTrigger.transactionCount        = databaseHandle->databaseNode->transactionCount       ;
-              BACKTRACE(databaseHandle->databaseNode->lastTrigger.stackTrace,databaseHandle->databaseNode->lastTrigger.stackTraceSize);
-            #endif /* NDEBUG */
-            pthread_cond_broadcast(&databaseHandle->databaseNode->readTrigger);
-          }
-          else if (databaseHandle->databaseNode->pendingReadWriteCount > 0)
-          {
-//fprintf(stderr,"%s, %d: trigger rw %p\n",__FILE__,__LINE__,&databaseHandle->databaseNode->readWriteTrigger);
-            #ifndef NDEBUG
-              databaseHandle->databaseNode->lastTrigger.threadId = Thread_getCurrentId();
-              databaseHandle->databaseNode->lastTrigger.fileName = __fileName__;
-              databaseHandle->databaseNode->lastTrigger.lineNb   = __lineNb__;
-              databaseHandle->databaseNode->lastTrigger.type     = DATABASE_LOCK_TYPE_READ_WRITE;
-databaseHandle->databaseNode->lastTrigger.pendingReadCount        = databaseHandle->databaseNode->pendingReadCount       ;
-databaseHandle->databaseNode->lastTrigger.readCount               = databaseHandle->databaseNode->readCount              ;
-databaseHandle->databaseNode->lastTrigger.pendingReadWriteCount   = databaseHandle->databaseNode->pendingReadWriteCount  ;
-databaseHandle->databaseNode->lastTrigger.readWriteCount          = databaseHandle->databaseNode->readWriteCount         ;
-databaseHandle->databaseNode->lastTrigger.pendingTransactionCount = databaseHandle->databaseNode->pendingTransactionCount;
-databaseHandle->databaseNode->lastTrigger.transactionCount        = databaseHandle->databaseNode->transactionCount       ;
-              BACKTRACE(databaseHandle->databaseNode->lastTrigger.stackTrace,databaseHandle->databaseNode->lastTrigger.stackTraceSize);
-            #endif /* NDEBUG */
-            pthread_cond_signal(&databaseHandle->databaseNode->readWriteTrigger);
-          }
+          triggerUnlockRead(databaseHandle->databaseNode);
+        }
+//TODO: do else always even none wait for rw
+        else if (databaseHandle->databaseNode->pendingReadWriteCount > 0)
+        {
+          triggerUnlockReadWrite(databaseHandle->databaseNode);
+        }
+        else if (isTransactionLock(databaseHandle->databaseNode) && (databaseHandle->databaseNode->pendingReadCount > 0))
+        {
+          triggerUnlockRead(databaseHandle->databaseNode);
+        }
+        else
+        {
+          assert(databaseHandle->databaseNode->pendingReadCount == 0);
+          assert(databaseHandle->databaseNode->pendingReadWriteCount == 0);
         }
 
         #ifdef DATABASE_DEBUG_LOCK
@@ -2661,24 +3053,19 @@ databaseHandle->databaseNode->lastTrigger.transactionCount        = databaseHand
                  );
         #endif /* DATABASE_DEBUG_LOCK */
 #if 0
-  if (   (databaseHandle->databaseNode->pendingReadCount == 0)
-      && (databaseHandle->databaseNode->readCount == 0)
-      && (databaseHandle->databaseNode->pendingReadWriteCount == 0)
-      && (databaseHandle->databaseNode->readWriteCount == 0)
-     )
-  fprintf(stderr,"%s, %d: --------------------------------------------------------------------------------------------------\n",__FILE__,__LINE__);
+if (   (databaseHandle->databaseNode->pendingReadCount == 0)
+    && (databaseHandle->databaseNode->readCount == 0)
+    && (databaseHandle->databaseNode->pendingReadWriteCount == 0)
+    && (databaseHandle->databaseNode->readWriteCount == 0)
+   )
+fprintf(stderr,"%s, %d: --------------------------------------------------------------------------------------------------\n",__FILE__,__LINE__);
 #endif
-      }
-      #ifdef DATABASE_LOCK_PER_INSTANCE
-      #endif /* DATABASE_LOCK_PER_INSTANCE */
-      DATABASE_UNLOCK(&databaseHandle);
+      });
       break;
     case DATABASE_LOCK_TYPE_READ_WRITE:
-      #ifdef DATABASE_LOCK_PER_INSTANCE
-      #endif /* DATABASE_LOCK_PER_INSTANCE */
-      DATABASE_LOCK(&databaseHandle);
+      DATABASE_HANDLE_DO(databaseHandle,
       {
-        assert(isReadWriteLock(databaseHandle));
+        assert(isReadWriteLock(databaseHandle->databaseNode));
         assert(!Thread_equalThreads(databaseHandle->databaseNode->readWriteLockedBy,THREAD_ID_NONE));
 
         #ifdef DATABASE_DEBUG_LOCK
@@ -2697,64 +3084,29 @@ databaseHandle->databaseNode->lastTrigger.transactionCount        = databaseHand
         #endif /* DATABASE_DEBUG_LOCK */
 
         // decrement read/write count
-        assert(databaseHandle->databaseNode->readWriteCount > 0);
-        #ifdef DATABASE_USE_ATOMIC_INCREMENT
-        #else /* not DATABASE_USE_ATOMIC_INCREMENT */
-        #endif /* DATABASE_USE_ATOMIC_INCREMENT */
-//        ATOMIC_DECREMENT(databaseHandle->databaseNode->readWriteCount);
-        databaseHandle->databaseNode->readWriteCount--;
+        readWritesDecrement(databaseHandle->databaseNode);
+
         if (databaseHandle->databaseNode->readWriteCount == 0)
         {
-          databaseHandle->databaseNode->readWriteLockedBy = THREAD_ID_NONE;
-//fprintf(stderr,"%s, %d: %s release read/write lock by %s\n",__FILE__,__LINE__,Thread_getCurrentIdString(),Thread_getIdString(Thread_getCurrentId()));
-
-          if      ((databaseHandle->databaseNode->transactionCount == 0) && (databaseHandle->databaseNode->pendingReadCount > 0))
+          if      (!isTransactionLock(databaseHandle->databaseNode) && (databaseHandle->databaseNode->pendingReadCount > 0))
           {
-//fprintf(stderr,"%s, %d: trigger r %p\n",__FILE__,__LINE__,&databaseHandle->databaseNode->readTrigger);
-            #ifndef NDEBUG
-              databaseHandle->databaseNode->lastTrigger.threadId = Thread_getCurrentId();
-              databaseHandle->databaseNode->lastTrigger.fileName = __fileName__;
-              databaseHandle->databaseNode->lastTrigger.lineNb   = __lineNb__;
-              databaseHandle->databaseNode->lastTrigger.type     = DATABASE_LOCK_TYPE_READ;
-databaseHandle->databaseNode->lastTrigger.pendingReadCount        = databaseHandle->databaseNode->pendingReadCount       ;
-databaseHandle->databaseNode->lastTrigger.readCount               = databaseHandle->databaseNode->readCount              ;
-databaseHandle->databaseNode->lastTrigger.pendingReadWriteCount   = databaseHandle->databaseNode->pendingReadWriteCount  ;
-databaseHandle->databaseNode->lastTrigger.readWriteCount          = databaseHandle->databaseNode->readWriteCount         ;
-databaseHandle->databaseNode->lastTrigger.pendingTransactionCount = databaseHandle->databaseNode->pendingTransactionCount;
-databaseHandle->databaseNode->lastTrigger.transactionCount        = databaseHandle->databaseNode->transactionCount       ;
-              BACKTRACE(databaseHandle->databaseNode->lastTrigger.stackTrace,databaseHandle->databaseNode->lastTrigger.stackTraceSize);
-            #endif /* NDEBUG */
-            pthread_cond_broadcast(&databaseHandle->databaseNode->readTrigger);
+            triggerUnlockRead(databaseHandle->databaseNode);
           }
+//TODO: do else always even none wait for rw
           else if (databaseHandle->databaseNode->pendingReadWriteCount > 0)
           {
-//fprintf(stderr,"%s, %d: trigger rw %p\n",__FILE__,__LINE__,&databaseHandle->databaseNode->readWriteTrigger);
-            #ifndef NDEBUG
-              databaseHandle->databaseNode->lastTrigger.threadId = Thread_getCurrentId();
-              databaseHandle->databaseNode->lastTrigger.fileName = __fileName__;
-              databaseHandle->databaseNode->lastTrigger.lineNb   = __lineNb__;
-              databaseHandle->databaseNode->lastTrigger.type     = DATABASE_LOCK_TYPE_READ_WRITE;
-databaseHandle->databaseNode->lastTrigger.pendingReadCount        = databaseHandle->databaseNode->pendingReadCount       ;
-databaseHandle->databaseNode->lastTrigger.readCount               = databaseHandle->databaseNode->readCount              ;
-databaseHandle->databaseNode->lastTrigger.pendingReadWriteCount   = databaseHandle->databaseNode->pendingReadWriteCount  ;
-databaseHandle->databaseNode->lastTrigger.readWriteCount          = databaseHandle->databaseNode->readWriteCount         ;
-databaseHandle->databaseNode->lastTrigger.pendingTransactionCount = databaseHandle->databaseNode->pendingTransactionCount;
-databaseHandle->databaseNode->lastTrigger.transactionCount        = databaseHandle->databaseNode->transactionCount       ;
-              BACKTRACE(databaseHandle->databaseNode->lastTrigger.stackTrace,databaseHandle->databaseNode->lastTrigger.stackTraceSize);
-            #endif /* NDEBUG */
-            pthread_cond_signal(&databaseHandle->databaseNode->readWriteTrigger);
+            triggerUnlockReadWrite(databaseHandle->databaseNode);
+          }
+          else if  (isTransactionLock(databaseHandle->databaseNode) && (databaseHandle->databaseNode->pendingReadCount > 0))
+          {
+            triggerUnlockRead(databaseHandle->databaseNode);
+          }
+          else
+          {
+            assert(databaseHandle->databaseNode->pendingReadCount == 0);
+            assert(databaseHandle->databaseNode->pendingReadWriteCount == 0);
           }
         }
-        #ifndef NDEBUG
-          for (i = 0; i < SIZE_OF_ARRAY(databaseHandle->databaseNode->readWrites); i++)
-          {
-            if (Thread_isCurrentThread(databaseHandle->databaseNode->readWrites[i].threadId))
-            {
-               databaseHandle->databaseNode->readWrites[i].threadId = THREAD_ID_NONE;
-               break;
-            }
-          }
-        #endif /* not NDEBUG */
 
         #ifdef DATABASE_DEBUG_LOCK
           fprintf(stderr,
@@ -2771,17 +3123,14 @@ databaseHandle->databaseNode->lastTrigger.transactionCount        = databaseHand
                  );
         #endif /* DATABASE_DEBUG_LOCK */
 #if 0
-  if (   (databaseHandle->databaseNode->pendingReadCount == 0)
-      && (databaseHandle->databaseNode->readCount == 0)
-      && (databaseHandle->databaseNode->pendingReadWriteCount == 0)
-      && (databaseHandle->databaseNode->readWriteCount == 0)
-     )
-  fprintf(stderr,"%s, %d: --------------------------------------------------------------------------------------------------\n",__FILE__,__LINE__);
+if (   (databaseHandle->databaseNode->pendingReadCount == 0)
+    && (databaseHandle->databaseNode->readCount == 0)
+    && (databaseHandle->databaseNode->pendingReadWriteCount == 0)
+    && (databaseHandle->databaseNode->readWriteCount == 0)
+   )
+fprintf(stderr,"%s, %d: --------------------------------------------------------------------------------------------------\n",__FILE__,__LINE__);
 #endif
-      }
-      #ifdef DATABASE_LOCK_PER_INSTANCE
-      #endif /* DATABASE_LOCK_PER_INSTANCE */
-      DATABASE_UNLOCK(&databaseHandle);
+      });
       break;
   }
 }
@@ -2825,25 +3174,25 @@ Errors Database_setEnabledSync(DatabaseHandle *databaseHandle,
   assert(databaseHandle != NULL);
   DEBUG_CHECK_RESOURCE_TRACE(databaseHandle);
 
-  error = Database_execute(databaseHandle,
-                           CALLBACK(NULL,NULL),  // databaseRowFunction
-                           NULL,  // changedRowCount
-                           "PRAGMA synchronous=%s;",
-                           enabled ? "ON" : "OFF"
-                          );
-  if (error != ERROR_NONE)
+  error = ERROR_NONE;
+
+  if (error == ERROR_NONE)
   {
-    return error;
+    error = Database_execute(databaseHandle,
+                             CALLBACK(NULL,NULL),  // databaseRowFunction
+                             NULL,  // changedRowCount
+                             "PRAGMA synchronous=%s;",
+                             enabled ? "ON" : "OFF"
+                            );
   }
-  error = Database_execute(databaseHandle,
-                           CALLBACK(NULL,NULL),  // databaseRowFunction
-                           NULL,  // changedRowCount
-                           "PRAGMA journal_mode=%s;",
-                           enabled ? "ON" : "WAL"
-                          );
-  if (error != ERROR_NONE)
+  if (error == ERROR_NONE)
   {
-    return error;
+    error = Database_execute(databaseHandle,
+                             CALLBACK(NULL,NULL),  // databaseRowFunction
+                             NULL,  // changedRowCount
+                             "PRAGMA journal_mode=%s;",
+                             enabled ? "ON" : "WAL"
+                            );
   }
 
   return ERROR_NONE;
@@ -2853,15 +3202,19 @@ Errors Database_setEnabledForeignKeys(DatabaseHandle *databaseHandle,
                                       bool           enabled
                                      )
 {
+  Errors error;
+
   assert(databaseHandle != NULL);
   DEBUG_CHECK_RESOURCE_TRACE(databaseHandle);
 
-  return Database_execute(databaseHandle,
-                          CALLBACK(NULL,NULL),  // databaseRowFunction
-                          NULL,  // changedRowCount
-                          "PRAGMA foreign_keys=%s;",
-                          enabled ? "ON" : "OFF"
-                         );
+  error = Database_execute(databaseHandle,
+                           CALLBACK(NULL,NULL),  // databaseRowFunction
+                           NULL,  // changedRowCount
+                           "PRAGMA foreign_keys=%s;",
+                           enabled ? "ON" : "OFF"
+                          );
+
+  return error;
 }
 
 Errors Database_compare(DatabaseHandle *databaseHandleReference,
@@ -2877,6 +3230,8 @@ Errors Database_compare(DatabaseHandle *databaseHandleReference,
 
   assert(databaseHandleReference != NULL);
   DEBUG_CHECK_RESOURCE_TRACE(databaseHandleReference);
+//TODO: remove
+assert(Thread_isCurrentThread(databaseHandle->threadId));
   assert(databaseHandleReference->handle != NULL);
   assert(databaseHandle != NULL);
   DEBUG_CHECK_RESOURCE_TRACE(databaseHandle);
@@ -3014,8 +3369,14 @@ Errors Database_copyTable(DatabaseHandle                *fromDatabaseHandle,
   #endif /* DATABASE_DEBUG_COPY_TABLE */
 
   assert(fromDatabaseHandle != NULL);
+  DEBUG_CHECK_RESOURCE_TRACE(fromDatabaseHandle);
+// TODO: remove
+assert(Thread_isCurrentThread(fromDatabaseHandle->threadId));
   assert(fromDatabaseHandle->handle != NULL);
   assert(toDatabaseHandle != NULL);
+  DEBUG_CHECK_RESOURCE_TRACE(toDatabaseHandle);
+// TODO: remove
+assert(Thread_isCurrentThread(toDatabaseHandle->threadId));
   assert(toDatabaseHandle->handle != NULL);
   assert(fromTableName != NULL);
   assert(toTableName != NULL);
@@ -3091,7 +3452,7 @@ Errors Database_copyTable(DatabaseHandle                *fromDatabaseHandle,
     // begin transaction
     if (transactionFlag)
     {
-      error = Database_beginTransaction(toDatabaseHandle,DATABASE_TRANSACTION_TYPE_DEFERRED);
+      error = Database_beginTransaction(toDatabaseHandle,DATABASE_TRANSACTION_TYPE_DEFERRED,WAIT_FOREVER);
       if (error != ERROR_NONE)
       {
         return error;
@@ -3112,6 +3473,15 @@ Errors Database_copyTable(DatabaseHandle                *fromDatabaseHandle,
     else if (sqliteResult == SQLITE_MISUSE)
     {
       HALT_INTERNAL_ERROR("SQLite library reported misuse %d %d",sqliteResult,sqlite3_extended_errcode(fromDatabaseHandle->handle));
+    }
+    else if (sqliteResult == SQLITE_INTERRUPT)
+    {
+      error = ERRORX_(INTERRUPTED,sqlite3_errcode(fromDatabaseHandle->handle),"%s: %s",String_cString(sqlSelectString),sqlite3_errmsg(fromDatabaseHandle->handle));
+      if (transactionFlag)
+      {
+        (void)Database_rollbackTransaction(toDatabaseHandle);
+      }
+      return error;
     }
     else
     {
@@ -3135,6 +3505,7 @@ Errors Database_copyTable(DatabaseHandle                *fromDatabaseHandle,
     {
       #ifdef DATABASE_DEBUG_COPY_TABLE
         rowCount++;
+if ((rowCount % 1000) == 0) fprintf(stderr,"%s, %d: rowCount=%lu\n",__FILE__,__LINE__,rowCount);
       #endif /* DATABASE_DEBUG_COPY_TABLE */
 
       // reset to data
@@ -3205,7 +3576,7 @@ Errors Database_copyTable(DatabaseHandle                *fromDatabaseHandle,
           default:
             #ifndef NDEBUG
               HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
-            #endif /* NDEBUG */
+            #endif /* not NDEBUG */
             break; // not reached
         }
         i++;
@@ -3229,7 +3600,6 @@ Errors Database_copyTable(DatabaseHandle                *fromDatabaseHandle,
           }
           return error;
         }
-
       }
 
       // create SQL insert statement string
@@ -3272,6 +3642,16 @@ Errors Database_copyTable(DatabaseHandle                *fromDatabaseHandle,
       else if (sqliteResult == SQLITE_MISUSE)
       {
         HALT_INTERNAL_ERROR("SQLite library reported misuse %d %d",sqliteResult,sqlite3_extended_errcode(toDatabaseHandle->handle));
+      }
+      else if (sqliteResult == SQLITE_INTERRUPT)
+      {
+        error = ERRORX_(INTERRUPTED,sqlite3_errcode(toDatabaseHandle->handle),"%s: %s",sqlite3_errmsg(toDatabaseHandle->handle),String_cString(sqlInsertString));
+        sqlite3_finalize(fromStatementHandle);
+        if (transactionFlag)
+        {
+          (void)Database_rollbackTransaction(toDatabaseHandle);
+        }
+        return error;
       }
       else
       {
@@ -3327,7 +3707,7 @@ Errors Database_copyTable(DatabaseHandle                *fromDatabaseHandle,
             default:
               #ifndef NDEBUG
                 HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
-              #endif /* NDEBUG */
+              #endif /* not NDEBUG */
               break; // not reached
           }
         }
@@ -3364,7 +3744,7 @@ Errors Database_copyTable(DatabaseHandle                *fromDatabaseHandle,
           default:
             #ifndef NDEBUG
               HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
-            #endif /* NDEBUG */
+            #endif /* not NDEBUG */
             break; // not reached
         }
       }
@@ -3409,7 +3789,6 @@ Errors Database_copyTable(DatabaseHandle                *fromDatabaseHandle,
         END_TIMER();
 
         // wait
-fprintf(stderr,"%s, %d: \n",__FILE__,__LINE__);
         BLOCK_DO({ end(toDatabaseHandle,DATABASE_LOCK_TYPE_READ_WRITE);
                    end(fromDatabaseHandle,DATABASE_LOCK_TYPE_READ);                   
                  },
@@ -3423,14 +3802,13 @@ fprintf(stderr,"%s, %d: \n",__FILE__,__LINE__);
           }
           while (pauseCallbackFunction(pauseCallbackUserData));
         });
-fprintf(stderr,"%s, %d: \n",__FILE__,__LINE__);
 
         START_TIMER();
 
         // begin transaction
         if (transactionFlag)
         {
-          error = Database_beginTransaction(toDatabaseHandle,DATABASE_TRANSACTION_TYPE_DEFERRED);
+          error = Database_beginTransaction(toDatabaseHandle,DATABASE_TRANSACTION_TYPE_DEFERRED,WAIT_FOREVER);
           if (error != ERROR_NONE)
           {
             sqlite3_finalize(fromStatementHandle);
@@ -3438,7 +3816,7 @@ fprintf(stderr,"%s, %d: \n",__FILE__,__LINE__);
           }
         }
       }
-    }
+    }  // while
 
     // end transaction
     if (transactionFlag)
@@ -3474,7 +3852,7 @@ fprintf(stderr,"%s, %d: \n",__FILE__,__LINE__);
     if (rowCount > 0L)
     {
       fprintf(stderr,
-              "%s, %d: DEBUG copy table %s->%s: %llums, %lu rows, %lfms/row\n",
+              "%s, %d: DEBUG copy table %s->%s: %"PRIu64"ms, %lu rows, %lfms/row\n",
               __FILE__,__LINE__,
               fromTableName,
               toTableName,
@@ -3518,6 +3896,9 @@ uint Database_getTableColumnListUInt(const DatabaseColumnList *columnList, const
 {
   DatabaseColumnNode *columnNode;
 
+  assert(columnList != NULL);
+  assert(columnName != NULL);
+
   columnNode = findTableColumnNode(columnList,columnName);
   if (columnNode != NULL)
   {
@@ -3540,6 +3921,9 @@ uint Database_getTableColumnListUInt(const DatabaseColumnList *columnList, const
 int64 Database_getTableColumnListInt64(const DatabaseColumnList *columnList, const char *columnName, int64 defaultValue)
 {
   DatabaseColumnNode *columnNode;
+
+  assert(columnList != NULL);
+  assert(columnName != NULL);
 
   columnNode = findTableColumnNode(columnList,columnName);
   if (columnNode != NULL)
@@ -3564,6 +3948,9 @@ uint64 Database_getTableColumnListUInt64(const DatabaseColumnList *columnList, c
 {
   DatabaseColumnNode *columnNode;
 
+  assert(columnList != NULL);
+  assert(columnName != NULL);
+
   columnNode = findTableColumnNode(columnList,columnName);
   if (columnNode != NULL)
   {
@@ -3587,6 +3974,9 @@ double Database_getTableColumnListDouble(const DatabaseColumnList *columnList, c
 {
   DatabaseColumnNode *columnNode;
 
+  assert(columnList != NULL);
+  assert(columnName != NULL);
+
   columnNode = findTableColumnNode(columnList,columnName);
   if (columnNode != NULL)
   {
@@ -3603,6 +3993,9 @@ uint64 Database_getTableColumnListDateTime(const DatabaseColumnList *columnList,
 {
   DatabaseColumnNode *columnNode;
 
+  assert(columnList != NULL);
+  assert(columnName != NULL);
+
   columnNode = findTableColumnNode(columnList,columnName);
   if (columnNode != NULL)
   {
@@ -3618,6 +4011,9 @@ uint64 Database_getTableColumnListDateTime(const DatabaseColumnList *columnList,
 String Database_getTableColumnList(const DatabaseColumnList *columnList, const char *columnName, String value, const char *defaultValue)
 {
   DatabaseColumnNode *columnNode;
+
+  assert(columnList != NULL);
+  assert(columnName != NULL);
 
   columnNode = findTableColumnNode(columnList,columnName);
   if (columnNode != NULL)
@@ -3637,6 +4033,9 @@ const char *Database_getTableColumnListCString(const DatabaseColumnList *columnL
 {
   DatabaseColumnNode *columnNode;
 
+  assert(columnList != NULL);
+  assert(columnName != NULL);
+
   columnNode = findTableColumnNode(columnList,columnName);
   if (columnNode != NULL)
   {
@@ -3652,6 +4051,9 @@ const char *Database_getTableColumnListCString(const DatabaseColumnList *columnL
 void Database_getTableColumnListBlob(const DatabaseColumnList *columnList, const char *columnName, void *data, uint length)
 {
   DatabaseColumnNode *columnNode;
+
+  assert(columnList != NULL);
+  assert(columnName != NULL);
 
 UNUSED_VARIABLE(data);
 UNUSED_VARIABLE(length);
@@ -3672,6 +4074,9 @@ bool Database_setTableColumnListInt64(const DatabaseColumnList *columnList, cons
 {
   DatabaseColumnNode *columnNode;
 
+  assert(columnList != NULL);
+  assert(columnName != NULL);
+
   columnNode = findTableColumnNode(columnList,columnName);
   if (columnNode != NULL)
   {
@@ -3689,6 +4094,9 @@ bool Database_setTableColumnListInt64(const DatabaseColumnList *columnList, cons
 bool Database_setTableColumnListDouble(const DatabaseColumnList *columnList, const char *columnName, double value)
 {
   DatabaseColumnNode *columnNode;
+
+  assert(columnList != NULL);
+  assert(columnName != NULL);
 
   columnNode = findTableColumnNode(columnList,columnName);
   if (columnNode != NULL)
@@ -3708,6 +4116,9 @@ bool Database_setTableColumnListDateTime(const DatabaseColumnList *columnList, c
 {
   DatabaseColumnNode *columnNode;
 
+  assert(columnList != NULL);
+  assert(columnName != NULL);
+
   columnNode = findTableColumnNode(columnList,columnName);
   if (columnNode != NULL)
   {
@@ -3724,12 +4135,18 @@ bool Database_setTableColumnListDateTime(const DatabaseColumnList *columnList, c
 
 bool Database_setTableColumnList(const DatabaseColumnList *columnList, const char *columnName, ConstString value)
 {
+  assert(columnList != NULL);
+  assert(columnName != NULL);
+
   return Database_setTableColumnListCString(columnList,columnName,String_cString(value));
 }
 
 bool Database_setTableColumnListCString(const DatabaseColumnList *columnList, const char *columnName, const char *value)
 {
   DatabaseColumnNode *columnNode;
+
+  assert(columnList != NULL);
+  assert(columnName != NULL);
 
   columnNode = findTableColumnNode(columnList,columnName);
   if (columnNode != NULL)
@@ -3748,6 +4165,9 @@ bool Database_setTableColumnListCString(const DatabaseColumnList *columnList, co
 bool Database_setTableColumnListBlob(const DatabaseColumnList *columnList, const char *columnName, const void *data, uint length)
 {
   DatabaseColumnNode *columnNode;
+
+  assert(columnList != NULL);
+  assert(columnName != NULL);
 
   columnNode = findTableColumnNode(columnList,columnName);
   if (columnNode != NULL)
@@ -3778,6 +4198,11 @@ Errors Database_addColumn(DatabaseHandle *databaseHandle,
   const char *columnTypeString;
   Errors     error;
 
+  assert(databaseHandle != NULL);
+  DEBUG_CHECK_RESOURCE_TRACE(databaseHandle);
+  assert(tableName != NULL);
+  assert(columnName != NULL);
+
   // get column type name
   columnTypeString = NULL;
   switch (columnType)
@@ -3806,7 +4231,7 @@ Errors Database_addColumn(DatabaseHandle *databaseHandle,
     default:
       #ifndef NDEBUG
         HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
-      #endif /* NDEBUG */
+      #endif /* not NDEBUG */
       break; // not reached
   }
 
@@ -3820,12 +4245,8 @@ Errors Database_addColumn(DatabaseHandle *databaseHandle,
                            columnName,
                            columnTypeString
                           );
-  if (error != ERROR_NONE)
-  {
-    return error;
-  }
 
-  return ERROR_NONE;
+  return error;
 }
 
 Errors Database_removeColumn(DatabaseHandle *databaseHandle,
@@ -3844,6 +4265,8 @@ Errors Database_removeColumn(DatabaseHandle *databaseHandle,
 
   assert(databaseHandle != NULL);
   DEBUG_CHECK_RESOURCE_TRACE(databaseHandle);
+// TODO: remove
+  assert(Thread_isCurrentThread(databaseHandle->threadId));
   assert(databaseHandle->handle != NULL);
   assert(tableName != NULL);
   assert(columnName != NULL);
@@ -3877,12 +4300,17 @@ Errors Database_removeColumn(DatabaseHandle *databaseHandle,
     String_appendCString(sqlString,");");
 
     DATABASE_DEBUG_SQL(databaseHandle,sqlString);
-    error = sqliteExecute(databaseHandle,
-                          String_cString(sqlString),
-                          CALLBACK(NULL,NULL),  // databaseRowFunction
-                          NULL,  // changedRowCount
-                          databaseHandle->timeout
-                         );
+    DATABASE_DOX(error,
+                 databaseHandle,
+                 DATABASE_LOCK_TYPE_READ_WRITE,
+    {
+      return sqliteExecute(databaseHandle,
+                           String_cString(sqlString),
+                           CALLBACK(NULL,NULL),  // databaseRowFunction
+                           NULL,  // changedRowCount
+                           databaseHandle->timeout
+                          );
+    });
     if (error != ERROR_NONE)
     {
       return error;
@@ -3903,6 +4331,10 @@ Errors Database_removeColumn(DatabaseHandle *databaseHandle,
     else if (sqliteResult == SQLITE_MISUSE)
     {
       HALT_INTERNAL_ERROR("SQLite library reported misuse %d %d",sqliteResult,sqlite3_extended_errcode(databaseHandle->handle));
+    }
+    else if (sqliteResult == SQLITE_INTERRUPT)
+    {
+      return ERRORX_(INTERRUPTED,sqlite3_errcode(databaseHandle->handle),"%s: %s",sqlite3_errmsg(databaseHandle->handle),sqlString);
     }
     else
     {
@@ -3958,7 +4390,7 @@ Errors Database_removeColumn(DatabaseHandle *databaseHandle,
             default:
               #ifndef NDEBUG
                 HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
-              #endif /* NDEBUG */
+              #endif /* not NDEBUG */
               break; // not reached
           }
           n++;
@@ -3970,12 +4402,17 @@ Errors Database_removeColumn(DatabaseHandle *databaseHandle,
 
       // execute SQL command
       DATABASE_DEBUG_SQL(databaseHandle,sqlString);
-      error = sqliteExecute(databaseHandle,
-                            String_cString(sqlString),
-                            CALLBACK(NULL,NULL),  // databaseRowFunction
-                            NULL,  // changedRowCount
-                            databaseHandle->timeout
-                           );
+      DATABASE_DOX(error,
+                   databaseHandle,
+                   DATABASE_LOCK_TYPE_READ_WRITE,
+      {
+        return sqliteExecute(databaseHandle,
+                             String_cString(sqlString),
+                             CALLBACK(NULL,NULL),  // databaseRowFunction
+                             NULL,  // changedRowCount
+                             databaseHandle->timeout
+                            );
+      });
       if (error != ERROR_NONE)
       {
         return error;
@@ -4045,25 +4482,34 @@ Errors Database_removeColumn(DatabaseHandle *databaseHandle,
 
 #ifdef NDEBUG
   Errors Database_beginTransaction(DatabaseHandle           *databaseHandle,
-                                   DatabaseTransactionTypes databaseTransactionType
+                                   DatabaseTransactionTypes databaseTransactionType,
+                                   long                     timeout
                                   )
 #else /* not NDEBUG */
   Errors __Database_beginTransaction(const char               *__fileName__,
                                      uint                     __lineNb__,
                                      DatabaseHandle           *databaseHandle,
-                                     DatabaseTransactionTypes databaseTransactionType
+                                     DatabaseTransactionTypes databaseTransactionType,
+                                     long                     timeout
                                     )
 #endif /* NDEBUG */
 {
   #ifdef DATABASE_SUPPORT_TRANSACTIONS
-    String sqlString;
-    Errors error;
+    String      sqlString;
+    TimeoutInfo timeoutInfo;
+    Errors      error;
   #endif /* DATABASE_SUPPORT_TRANSACTIONS */
 
   assert(databaseHandle != NULL);
   DEBUG_CHECK_RESOURCE_TRACE(databaseHandle);
   assert(databaseHandle->databaseNode != NULL);
   assert(databaseHandle->handle != NULL);
+
+  UNUSED_VARIABLE(timeout);
+  #ifndef NDEBUG
+    UNUSED_VARIABLE(__fileName__);
+    UNUSED_VARIABLE(__lineNb__);
+  #endif /* not NDEBUG */
 
   #ifdef DATABASE_SUPPORT_TRANSACTIONS
 #if 0
@@ -4103,7 +4549,7 @@ Errors Database_removeColumn(DatabaseHandle *databaseHandle,
         #endif /* HAVE_BACKTRACE */
       }
       pthread_mutex_unlock(&debugDatabaseLock);
-    #endif /* NDEBUG */
+    #endif /* not NDEBUG */
 #endif
 
     // format SQL command string
@@ -4115,6 +4561,33 @@ Errors Database_removeColumn(DatabaseHandle *databaseHandle,
       case DATABASE_TRANSACTION_TYPE_EXCLUSIVE: String_format(sqlString,"BEGIN EXCLUSIVE TRANSACTION;"); break;
     }
 
+    // try to complete all read/write request (with timeout)
+    if (   (   (databaseHandle->databaseNode->pendingReadCount > 0)
+               || (databaseHandle->databaseNode->readCount > 0)
+               || (databaseHandle->databaseNode->pendingReadWriteCount > 0)
+               || (databaseHandle->databaseNode->readWriteCount > 0)
+              )
+        )
+    {
+      Misc_initTimeout(&timeoutInfo,250);
+      while (   (   (databaseHandle->databaseNode->pendingReadCount > 0)
+                 || (databaseHandle->databaseNode->readCount > 0)
+                 || (databaseHandle->databaseNode->pendingReadWriteCount > 0)
+                 || (databaseHandle->databaseNode->readWriteCount > 0)
+                )
+             && !Misc_isTimeout(&timeoutInfo)
+            )
+      {
+        Thread_delay(50);
+      }
+      Misc_doneTimeout(&timeoutInfo);
+//fprintf(stderr,"%s, %d: rest %lu\n",__FILE__,__LINE__,Misc_getRestTimeout(&timeoutInfo));
+    }
+
+    // lock
+    Database_lock(databaseHandle,DATABASE_LOCK_TYPE_READ_WRITE);
+
+    // begin transaction
     DATABASE_DEBUG_SQL(databaseHandle,sqlString);
     error = sqliteExecute(databaseHandle,
                           String_cString(sqlString),
@@ -4124,6 +4597,7 @@ Errors Database_removeColumn(DatabaseHandle *databaseHandle,
                          );
     if (error != ERROR_NONE)
     {
+      Database_unlock(databaseHandle,DATABASE_LOCK_TYPE_READ_WRITE);
       String_delete(sqlString);
       return error;
     }
@@ -4135,14 +4609,12 @@ Errors Database_removeColumn(DatabaseHandle *databaseHandle,
     #ifdef DATABASE_USE_ATOMIC_INCREMENT
     #else /* not DATABASE_USE_ATOMIC_INCREMENT */
     #endif /* DATABASE_USE_ATOMIC_INCREMENT */
-    DATABASE_LOCK(&databaseHandle);
+    DATABASE_HANDLE_DO(databaseHandle,
     {
       assert(databaseHandle->databaseNode->transactionCount == 0);
 //      ATOMIC_INCREMENT(databaseHandle->databaseNode->transactionCount);
       databaseHandle->databaseNode->transactionCount++;
-
-    }
-    DATABASE_UNLOCK(&databaseHandle);
+    });
 
     #ifndef NDEBUG
       pthread_once(&debugDatabaseInitFlag,debugDatabaseInit);
@@ -4157,7 +4629,7 @@ Errors Database_removeColumn(DatabaseHandle *databaseHandle,
         #endif /* HAVE_BACKTRACE */
       }
       pthread_mutex_unlock(&debugDatabaseLock);
-    #endif /* NDEBUG */
+    #endif /* not NDEBUG */
 
     #ifdef DATABASE_DEBUG_LOCK
       fprintf(stderr,
@@ -4168,10 +4640,6 @@ Errors Database_removeColumn(DatabaseHandle *databaseHandle,
              );
     #endif /* DATABASE_DEBUG_LOCK */
   #else /* not DATABASE_SUPPORT_TRANSACTIONS */
-    #ifndef NDEBUG
-      UNUSED_VARIABLE(__fileName__);
-      UNUSED_VARIABLE(__lineNb__);
-    #endif
     UNUSED_VARIABLE(databaseHandle);
   #endif /* DATABASE_SUPPORT_TRANSACTIONS */
 
@@ -4197,9 +4665,14 @@ Errors Database_removeColumn(DatabaseHandle *databaseHandle,
   assert(databaseHandle->databaseNode != NULL);
   assert(databaseHandle->handle != NULL);
 
+  #ifndef NDEBUG
+    UNUSED_VARIABLE(__fileName__);
+    UNUSED_VARIABLE(__lineNb__);
+  #endif /* not NDEBUG */
+
   #ifdef DATABASE_SUPPORT_TRANSACTIONS
     // decrement transaction count
-    DATABASE_LOCK(&databaseHandle);
+    DATABASE_HANDLE_DO(databaseHandle,
     {
       assert(databaseHandle->databaseNode->transactionCount > 0);
       #ifdef DATABASE_USE_ATOMIC_INCREMENT
@@ -4209,48 +4682,18 @@ Errors Database_removeColumn(DatabaseHandle *databaseHandle,
       databaseHandle->databaseNode->transactionCount--;
       if (databaseHandle->databaseNode->transactionCount == 0)
       {
-//fprintf(stderr,"%s, %d: trigger transaction %p %d %p\n",__FILE__,__LINE__,databaseHandle->databaseNode,databaseHandle->databaseNode->transactionCount,&databaseHandle->databaseNode->transactionTrigger);
-        pthread_cond_broadcast(&databaseHandle->databaseNode->transactionTrigger);
+        triggerUnlockTransaction(databaseHandle->databaseNode);
 
         if      (databaseHandle->databaseNode->pendingReadCount > 0)
         {
-//fprintf(stderr,"%s, %d: trigger r %p\n",__FILE__,__LINE__,&databaseHandle->databaseNode->readTrigger);
-          #ifndef NDEBUG
-            databaseHandle->databaseNode->lastTrigger.threadId = Thread_getCurrentId();
-            databaseHandle->databaseNode->lastTrigger.fileName = __fileName__;
-            databaseHandle->databaseNode->lastTrigger.lineNb   = __lineNb__;
-            databaseHandle->databaseNode->lastTrigger.type     = DATABASE_LOCK_TYPE_READ;
-databaseHandle->databaseNode->lastTrigger.pendingReadCount        = databaseHandle->databaseNode->pendingReadCount       ;
-databaseHandle->databaseNode->lastTrigger.readCount               = databaseHandle->databaseNode->readCount              ;
-databaseHandle->databaseNode->lastTrigger.pendingReadWriteCount   = databaseHandle->databaseNode->pendingReadWriteCount  ;
-databaseHandle->databaseNode->lastTrigger.readWriteCount          = databaseHandle->databaseNode->readWriteCount         ;
-databaseHandle->databaseNode->lastTrigger.pendingTransactionCount = databaseHandle->databaseNode->pendingTransactionCount;
-databaseHandle->databaseNode->lastTrigger.transactionCount        = databaseHandle->databaseNode->transactionCount       ;
-            BACKTRACE(databaseHandle->databaseNode->lastTrigger.stackTrace,databaseHandle->databaseNode->lastTrigger.stackTraceSize);
-          #endif /* NDEBUG */
-          pthread_cond_broadcast(&databaseHandle->databaseNode->readTrigger);
+          triggerUnlockRead(databaseHandle->databaseNode);
         }
         else if (databaseHandle->databaseNode->pendingReadWriteCount > 0)
         {
-//fprintf(stderr,"%s, %d: trigger rw %p\n",__FILE__,__LINE__,&databaseHandle->databaseNode->readWriteTrigger);
-          #ifndef NDEBUG
-            databaseHandle->databaseNode->lastTrigger.threadId = Thread_getCurrentId();
-            databaseHandle->databaseNode->lastTrigger.fileName = __fileName__;
-            databaseHandle->databaseNode->lastTrigger.lineNb   = __lineNb__;
-            databaseHandle->databaseNode->lastTrigger.type     = DATABASE_LOCK_TYPE_READ_WRITE;
-databaseHandle->databaseNode->lastTrigger.pendingReadCount        = databaseHandle->databaseNode->pendingReadCount       ;
-databaseHandle->databaseNode->lastTrigger.readCount               = databaseHandle->databaseNode->readCount              ;
-databaseHandle->databaseNode->lastTrigger.pendingReadWriteCount   = databaseHandle->databaseNode->pendingReadWriteCount  ;
-databaseHandle->databaseNode->lastTrigger.readWriteCount          = databaseHandle->databaseNode->readWriteCount         ;
-databaseHandle->databaseNode->lastTrigger.pendingTransactionCount = databaseHandle->databaseNode->pendingTransactionCount;
-databaseHandle->databaseNode->lastTrigger.transactionCount        = databaseHandle->databaseNode->transactionCount       ;
-            BACKTRACE(databaseHandle->databaseNode->lastTrigger.stackTrace,databaseHandle->databaseNode->lastTrigger.stackTraceSize);
-          #endif /* NDEBUG */
-          pthread_cond_signal(&databaseHandle->databaseNode->readWriteTrigger);
+          triggerUnlockReadWrite(databaseHandle->databaseNode);
         }
       }
-    }
-    DATABASE_UNLOCK(&databaseHandle);
+    });
 
     // format SQL command string
     sqlString = String_format(String_new(),"END TRANSACTION;");
@@ -4265,9 +4708,14 @@ databaseHandle->databaseNode->lastTrigger.transactionCount        = databaseHand
                          );
     if (error != ERROR_NONE)
     {
+      // Note: unlock even on error to avoid lost lock
+      Database_unlock(databaseHandle,DATABASE_LOCK_TYPE_READ_WRITE);
       String_delete(sqlString);
       return error;
     }
+
+    // unlock
+    Database_unlock(databaseHandle,DATABASE_LOCK_TYPE_READ_WRITE);
 
     // free resources
     String_delete(sqlString);
@@ -4286,7 +4734,7 @@ databaseHandle->databaseNode->lastTrigger.transactionCount        = databaseHand
         #endif /* HAVE_BACKTRACE */
       }
       pthread_mutex_unlock(&debugDatabaseLock);
-    #endif /* NDEBUG */
+    #endif /* not NDEBUG */
 
     #ifdef DATABASE_DEBUG_LOCK
       fprintf(stderr,
@@ -4325,8 +4773,13 @@ databaseHandle->databaseNode->lastTrigger.transactionCount        = databaseHand
   assert(databaseHandle->databaseNode != NULL);
   assert(databaseHandle->handle != NULL);
 
+  #ifndef NDEBUG
+    UNUSED_VARIABLE(__fileName__);
+    UNUSED_VARIABLE(__lineNb__);
+  #endif /* not NDEBUG */
+
   #ifdef DATABASE_SUPPORT_TRANSACTIONS
-    DATABASE_LOCK(&databaseHandle);
+    DATABASE_HANDLE_DO(databaseHandle,
     {
       assert(databaseHandle->databaseNode->transactionCount > 0);
       #ifdef DATABASE_USE_ATOMIC_INCREMENT
@@ -4337,47 +4790,20 @@ databaseHandle->databaseNode->lastTrigger.transactionCount        = databaseHand
       if (databaseHandle->databaseNode->transactionCount == 0)
       {
 //fprintf(stderr,"%s, %d: trigger transaction %p %d %p\n",__FILE__,__LINE__,databaseHandle->databaseNode,databaseHandle->databaseNode->transactionCount,&databaseHandle->databaseNode->transactionTrigger);
-        pthread_cond_broadcast(&databaseHandle->databaseNode->transactionTrigger);
+        triggerUnlockTransaction(databaseHandle->databaseNode);
 
         if      (databaseHandle->databaseNode->pendingReadCount > 0)
         {
 //fprintf(stderr,"%s, %d: trigger r %p\n",__FILE__,__LINE__,&databaseHandle->databaseNode->readTrigger);
-          #ifndef NDEBUG
-            databaseHandle->databaseNode->lastTrigger.threadId = Thread_getCurrentId();
-            databaseHandle->databaseNode->lastTrigger.fileName = __fileName__;
-            databaseHandle->databaseNode->lastTrigger.lineNb   = __lineNb__;
-            databaseHandle->databaseNode->lastTrigger.type     = DATABASE_LOCK_TYPE_READ;
-databaseHandle->databaseNode->lastTrigger.pendingReadCount        = databaseHandle->databaseNode->pendingReadCount       ;
-databaseHandle->databaseNode->lastTrigger.readCount               = databaseHandle->databaseNode->readCount              ;
-databaseHandle->databaseNode->lastTrigger.pendingReadWriteCount   = databaseHandle->databaseNode->pendingReadWriteCount  ;
-databaseHandle->databaseNode->lastTrigger.readWriteCount          = databaseHandle->databaseNode->readWriteCount         ;
-databaseHandle->databaseNode->lastTrigger.pendingTransactionCount = databaseHandle->databaseNode->pendingTransactionCount;
-databaseHandle->databaseNode->lastTrigger.transactionCount        = databaseHandle->databaseNode->transactionCount       ;
-            BACKTRACE(databaseHandle->databaseNode->lastTrigger.stackTrace,databaseHandle->databaseNode->lastTrigger.stackTraceSize);
-          #endif /* NDEBUG */
-          pthread_cond_broadcast(&databaseHandle->databaseNode->readTrigger);
+          triggerUnlockRead(databaseHandle->databaseNode);
         }
         else if (databaseHandle->databaseNode->pendingReadWriteCount > 0)
         {
 //fprintf(stderr,"%s, %d: trigger rw %p\n",__FILE__,__LINE__,&databaseHandle->databaseNode->readWriteTrigger);
-          #ifndef NDEBUG
-            databaseHandle->databaseNode->lastTrigger.threadId = Thread_getCurrentId();
-            databaseHandle->databaseNode->lastTrigger.fileName = __fileName__;
-            databaseHandle->databaseNode->lastTrigger.lineNb   = __lineNb__;
-            databaseHandle->databaseNode->lastTrigger.type     = DATABASE_LOCK_TYPE_READ_WRITE;
-databaseHandle->databaseNode->lastTrigger.pendingReadCount        = databaseHandle->databaseNode->pendingReadCount       ;
-databaseHandle->databaseNode->lastTrigger.readCount               = databaseHandle->databaseNode->readCount              ;
-databaseHandle->databaseNode->lastTrigger.pendingReadWriteCount   = databaseHandle->databaseNode->pendingReadWriteCount  ;
-databaseHandle->databaseNode->lastTrigger.readWriteCount          = databaseHandle->databaseNode->readWriteCount         ;
-databaseHandle->databaseNode->lastTrigger.pendingTransactionCount = databaseHandle->databaseNode->pendingTransactionCount;
-databaseHandle->databaseNode->lastTrigger.transactionCount        = databaseHandle->databaseNode->transactionCount       ;
-            BACKTRACE(databaseHandle->databaseNode->lastTrigger.stackTrace,databaseHandle->databaseNode->lastTrigger.stackTraceSize);
-          #endif /* NDEBUG */
-          pthread_cond_signal(&databaseHandle->databaseNode->readWriteTrigger);
+          triggerUnlockReadWrite(databaseHandle->databaseNode);
         }
       }
-    }
-    DATABASE_UNLOCK(&databaseHandle);
+    });
 
     // format SQL command string
     sqlString = String_format(String_new(),"ROLLBACK TRANSACTION;");
@@ -4392,9 +4818,14 @@ databaseHandle->databaseNode->lastTrigger.transactionCount        = databaseHand
                          );
     if (error != ERROR_NONE)
     {
+      // Note: unlock even on error to avoid lost lock
+      Database_unlock(databaseHandle,DATABASE_LOCK_TYPE_READ_WRITE);
       String_delete(sqlString);
       return error;
     }
+
+    // unlock
+    Database_unlock(databaseHandle,DATABASE_LOCK_TYPE_READ_WRITE);
 
     // free resources
     String_delete(sqlString);
@@ -4413,7 +4844,7 @@ databaseHandle->databaseNode->lastTrigger.transactionCount        = databaseHand
         #endif /* HAVE_BACKTRACE */
       }
       pthread_mutex_unlock(&debugDatabaseLock);
-    #endif /* NDEBUG */
+    #endif /* not NDEBUG */
   #else /* not DATABASE_SUPPORT_TRANSACTIONS */
     UNUSED_VARIABLE(databaseHandle);
   #endif /* DATABASE_SUPPORT_TRANSACTIONS */
@@ -4462,12 +4893,17 @@ Errors Database_execute(DatabaseHandle      *databaseHandle,
 
   // execute SQL command
   DATABASE_DEBUG_SQL(databaseHandle,sqlString);
-  error = sqliteExecute(databaseHandle,
-                        String_cString(sqlString),
-                        CALLBACK(databaseRowFunction,databaseRowUserData),
-                        changedRowCount,
-                        databaseHandle->timeout
-                       );
+  DATABASE_DOX(error,
+               databaseHandle,
+               DATABASE_LOCK_TYPE_READ_WRITE,
+  {
+    return sqliteExecute(databaseHandle,
+                         String_cString(sqlString),
+                         CALLBACK(databaseRowFunction,databaseRowUserData),
+                         changedRowCount,
+                         databaseHandle->timeout
+                        );
+  });
   if (error != ERROR_NONE)
   {
     String_delete(sqlString);
@@ -4520,7 +4956,7 @@ Errors Database_execute(DatabaseHandle      *databaseHandle,
   #ifndef NDEBUG
     databaseQueryHandle->sqlString = String_duplicate(sqlString);
     databaseQueryHandle->dt        = 0LL;
-  #endif /* NDEBUG */
+  #endif /* not NDEBUG */
 
   // lock
   Database_lock(databaseHandle,DATABASE_LOCK_TYPE_READ);
@@ -4532,7 +4968,7 @@ Errors Database_execute(DatabaseHandle      *databaseHandle,
 //fprintf(stderr,"%s, %d: %s\n",__FILE__,__LINE__,String_cString(sqlString));
   #ifndef NDEBUG
     String_set(databaseHandle->current.sqlCommand,sqlString);
-  #endif /* NDEBUG */
+  #endif /* not NDEBUG */
 
   DATABASE_DEBUG_TIME_START(databaseQueryHandle);
   {
@@ -4551,6 +4987,16 @@ Errors Database_execute(DatabaseHandle      *databaseHandle,
   else if (sqliteResult == SQLITE_MISUSE)
   {
     HALT_INTERNAL_ERROR("SQLite library reported misuse %d %d",sqliteResult,sqlite3_extended_errcode(databaseHandle->handle));
+  }
+  else if (sqliteResult == SQLITE_INTERRUPT)
+  {
+    error = ERRORX_(INTERRUPTED,sqlite3_errcode(databaseHandle->handle),"%s: %s",sqlite3_errmsg(databaseHandle->handle),sqlString);
+    Database_unlock(databaseHandle,DATABASE_LOCK_TYPE_READ);
+    #ifndef NDEBUG
+      String_delete(databaseQueryHandle->sqlString);
+    #endif /* not NDEBUG */
+    String_delete(sqlString);
+    return error;
   }
   else
   {
@@ -4613,6 +5059,7 @@ bool Database_getNextRow(DatabaseQueryHandle *databaseQueryHandle,
   assert(databaseQueryHandle != NULL);
   DEBUG_CHECK_RESOURCE_TRACE(databaseQueryHandle);
   assert(databaseQueryHandle->databaseHandle != NULL);
+  DEBUG_CHECK_RESOURCE_TRACE(databaseQueryHandle->databaseHandle);
   assert(databaseQueryHandle->databaseHandle->handle != NULL);
   assert(format != NULL);
 
@@ -4866,7 +5313,9 @@ bool Database_getNextRow(DatabaseQueryHandle *databaseQueryHandle,
 #endif /* NDEBUG */
 {
   assert(databaseQueryHandle != NULL);
+  DEBUG_CHECK_RESOURCE_TRACE(databaseQueryHandle);
   assert(databaseQueryHandle->databaseHandle != NULL);
+  DEBUG_CHECK_RESOURCE_TRACE(databaseQueryHandle->databaseHandle);
   assert(databaseQueryHandle->databaseHandle->handle != NULL);
 
   #ifdef NDEBUG
@@ -4880,7 +5329,7 @@ bool Database_getNextRow(DatabaseQueryHandle *databaseQueryHandle,
     #ifdef HAVE_BACKTRACE
       databaseQueryHandle->databaseHandle->current.stackTraceSize = 0;
     #endif /* HAVE_BACKTRACE */
-  #endif /* NDEBUG */
+  #endif /* not NDEBUG */
 
   DATABASE_DEBUG_TIME_START(databaseQueryHandle);
   {
@@ -4949,7 +5398,7 @@ bool Database_exists(DatabaseHandle *databaseHandle,
   {
     #ifndef NDEBUG
       String_set(databaseHandle->current.sqlCommand,sqlString);
-    #endif /* NDEBUG */
+    #endif /* not NDEBUG */
 
     existsFlag = FALSE;
 
@@ -4982,6 +5431,10 @@ bool Database_exists(DatabaseHandle *databaseHandle,
       }
     #endif /* not NDEBUG */
     sqlite3_finalize(statementHandle);
+
+    #ifndef NDEBUG
+      String_set(databaseHandle->current.sqlCommand,sqlString);
+    #endif /* not NDEBUG */
     
     return existsFlag;
   });
@@ -5064,7 +5517,7 @@ Errors Database_vgetId(DatabaseHandle *databaseHandle,
   {
     #ifndef NDEBUG
       String_set(databaseHandle->current.sqlCommand,sqlString);
-    #endif /* NDEBUG */
+    #endif /* not NDEBUG */
 
     sqliteResult = sqlite3_prepare_v2(databaseHandle->handle,
                                       String_cString(sqlString),
@@ -5079,6 +5532,10 @@ Errors Database_vgetId(DatabaseHandle *databaseHandle,
     else if (sqliteResult == SQLITE_MISUSE)
     {
       HALT_INTERNAL_ERROR("SQLite library reported misuse %d %d",sqliteResult,sqlite3_extended_errcode(databaseHandle->handle));
+    }
+    else if (sqliteResult == SQLITE_INTERRUPT)
+    {
+      return ERRORX_(INTERRUPTED,sqlite3_errcode(databaseHandle->handle),"%s: %s",sqlite3_errmsg(databaseHandle->handle),String_cString(sqlString));
     }
     else
     {
@@ -5097,6 +5554,10 @@ Errors Database_vgetId(DatabaseHandle *databaseHandle,
       (*value) = (DatabaseId)sqlite3_column_int64(statementHandle,0);
     }
     sqlite3_finalize(statementHandle);
+
+    #ifndef NDEBUG
+      String_set(databaseHandle->current.sqlCommand,sqlString);
+    #endif /* not NDEBUG */
     
     return ERROR_NONE;
   });
@@ -5180,7 +5641,7 @@ Errors Database_vgetIds(DatabaseHandle *databaseHandle,
   {
     #ifndef NDEBUG
       String_set(databaseHandle->current.sqlCommand,sqlString);
-    #endif /* NDEBUG */
+    #endif /* not NDEBUG */
 
     sqliteResult = sqlite3_prepare_v2(databaseHandle->handle,
                                       String_cString(sqlString),
@@ -5195,6 +5656,10 @@ Errors Database_vgetIds(DatabaseHandle *databaseHandle,
     else if (sqliteResult == SQLITE_MISUSE)
     {
       HALT_INTERNAL_ERROR("SQLite library reported misuse %d %d",sqliteResult,sqlite3_extended_errcode(databaseHandle->handle));
+    }
+    else if (sqliteResult == SQLITE_INTERRUPT)
+    {
+      return ERRORX_(INTERRUPTED,sqlite3_errcode(databaseHandle->handle),"%s: %s",sqlite3_errmsg(databaseHandle->handle),String_cString(sqlString));
     }
     else
     {
@@ -5215,6 +5680,10 @@ Errors Database_vgetIds(DatabaseHandle *databaseHandle,
     }
     sqlite3_finalize(statementHandle);
     
+    #ifndef NDEBUG
+      String_set(databaseHandle->current.sqlCommand,sqlString);
+    #endif /* not NDEBUG */
+
     return ERROR_NONE;
   });
 
@@ -5295,7 +5764,7 @@ Errors Database_vgetInteger64(DatabaseHandle *databaseHandle,
   {
     #ifndef NDEBUG
       String_set(databaseHandle->current.sqlCommand,sqlString);
-    #endif /* NDEBUG */
+    #endif /* not NDEBUG */
 
     sqliteResult = sqlite3_prepare_v2(databaseHandle->handle,
                                       String_cString(sqlString),
@@ -5310,6 +5779,10 @@ Errors Database_vgetInteger64(DatabaseHandle *databaseHandle,
     else if (sqliteResult == SQLITE_MISUSE)
     {
       HALT_INTERNAL_ERROR("SQLite library reported misuse %d %d",sqliteResult,sqlite3_extended_errcode(databaseHandle->handle));
+    }
+    else if (sqliteResult == SQLITE_INTERRUPT)
+    {
+      return ERRORX_(INTERRUPTED,sqlite3_errcode(databaseHandle->handle),"%s: %s",sqlite3_errmsg(databaseHandle->handle),String_cString(sqlString));
     }
     else
     {
@@ -5328,6 +5801,10 @@ Errors Database_vgetInteger64(DatabaseHandle *databaseHandle,
       (*value) = (int64)sqlite3_column_int64(statementHandle,0);
     }
     sqlite3_finalize(statementHandle);
+
+    #ifndef NDEBUG
+      String_set(databaseHandle->current.sqlCommand,sqlString);
+    #endif /* not NDEBUG */
     
     return ERROR_NONE;
   });
@@ -5400,25 +5877,10 @@ Errors Database_vsetInteger64(DatabaseHandle *databaseHandle,
                     );
   }
   DATABASE_DEBUG_SQLX(databaseHandle,"set int64",sqlString);
-  error = sqliteExecute(databaseHandle,
-                        String_cString(sqlString),
-                        CALLBACK(NULL,NULL),  // databaseRowFunction
-                        NULL,  // changedRowCount
-                        databaseHandle->timeout
-                       );
-  if (error != ERROR_NONE)
+  DATABASE_DOX(error,
+               databaseHandle,
+               DATABASE_LOCK_TYPE_READ_WRITE,
   {
-    // insert
-    String_clear(sqlString);
-    formatSQLString(sqlString,
-                    "INSERT INTO %s \
-                     (%s) VALUES (%ld) \
-                    ",
-                    tableName,
-                    columnName,
-                    value
-                   );
-    DATABASE_DEBUG_SQLX(databaseHandle,"set int64",sqlString);
     error = sqliteExecute(databaseHandle,
                           String_cString(sqlString),
                           CALLBACK(NULL,NULL),  // databaseRowFunction
@@ -5427,9 +5889,31 @@ Errors Database_vsetInteger64(DatabaseHandle *databaseHandle,
                          );
     if (error != ERROR_NONE)
     {
-      String_delete(sqlString);
-      return error;
+      // insert
+      String_clear(sqlString);
+      formatSQLString(sqlString,
+                      "INSERT INTO %s \
+                       (%s) VALUES (%ld) \
+                      ",
+                      tableName,
+                      columnName,
+                      value
+                     );
+      DATABASE_DEBUG_SQLX(databaseHandle,"set int64",sqlString);
+      error = sqliteExecute(databaseHandle,
+                            String_cString(sqlString),
+                            CALLBACK(NULL,NULL),  // databaseRowFunction
+                            NULL,  // changedRowCount
+                            databaseHandle->timeout
+                           );
     }
+
+    return error;
+  });
+  if (error != ERROR_NONE)
+  {
+    String_delete(sqlString);
+    return error;
   }
 
   // free resources
@@ -5509,7 +5993,7 @@ Errors Database_vgetDouble(DatabaseHandle *databaseHandle,
   {
     #ifndef NDEBUG
       String_set(databaseHandle->current.sqlCommand,sqlString);
-    #endif /* NDEBUG */
+    #endif /* not NDEBUG */
 
     sqliteResult = sqlite3_prepare_v2(databaseHandle->handle,
                                       String_cString(sqlString),
@@ -5524,6 +6008,10 @@ Errors Database_vgetDouble(DatabaseHandle *databaseHandle,
     else if (sqliteResult == SQLITE_MISUSE)
     {
       HALT_INTERNAL_ERROR("SQLite library reported misuse %d %d",sqliteResult,sqlite3_extended_errcode(databaseHandle->handle));
+    }
+    else if (sqliteResult == SQLITE_INTERRUPT)
+    {
+      return ERRORX_(INTERRUPTED,sqlite3_errcode(databaseHandle->handle),"%s: %s",sqlite3_errmsg(databaseHandle->handle),String_cString(sqlString));
     }
     else
     {
@@ -5542,6 +6030,10 @@ Errors Database_vgetDouble(DatabaseHandle *databaseHandle,
       (*value) = sqlite3_column_double(statementHandle,0);
     }
     sqlite3_finalize(statementHandle);
+
+    #ifndef NDEBUG
+      String_set(databaseHandle->current.sqlCommand,sqlString);
+    #endif /* not NDEBUG */
 
     return ERROR_NONE;
   });
@@ -5614,25 +6106,10 @@ Errors Database_vsetDouble(DatabaseHandle *databaseHandle,
                     );
   }
   DATABASE_DEBUG_SQLX(databaseHandle,"set double",sqlString);
-  error = sqliteExecute(databaseHandle,
-                        String_cString(sqlString),
-                        CALLBACK(NULL,NULL),  // databaseRowFunction
-                        NULL,  // changedRowCount
-                        databaseHandle->timeout
-                       );
-  if (error != ERROR_NONE)
+  DATABASE_DOX(error,
+               databaseHandle,
+               DATABASE_LOCK_TYPE_READ_WRITE,
   {
-    // insert
-    String_clear(sqlString);
-    formatSQLString(sqlString,
-                    "INSERT INTO %s \
-                     (%s) VALUES (%lf) \
-                    ",
-                    tableName,
-                    columnName,
-                    value
-                   );
-    DATABASE_DEBUG_SQLX(databaseHandle,"set double",sqlString);
     error = sqliteExecute(databaseHandle,
                           String_cString(sqlString),
                           CALLBACK(NULL,NULL),  // databaseRowFunction
@@ -5641,9 +6118,31 @@ Errors Database_vsetDouble(DatabaseHandle *databaseHandle,
                          );
     if (error != ERROR_NONE)
     {
-      String_delete(sqlString);
-      return error;
+      // insert
+      String_clear(sqlString);
+      formatSQLString(sqlString,
+                      "INSERT INTO %s \
+                       (%s) VALUES (%lf) \
+                      ",
+                      tableName,
+                      columnName,
+                      value
+                     );
+      DATABASE_DEBUG_SQLX(databaseHandle,"set double",sqlString);
+      error = sqliteExecute(databaseHandle,
+                            String_cString(sqlString),
+                            CALLBACK(NULL,NULL),  // databaseRowFunction
+                            NULL,  // changedRowCount
+                            databaseHandle->timeout
+                           );
     }
+
+    return error;
+  });
+  if (error != ERROR_NONE)
+  {
+    String_delete(sqlString);
+    return error;
   }
 
   // free resources
@@ -5723,7 +6222,7 @@ Errors Database_vgetString(DatabaseHandle *databaseHandle,
   {
     #ifndef NDEBUG
       String_set(databaseHandle->current.sqlCommand,sqlString);
-    #endif /* NDEBUG */
+    #endif /* not NDEBUG */
 
     sqliteResult = sqlite3_prepare_v2(databaseHandle->handle,
                                       String_cString(sqlString),
@@ -5738,6 +6237,10 @@ Errors Database_vgetString(DatabaseHandle *databaseHandle,
     else if (sqliteResult == SQLITE_MISUSE)
     {
       HALT_INTERNAL_ERROR("SQLite library reported misuse %d %d",sqliteResult,sqlite3_extended_errcode(databaseHandle->handle));
+    }
+    else if (sqliteResult == SQLITE_INTERRUPT)
+    {
+      return ERRORX_(INTERRUPTED,sqlite3_errcode(databaseHandle->handle),"%s: %s",sqlite3_errmsg(databaseHandle->handle),String_cString(sqlString));
     }
     else
     {
@@ -5756,6 +6259,10 @@ Errors Database_vgetString(DatabaseHandle *databaseHandle,
       String_setCString(string,(const char*)sqlite3_column_text(statementHandle,0));
     }
     sqlite3_finalize(statementHandle);
+
+    #ifndef NDEBUG
+      String_set(databaseHandle->current.sqlCommand,sqlString);
+    #endif /* not NDEBUG */
     
     return ERROR_NONE;
   });
@@ -5829,12 +6336,17 @@ Errors Database_vsetString(DatabaseHandle *databaseHandle,
 
   // execute SQL command
   DATABASE_DEBUG_SQLX(databaseHandle,"set string",sqlString);
-  error = sqliteExecute(databaseHandle,
-                        String_cString(sqlString),
-                        CALLBACK(NULL,NULL),  // databaseRowFunction
-                        NULL,  // changedRowCount
-                        databaseHandle->timeout
-                       );
+  DATABASE_DOX(error,
+               databaseHandle,
+               DATABASE_LOCK_TYPE_READ_WRITE,
+  {
+    return sqliteExecute(databaseHandle,
+                         String_cString(sqlString),
+                         CALLBACK(NULL,NULL),  // databaseRowFunction
+                         NULL,  // changedRowCount
+                         databaseHandle->timeout
+                        );
+  });
   if (error != ERROR_NONE)
   {
     String_delete(sqlString);
@@ -5849,11 +6361,15 @@ Errors Database_vsetString(DatabaseHandle *databaseHandle,
 
 DatabaseId Database_getLastRowId(DatabaseHandle *databaseHandle)
 {
+  DatabaseId databaseId;
+
   assert(databaseHandle != NULL);
   DEBUG_CHECK_RESOURCE_TRACE(databaseHandle);
   assert(databaseHandle->handle != NULL);
 
-  return (DatabaseId)sqlite3_last_insert_rowid(databaseHandle->handle);
+  databaseId = (DatabaseId)sqlite3_last_insert_rowid(databaseHandle->handle);
+
+  return databaseId;
 }
 
 #ifndef NDEBUG
@@ -5934,7 +6450,8 @@ void Database_debugPrintInfo(void)
           if (!Thread_equalThreads(databaseNode->reads[i].threadId,THREAD_ID_NONE))
           {
             fprintf(stderr,
-                    "    locked  r  thread '%s' (%s) at %s, %u\n",
+                    "    %d locked  r  thread '%s' (%s) at %s, %u\n",
+i,
                     Thread_getName(databaseNode->reads[i].threadId),
                     Thread_getIdString(databaseNode->reads[i].threadId),
                     databaseNode->reads[i].fileName,
@@ -6031,6 +6548,89 @@ databaseNode->lastTrigger.transactionCount
   pthread_mutex_unlock(&debugDatabaseLock);
 }
 
+void Database_debugPrintLockInfo(const DatabaseHandle *databaseHandle)
+{
+  uint i;
+
+  assert(databaseHandle != NULL);
+  assert(databaseHandle->databaseNode != NULL);
+
+  pthread_once(&debugDatabaseInitFlag,debugDatabaseInit);
+
+  pthread_mutex_lock(&debugDatabaseLock);
+  {
+    pthread_mutex_lock(&debugConsoleLock);
+    {
+      fprintf(stderr,"Database lock info '%s':\n",String_cString(databaseHandle->databaseNode->fileName));
+      fprintf(stderr,
+              "  lock state summary: pending r %2u, locked r %2u, pending rw %2u, locked rw %2u, transactions %2u\n",
+              databaseHandle->databaseNode->pendingReadCount,
+              databaseHandle->databaseNode->readCount,
+              databaseHandle->databaseNode->pendingReadWriteCount,
+              databaseHandle->databaseNode->readWriteCount,
+              databaseHandle->databaseNode->transactionCount
+             );
+      for (i = 0; i < SIZE_OF_ARRAY(databaseHandle->databaseNode->reads); i++)
+      {
+        if (!Thread_equalThreads(databaseHandle->databaseNode->reads[i].threadId,THREAD_ID_NONE))
+        {
+          fprintf(stderr,
+                  "    locked  r  thread '%s' (%s) at %s, %u\n",
+                  Thread_getName(databaseHandle->databaseNode->reads[i].threadId),
+                  Thread_getIdString(databaseHandle->databaseNode->reads[i].threadId),
+                  databaseHandle->databaseNode->reads[i].fileName,
+                  databaseHandle->databaseNode->reads[i].lineNb
+                 );
+          fprintf(stderr,
+                  "    command: %s\n",
+                  String_cString(databaseHandle->current.sqlCommand)
+                 );
+          #ifdef HAVE_BACKTRACE
+            debugDumpStackTrace(stderr,
+                                4,
+                                DEBUG_DUMP_STACKTRACE_OUTPUT_TYPE_NONE,
+                                databaseHandle->current.stackTrace,
+                                databaseHandle->current.stackTraceSize,
+                                0
+                               );
+          #endif /* HAVE_BACKTRACE */
+//          debugDumpStackTrace(stderr,6,DEBUG_DUMP_STACKTRACE_OUTPUT_TYPE_NONE,databaseHandle->databaseNode->reads[i].stackTrace,databaseHandle->databaseNode->reads[i].stackTraceSize,0);
+        }
+      }
+      for (i = 0; i < SIZE_OF_ARRAY(databaseHandle->databaseNode->readWrites); i++)
+      {
+        if (!Thread_equalThreads(databaseHandle->databaseNode->readWrites[i].threadId,THREAD_ID_NONE))
+        {
+          fprintf(stderr,
+                  "    locked  rw thread '%s' (%s) at %s, %u\n",
+                  Thread_getName(databaseHandle->databaseNode->readWrites[i].threadId),
+                  Thread_getIdString(databaseHandle->databaseNode->readWrites[i].threadId),
+                  databaseHandle->databaseNode->readWrites[i].fileName,
+                  databaseHandle->databaseNode->readWrites[i].lineNb
+                 );
+fprintf(stderr,"%s, %d: databaseHandle->current.stackTraceSize=%d\n",__FILE__,__LINE__,databaseHandle->current.stackTraceSize);
+          fprintf(stderr,
+                  "    command: %s\n",
+                  String_cString(databaseHandle->current.sqlCommand)
+                 );
+          #ifdef HAVE_BACKTRACE
+            debugDumpStackTrace(stderr,
+                                4,
+                                DEBUG_DUMP_STACKTRACE_OUTPUT_TYPE_NONE,
+                                databaseHandle->current.stackTrace,
+                                databaseHandle->current.stackTraceSize,
+                                0
+                               );
+          #endif /* HAVE_BACKTRACE */
+//          debugDumpStackTrace(stderr,6,DEBUG_DUMP_STACKTRACE_OUTPUT_TYPE_NONE,databaseHandle->databaseNode->readWrites[i].stackTrace,databaseHandle->databaseNode->readWrites[i].stackTraceSize,0);
+        }
+      }
+    }
+    pthread_mutex_unlock(&debugConsoleLock);
+  }
+  pthread_mutex_unlock(&debugDatabaseLock);
+}
+
 void Database_debugPrintQueryInfo(DatabaseQueryHandle *databaseQueryHandle)
 {
   assert(databaseQueryHandle != NULL);
@@ -6090,14 +6690,13 @@ void Database_debugDump(DatabaseHandle *databaseHandle, const char *tableName)
 //                              "PRAGMA table_info(%s)
 //                              ",
 //                              "names"
-"SELECT name FROM sqlite_master WHERE type='table';"
+                              "SELECT name FROM sqlite_master WHERE type='table';"
                              );
   if (tableName != NULL)
   {
     String_appendChar(sqlString,' ');
     String_appendCString(sqlString,tableName);
   }
-fprintf(stderr,"%s, %d: ss=%s\n",__FILE__,__LINE__,String_cString(sqlString));
 
   // execute SQL command
   DATABASE_DO(databaseHandle,
@@ -6118,7 +6717,6 @@ fprintf(stderr,"%s, %d: ss=%s\n",__FILE__,__LINE__,String_cString(sqlString));
       HALT_INTERNAL_ERROR("SQLite error: %s %s",errorMessage,sqlite3_errmsg(databaseHandle->handle));
     }
   });
-fprintf(stderr,"%s, %d: \n",__FILE__,__LINE__);
 
   // free resources
   String_delete(sqlString);

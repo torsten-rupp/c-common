@@ -1,7 +1,7 @@
 /***********************************************************************\
 *
-* $Revision: 8219 $
-* $Date: 2017-12-26 17:03:06 +0100 (Tue, 26 Dec 2017) $
+* $Revision: 8788 $
+* $Date: 2018-10-26 03:25:11 +0200 (Fri, 26 Oct 2018) $
 * $Author: torsten $
 * Contents: database functions (SQLite3)
 * Systems: all
@@ -121,6 +121,7 @@ typedef struct DatabaseBusyHandlerNode
 typedef struct
 {
   LIST_HEADER(DatabaseBusyHandlerNode);
+  Semaphore lock;
 } DatabaseBusyHandlerList;
 
 /***********************************************************************\
@@ -147,7 +148,22 @@ typedef struct DatabaseProgressHandlerNode
 typedef struct
 {
   LIST_HEADER(DatabaseProgressHandlerNode);
+  Semaphore lock;
 } DatabaseProgressHandlerList;
+
+#ifndef NDEBUG
+  typedef struct
+  {
+    ThreadId   threadId;
+    const char *fileName;
+    uint       lineNb;
+    uint64     cycleCounter;
+    #ifdef HAVE_BACKTRACE
+      void const *stackTrace[16];
+      uint       stackTraceSize;
+    #endif /* HAVE_BACKTRACE */
+  } DatabaseThreadInfo;
+#endif /* not NDEBUG */
 
 // database list
 typedef struct DatabaseNode
@@ -179,64 +195,29 @@ typedef struct DatabaseNode
 
   #ifndef NDEBUG
     // pending reads
-    struct
-    {
-      ThreadId   threadId;
-      const char *fileName;
-      uint       lineNb;
-      #ifdef HAVE_BACKTRACE
-        void const *stackTrace[16];
-        int        stackTraceSize;
-      #endif /* HAVE_BACKTRACE */
-    }                     pendingReads[32];
+    DatabaseThreadInfo pendingReads[32];
     // reads
-    struct
-    {
-      ThreadId   threadId;
-      const char *fileName;
-      uint       lineNb;
-      #ifdef HAVE_BACKTRACE
-        void const *stackTrace[16];
-        int        stackTraceSize;
-      #endif /* HAVE_BACKTRACE */
-    }                     reads[32];
+    DatabaseThreadInfo reads[32];
     // pending read/writes
-    struct
-    {
-      ThreadId   threadId;
-      const char *fileName;
-      uint       lineNb;
-      #ifdef HAVE_BACKTRACE
-        void const *stackTrace[16];
-        int        stackTraceSize;
-      #endif /* HAVE_BACKTRACE */
-    }                     pendingReadWrites[32];
+    DatabaseThreadInfo pendingReadWrites[32];
     // read/write
+    DatabaseThreadInfo readWrites[32];
     struct
     {
-      ThreadId   threadId;
-      const char *fileName;
-      uint       lineNb;
+      ThreadId          threadId;
+      const char        *fileName;
+      uint              lineNb;
+      uint64            cycleCounter;
+      DatabaseLockTypes type;
+      uint              pendingReadCount;
+      uint              readCount;
+      uint              pendingReadWriteCount;
+      uint              readWriteCount;
+      uint              pendingTransactionCount;
+      uint              transactionCount;
       #ifdef HAVE_BACKTRACE
         void const *stackTrace[16];
-        int        stackTraceSize;
-      #endif /* HAVE_BACKTRACE */
-    }                     readWrites[32];
-    struct
-    {
-      ThreadId   threadId;
-      const char *fileName;
-      uint       lineNb;
-DatabaseLockTypes type;
-uint                    pendingReadCount;
-uint                    readCount;
-uint                    pendingReadWriteCount;
-uint                    readWriteCount;
-uint                    pendingTransactionCount;
-uint                    transactionCount;
-      #ifdef HAVE_BACKTRACE
-        void const *stackTrace[16];
-        int        stackTraceSize;
+        uint       stackTraceSize;
       #endif /* HAVE_BACKTRACE */
     }                     lastTrigger;
     // running transaction
@@ -247,7 +228,7 @@ uint                    transactionCount;
       uint       lineNb;
       #ifdef HAVE_BACKTRACE
         void const *stackTrace[16];
-        int        stackTraceSize;
+        uint       stackTraceSize;
       #endif /* HAVE_BACKTRACE */
     }                     transaction;
   #endif /* not NDEBUG */
@@ -268,7 +249,6 @@ typedef struct DatabaseHandle
   #endif /* not NDEBUG */
 
   DatabaseNode                *databaseNode;
-  Semaphore                   lock;                       // lock (Note: do not use sqlite mutex, because of debug facilities in semaphore.c)
   sqlite3                     *handle;                    // SQlite3 handle
   uint                        transcationCount;
   long                        timeout;                    // timeout [ms]
@@ -277,7 +257,7 @@ typedef struct DatabaseHandle
   sem_t                       wakeUp;                     // unlock wake-up
 
   #ifndef NDEBUG
-    ThreadId                  threadId;
+    ThreadId                  threadId;                   // id of thread who opened/created database
     const char                *fileName;                  // open/create location
     ulong                     lineNb;
     #ifdef HAVE_BACKTRACE
@@ -295,7 +275,7 @@ typedef struct DatabaseHandle
     }                         locked;
     struct
     {
-      Semaphore lock;
+//      Semaphore lock;
       String    sqlCommand;                               // current SQL command            
       #ifdef HAVE_BACKTRACE
         void const *stackTrace[16];
@@ -860,7 +840,10 @@ Errors Database_removeColumn(DatabaseHandle *databaseHandle,
 /***********************************************************************\
 * Name   : Database_beginTransaction
 * Purpose: begin transaction
-* Input  : databaseHandle - database handle
+* Input  : databaseHandle          - database handle
+*          databaseTransactionType - transaction type; see
+*                                    DATABASE_TRANSACTION_TYPE_*
+*          timeout                 - timeout [ms] or WAIT_FOREVER
 * Output : -
 * Return : ERROR_NONE or error code
 * Notes  : -
@@ -868,13 +851,15 @@ Errors Database_removeColumn(DatabaseHandle *databaseHandle,
 
 #ifdef NDEBUG
   Errors Database_beginTransaction(DatabaseHandle           *databaseHandle,
-                                   DatabaseTransactionTypes databaseTransactionType
+                                   DatabaseTransactionTypes databaseTransactionType,
+                                   long                     timeout
                                   );
 #else /* not NDEBUG */
   Errors __Database_beginTransaction(const char               *__fileName__,
                                      uint                     __lineNb__,
                                      DatabaseHandle           *databaseHandle,
-                                     DatabaseTransactionTypes databaseTransactionType
+                                     DatabaseTransactionTypes databaseTransactionType,
+                                     long                     timeout
                                     );
 #endif /* NDEBUG */
 
@@ -962,7 +947,7 @@ Errors Database_execute(DatabaseHandle      *databaseHandle,
 *                             REGEXP(pattern,case-flag,text)
 * Output : databaseQueryHandle - initialized database query handle
 * Return : -
-* Notes  : -
+* Notes  : Database is locked until Database_finalize() is called
 \***********************************************************************/
 
 #ifdef NDEBUG
@@ -1314,6 +1299,17 @@ void Database_debugEnable(bool enabled);
 \***********************************************************************/
 
 void Database_debugPrintInfo(void);
+
+/***********************************************************************\
+* Name   : Database_debugPrintInfo
+* Purpose: print debug lock info
+* Input  : databaseHandle - database handle
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+void Database_debugPrintLockInfo(const DatabaseHandle *databaseHandle);
 
 /***********************************************************************\
 * Name   : Database_debugPrintQueryInfo
