@@ -726,7 +726,7 @@ Errors Network_connect(SocketHandle *socketHandle,
                    ) != 0
            )
         {
-          error = ERRORX_(CONNECT_FAIL,errno,"%s",strerror(errno));
+          error = ERRORX_(CONNECT_FAIL,errno,"");
           shutdown(socketHandle->handle,SHUT_RDWR);
           close(socketHandle->handle);
           return error;
