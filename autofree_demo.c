@@ -19,8 +19,8 @@
 #include <dirent.h>
 #include <assert.h>
 
-#include "global.h"
-#include "autofree.h"
+#include "common/global.h"
+#include "common/autofree.h"
 
 /****************** Conditional compilation switches *******************/
 
