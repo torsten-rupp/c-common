@@ -1,7 +1,7 @@
 /***********************************************************************\
 *
-* $Source: /home/torsten/cvs/bar/bar/patterns.c,v $
 * $Revision$
+* $Date$
 * $Author$
 * Contents: Backup ARchiver pattern functions
 * Systems: all
@@ -25,7 +25,7 @@
 #include <assert.h>
 
 #include "common/global.h"
-#include "strings.h"
+#include "common/strings.h"
 
 #include "errors.h"
 
@@ -364,9 +364,9 @@ bool Pattern_parsePatternType(const char *name, PatternTypes *patternType, void 
   }
 
   #ifdef NDEBUG
-    DEBUG_ADD_RESOURCE_TRACE(pattern,sizeof(Pattern));
+    DEBUG_ADD_RESOURCE_TRACE(pattern,Pattern);
   #else /* not NDEBUG */
-    DEBUG_ADD_RESOURCE_TRACEX(__fileName__,__lineNb__,pattern,sizeof(Pattern));
+    DEBUG_ADD_RESOURCE_TRACEX(__fileName__,__lineNb__,pattern,Pattern);
   #endif /* NDEBUG */
 
   return ERROR_NONE;
@@ -384,9 +384,9 @@ bool Pattern_parsePatternType(const char *name, PatternTypes *patternType, void 
   assert(pattern != NULL);
 
   #ifdef NDEBUG
-    DEBUG_REMOVE_RESOURCE_TRACE(pattern,sizeof(Pattern));
+    DEBUG_REMOVE_RESOURCE_TRACE(pattern,Pattern);
   #else /* not NDEBUG */
-    DEBUG_REMOVE_RESOURCE_TRACEX(__fileName__,__lineNb__,pattern,sizeof(Pattern));
+    DEBUG_REMOVE_RESOURCE_TRACEX(__fileName__,__lineNb__,pattern,Pattern);
   #endif /* NDEBUG */
 
   regfree(&pattern->regexAny);
@@ -479,7 +479,7 @@ Errors Pattern_copy(Pattern *pattern, const Pattern *fromPattern)
     return error;
   }
 
-  DEBUG_ADD_RESOURCE_TRACE(pattern,sizeof(Pattern));
+  DEBUG_ADD_RESOURCE_TRACE(pattern,Pattern);
 
   return ERROR_NONE;
 }
