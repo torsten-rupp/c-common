@@ -3,7 +3,7 @@
 * $Revision: 8581 $
 * $Date: 2018-07-07 09:21:04 +0200 (Sat, 07 Jul 2018) $
 * $Author: torsten $
-* Contents: Backup ARchiver fragment list functions
+* Contents: Fragment list functions
 * Systems: all
 *
 \***********************************************************************/
@@ -19,7 +19,7 @@
 #include "common/global.h"
 #include "common/lists.h"
 #include "common/strings.h"
-#include "semaphores.h"
+#include "common/semaphores.h"
 
 /****************** Conditional compilation switches *******************/
 
@@ -27,20 +27,20 @@
 
 /***************************** Datatypes *******************************/
 
-// fragment list entry node
-typedef struct FragmentEntryNode
+// fragment list range node
+typedef struct FragmentRangeNode
 {
-  LIST_NODE_HEADER(struct FragmentEntryNode);
+  LIST_NODE_HEADER(struct FragmentRangeNode);
 
-  uint64 offset;                        // fragment offset (0..n)
-  uint64 length;                        // length of fragment
-} FragmentEntryNode;
+  uint64 offset;                        // fragment range offset (0..n)
+  uint64 length;                        // length of fragment range
+} FragmentRangeNode;
 
 // fragment list entry
 typedef struct
 {
-  LIST_HEADER(FragmentEntryNode);
-} FragmentEntryList;
+  LIST_HEADER(FragmentRangeNode);
+} FragmentRangeList;
 
 // fragment list node
 typedef struct FragmentNode
@@ -51,15 +51,15 @@ typedef struct FragmentNode
   uint64            size;               // size of fragment
   void              *userData;
   uint              userDataSize;
-  FragmentEntryList fragmentEntryList;
+
+  FragmentRangeList rangeList;
+  uint64            rangeListSum;
 } FragmentNode;
 
 // sorted fragment list
 typedef struct
 {
   LIST_HEADER(FragmentNode);
-
-  Semaphore lock;
 } FragmentList;
 
 /***************************** Variables *******************************/
@@ -214,50 +214,50 @@ void FragmentList_discard(FragmentList *fragmentList, FragmentNode *fragmentNode
 FragmentNode *FragmentList_find(const FragmentList *fragmentList, ConstString name);
 
 /***********************************************************************\
-* Name   : FragmentList_clearEntry
-* Purpose: clear all fragment entries of fragment
+* Name   : FragmentList_clearRanges
+* Purpose: clear all ranges of fragment
 * Input  : fragmentNode - fragment node to clear
 * Output : -
 * Return : -
 * Notes  : -
 \***********************************************************************/
 
-void FragmentList_clearEntry(FragmentNode *fragmentNode);
+void FragmentList_clearRanges(FragmentNode *fragmentNode);
 
 /***********************************************************************\
-* Name   : FragmentList_addEntry
-* Purpose: add a fragment entry to a fragment
+* Name   : FragmentList_addRange
+* Purpose: add a range to a fragment
 * Input  : fragmentNode - fragment node
-*          offset       - fragment offset (0..n)
-*          length       - length of fragment
+*          offset       - range offset (0..n)
+*          length       - range length
 * Output : -
 * Return : -
 * Notes  : -
 \***********************************************************************/
 
-void FragmentList_addEntry(FragmentNode *fragmentNode,
+void FragmentList_addRange(FragmentNode *fragmentNode,
                            uint64       offset,
                            uint64       length
                           );
 
 /***********************************************************************\
-* Name   : FragmentList_entryExists
-* Purpose: check if fragment entry already exists in fragment
+* Name   : FragmentList_rangeExists
+* Purpose: check if range already exists in fragment
 * Input  : fragmentNode - fragment node
-*          offset       - fragment offset (0..n)
-*          length       - length of fragment
+*          offset       - range offset (0..n)
+*          length       - range length
 * Output : -
 * Return : -
 * Notes  : -
 \***********************************************************************/
 
-bool FragmentList_entryExists(const FragmentNode *fragmentNode,
+bool FragmentList_rangeExists(const FragmentNode *fragmentNode,
                               uint64             offset,
                               uint64             length
                              );
 
 /***********************************************************************\
-* Name   : FragmentList_isEntryComplete
+* Name   : FragmentList_isComplete
 * Purpose: check if fragment is completed (no fragmentation)
 * Input  : fragmentNode - fragment node
 * Output : -
@@ -265,7 +265,45 @@ bool FragmentList_entryExists(const FragmentNode *fragmentNode,
 * Notes  : -
 \***********************************************************************/
 
-bool FragmentList_isEntryComplete(const FragmentNode *fragmentNode);
+bool FragmentList_isComplete(const FragmentNode *fragmentNode);
+
+/***********************************************************************\
+* Name   : FragmentList_getSize
+* Purpose: get fragment ranges size
+* Input  : fragmentNode - fragment node
+* Output : -
+* Return : range size
+* Notes  : -
+\***********************************************************************/
+
+INLINE uint64 FragmentList_getSize(const FragmentNode *fragmentNode);
+#if defined(NDEBUG) || defined(__FRAGMENTLISTS_IMPLEMENTATION__)
+INLINE uint64 FragmentList_getSize(const FragmentNode *fragmentNode)
+{
+  assert(fragmentNode != NULL);
+
+  return fragmentNode->rangeListSum;
+}
+#endif /* NDEBUG || __FRAGMENTLISTS_IMPLEMENTATION__ */
+
+/***********************************************************************\
+* Name   : FragmentList_getTotalSize
+* Purpose: get fragment total size
+* Input  : fragmentNode - fragment node
+* Output : -
+* Return : fragment total size
+* Notes  : -
+\***********************************************************************/
+
+INLINE uint64 FragmentList_getTotalSize(const FragmentNode *fragmentNode);
+#if defined(NDEBUG) || defined(__FRAGMENTLISTS_IMPLEMENTATION__)
+INLINE uint64 FragmentList_getTotalSize(const FragmentNode *fragmentNode)
+{
+  assert(fragmentNode != NULL);
+
+  return fragmentNode->size;
+}
+#endif /* NDEBUG || __FRAGMENTLISTS_IMPLEMENTATION__ */
 
 /***********************************************************************\
 * Name   : FragmentList_print
