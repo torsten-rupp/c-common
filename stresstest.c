@@ -14,15 +14,15 @@
 #include <stdio.h>
 #include <assert.h>
 
-#include "global.h"
+#include "common/global.h"
 
-#include "lists.h"
-#include "strings.h"
-#include "stringlists.h"
-#include "arrays.h"
-#include "ringbuffers.h"
+#include "common/lists.h"
+#include "common/strings.h"
+#include "common/stringlists.h"
+#include "common/arrays.h"
+#include "common/ringbuffers.h"
 
-#include "threads.h"
+#include "common/threads.h"
 
 /****************** Conditional compilation switches *******************/
 
@@ -77,7 +77,7 @@ LOCAL void listThreadCode(void)
 
     List_done(&stressList,(ListNodeFreeFunction)freeStressNode,NULL);
 fprintf(stderr,"%s, %d: \n",__FILE__,__LINE__);
-    
+
     Thread_yield();
   }
 }
@@ -87,7 +87,7 @@ int main(int argc, const char* args[])
   uint   threadCount;
   Thread threads[MAX_THREADS];
   uint   z;
-  
+
 
   if (argc < 2)
   {
