@@ -15,8 +15,8 @@
 #include <time.h>
 #include <assert.h>
 
-#include "global.h"
-#include "dictionaries.h"
+#include "common/global.h"
+#include "common/dictionaries.h"
 
 /****************** Conditional compilation switches *******************/
 

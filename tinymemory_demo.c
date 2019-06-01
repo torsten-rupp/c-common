@@ -14,7 +14,7 @@
 #include <string.h>
 #include <assert.h>
 
-#include "tinymemory.h"
+#include "common/tinymemory.h"
 
 /****************** Conditional compilation switches *******************/
 

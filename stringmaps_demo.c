@@ -12,9 +12,9 @@
 #include <stdlib.h>
 #include <assert.h>
 
-#include "global.h"
-#include "stringmaps.h"
-#include "strings.h"
+#include "common/global.h"
+#include "common/stringmaps.h"
+#include "common/strings.h"
 
 /****************** Conditional compilation switches *******************/
 

@@ -18,8 +18,8 @@
 #include <pthread.h>
 #include <sched.h>
 
-#include "global.h"
-#include "semaphores.h"
+#include "common/global.h"
+#include "common/semaphores.h"
 
 /****************** Conditional compilation switches *******************/
 

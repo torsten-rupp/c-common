@@ -13,8 +13,8 @@
 #include <stdio.h>
 #include <assert.h>
 
-#include "global.h"
-#include "ringbuffers.h"
+#include "common/global.h"
+#include "common/ringbuffers.h"
 
 /****************** Conditional compilation switches *******************/
 

@@ -1,9 +1,9 @@
 #include <stdlib.h>
 #include <assert.h>
 
-#include "global.h"
-#include "stringlists.h"
-#include "strings.h"
+#include "common/global.h"
+#include "common/stringlists.h"
+#include "common/strings.h"
 
 int main(int argc, char *argv[])
 {
