@@ -50,7 +50,7 @@ my $ERROR_ERRNO_SHIFT          = 16;
 my $ERROR_MAX_TEXT_LENGTH      = 2048;
 my $ERROR_DATA_INDEX_MAX_COUNT = 63;
 
-my $PREFIX                     = "ERROR_";
+my $PREFIX                     = "ERROR_CODE_";
 
 my $cFileName,$hFileName,$javaFileName;
 my $javaClassName              = "Error";
@@ -58,6 +58,8 @@ my $trName                     = "tr";
 my $help                       = 0;
 
 my $errorNumber                = 0;
+
+my @errorNames;
 my @cHeader;
 my @c;
 my @hHeader;
@@ -82,7 +84,7 @@ my @java2;
 sub expandC($)
 {
   my $s=shift(@_);
-  
+
   if ($s =~ /^(\s*)STRING\s+(\S*)\s*\[\s*(\d+)\s*\]\s*;\s*/)
   {
     $s=$1."char ".$2."[".$3."];";
@@ -91,7 +93,7 @@ sub expandC($)
   {
     $s =~ s/TR\((.*)\)/$trName(\1)/g;
   }
-  
+
   return $s;
 }
 
@@ -107,7 +109,7 @@ sub expandC($)
 sub expandJava($)
 {
   my $s=shift(@_);
-  
+
   if ($s =~ /^(\s*)STRING\s+(\S*)\s*\[\s*(\d+)\s*\]\s*;\s*/)
   {
     $s=$1."StringBuilder ".$2." =  new StringBuilder();";
@@ -117,9 +119,18 @@ sub expandJava($)
     $s =~ s/ERROR_DATA/errorData/g;
     $s =~ s/ERROR_ERRNO_TEXT/Integer.toString(errno)/g;
     $s =~ s/ERROR_ERRNO/errno/g;
-    $s =~ s/TR\((.*)\)/$trName(\1)/g;
+    if ($s =~ /^(.*)TR\((.*)\)(.*)$/)
+    {
+      my $prefix =$1;
+      my $text   =$2;
+      my $postfix=$3;
+
+      $text =~ s/'/''/g;
+
+      $s = $prefix.$trName."(".$text.")".$postfix;
+    }
   }
-  
+
   return $s;
 }
 
@@ -253,7 +264,7 @@ sub writeH()
 * Notes  : -
 \***********************************************************************/
 
-#define ERROR_(code,errno) Error_((ERROR_ ## code),errno)
+#define ERROR_(code,errno) Error_((".$PREFIX." ## code),errno)
 
 /***********************************************************************\
 * Name   : ERRORX_
@@ -267,7 +278,7 @@ sub writeH()
 * Notes  : -
 \***********************************************************************/
 
-#define ERRORX_(code,errno,format,...) Errorx_((ERROR_ ## code),errno,format, ## __VA_ARGS__)
+#define ERRORX_(code,errno,format,...) Errorx_((".$PREFIX." ## code),errno,format, ## __VA_ARGS__)
 
 /***********************************************************************\
 * Name   : ERRORF_
@@ -281,14 +292,14 @@ sub writeH()
 \***********************************************************************/
 
 #ifndef NDEBUG
-  #define ERRORF_(error,format,...)      ((Errors)(  ((error) & ($ERROR_CODE_MASK|$ERROR_ERRNO_MASK)) \\
-                                                   | ((_Error_dataToIndex(__FILE__,__LINE__,format, ## __VA_ARGS__) << $ERROR_DATA_INDEX_SHIFT) & $ERROR_DATA_INDEX_MASK) \\
-                                                  ) \\
+  #define ERRORF_(error,format,...)      ((Errors)(intptr_t)(  ((error) & ($ERROR_CODE_MASK|$ERROR_ERRNO_MASK)) \\
+                                                             | ((_Error_dataToIndex(__FILE__,__LINE__,format, ## __VA_ARGS__) << $ERROR_DATA_INDEX_SHIFT) & $ERROR_DATA_INDEX_MASK) \\
+                                                            ) \\
                                          )
 #else
-  #define ERRORF_(error,format,...)      ((Errors)(  ((error) & ($ERROR_CODE_MASK|$ERROR_ERRNO_MASK)) \\
-                                                   | ((_Error_dataToIndex(format, ## __VA_ARGS__) << $ERROR_DATA_INDEX_SHIFT) & $ERROR_DATA_INDEX_MASK) \\
-                                                  ) \\
+  #define ERRORF_(error,format,...)      ((Errors)(intptr_t)(  ((error) & ($ERROR_CODE_MASK|$ERROR_ERRNO_MASK)) \\
+                                                             | ((_Error_dataToIndex(format, ## __VA_ARGS__) << $ERROR_DATA_INDEX_SHIFT) & $ERROR_DATA_INDEX_MASK) \\
+                                                            ) \\
                                          )
 #endif
 
@@ -303,16 +314,16 @@ sub writeH()
 \***********************************************************************/
 
 #ifndef NDEBUG
-  #define Error_(code,errno)             ((Errors)(  (((errno) << $ERROR_ERRNO_SHIFT) & $ERROR_ERRNO_MASK) \\
-                                                   | ((_Error_dataToIndex(__FILE__,__LINE__,NULL) << $ERROR_DATA_INDEX_SHIFT) & $ERROR_DATA_INDEX_MASK) \\
-                                                   | (((code) << $ERROR_CODE_SHIFT) & $ERROR_CODE_MASK) \\
-                                                  ) \\
+  #define Error_(code,errno)             ((Errors)(intptr_t)(  (((errno) << $ERROR_ERRNO_SHIFT) & $ERROR_ERRNO_MASK) \\
+                                                             | ((_Error_dataToIndex(__FILE__,__LINE__,NULL) << $ERROR_DATA_INDEX_SHIFT) & $ERROR_DATA_INDEX_MASK) \\
+                                                             | (((code) << $ERROR_CODE_SHIFT) & $ERROR_CODE_MASK) \\
+                                                            ) \\
                                          )
 #else
-  #define Error_(code,errno)             ((Errors)(  (((errno) << $ERROR_ERRNO_SHIFT) & $ERROR_ERRNO_MASK) \\
-                                                   | ((_Error_dataToIndex(NULL) << $ERROR_DATA_INDEX_SHIFT) & $ERROR_DATA_INDEX_MASK) \\
-                                                   | (((code) << $ERROR_CODE_SHIFT) & $ERROR_CODE_MASK) \\
-                                                  ) \\
+  #define Error_(code,errno)             ((Errors)(intptr_t)(  (((errno) << $ERROR_ERRNO_SHIFT) & $ERROR_ERRNO_MASK) \\
+                                                             | ((_Error_dataToIndex(NULL) << $ERROR_DATA_INDEX_SHIFT) & $ERROR_DATA_INDEX_MASK) \\
+                                                             | (((code) << $ERROR_CODE_SHIFT) & $ERROR_CODE_MASK) \\
+                                                            ) \\
                                          )
 #endif
 
@@ -329,16 +340,16 @@ sub writeH()
 \***********************************************************************/
 
 #ifndef NDEBUG
-  #define Errorx_(code,errno,format,...) ((Errors)(  (((errno) << $ERROR_ERRNO_SHIFT) & $ERROR_ERRNO_MASK) \\
-                                                   | ((_Error_dataToIndex(__FILE__,__LINE__,format, ## __VA_ARGS__) << $ERROR_DATA_INDEX_SHIFT) & $ERROR_DATA_INDEX_MASK) \\
-                                                   | (((code) << $ERROR_CODE_SHIFT) & $ERROR_CODE_MASK) \\
-                                                  ) \\
+  #define Errorx_(code,errno,format,...) ((Errors)(intptr_t)(  (((errno) << $ERROR_ERRNO_SHIFT) & $ERROR_ERRNO_MASK) \\
+                                                             | ((_Error_dataToIndex(__FILE__,__LINE__,format, ## __VA_ARGS__) << $ERROR_DATA_INDEX_SHIFT) & $ERROR_DATA_INDEX_MASK) \\
+                                                             | (((code) << $ERROR_CODE_SHIFT) & $ERROR_CODE_MASK) \\
+                                                            ) \\
                                          )
 #else
-  #define Errorx_(code,errno,format,...) ((Errors)(  (((errno) << $ERROR_ERRNO_SHIFT) & $ERROR_ERRNO_MASK) \\
-                                                   | ((_Error_dataToIndex(format, ## __VA_ARGS__) << $ERROR_DATA_INDEX_SHIFT) & $ERROR_DATA_INDEX_MASK) \\
-                                                   | (((code) << $ERROR_CODE_SHIFT) & $ERROR_CODE_MASK) \\
-                                                  ) \\
+  #define Errorx_(code,errno,format,...) ((Errors)(intptr_t)(  (((errno) << $ERROR_ERRNO_SHIFT) & $ERROR_ERRNO_MASK) \\
+                                                             | ((_Error_dataToIndex(format, ## __VA_ARGS__) << $ERROR_DATA_INDEX_SHIFT) & $ERROR_DATA_INDEX_MASK) \\
+                                                             | (((code) << $ERROR_CODE_SHIFT) & $ERROR_CODE_MASK) \\
+                                                            ) \\
                                          )
 #endif
 
@@ -358,8 +369,22 @@ typedef enum
 
   print HFILE_HANDLE "\
   ".$PREFIX."UNKNOWN = ".($errorNumber+1)."
-} Errors;
+} ErrorCodes;
 
+// special errors type
+typedef intptr_t* Errors;
+
+// error macros
+";
+
+  print HFILE_HANDLE "#define ERROR_NONE (Errors)(".$PREFIX."NONE & ($ERROR_CODE_MASK|$ERROR_ERRNO_MASK))\n";
+  foreach my $s (@errorNames)
+  {
+    print HFILE_HANDLE "#define ERROR_$s Error_(".$PREFIX."$s,0)\n";
+  }
+  print HFILE_HANDLE "#define ERROR_UNKNOWN (Errors)(".$PREFIX."UNKNOWN & ($ERROR_CODE_MASK|$ERROR_ERRNO_MASK))\n";
+
+  print HFILE_HANDLE "\
 #ifdef __cplusplus
   extern \"C\" {
 #endif
@@ -449,6 +474,17 @@ const char *Error_getLineNbText(Errors error);
 const char *Error_getLocationText(Errors error);
 
 /***********************************************************************\
+* Name   : Error_getErrno
+* Purpose: get errno
+* Input  : error - error
+* Output : -
+* Return : errno
+* Notes  : -
+\***********************************************************************/
+
+int Error_getErrno(Errors error);
+
+/***********************************************************************\
 * Name   : Error_getErrnoText
 * Purpose: get errno text
 * Input  : error - error
@@ -507,7 +543,7 @@ sub writeC()
 #include <stdarg.h>
 #include <errno.h>
 
-#include \"global.h\"
+#include \"common/global.h\"
 
 #include \"errors.h\"
 
@@ -608,9 +644,9 @@ int _Error_dataToIndex(const char *format, ...)
   return index+1;
 }
 
-#define ERROR_GET_CODE(error)        (((error) & $ERROR_CODE_MASK) >> $ERROR_CODE_SHIFT)
+#define ERROR_GET_CODE(error)        ((((intptr_t)(error)) & $ERROR_CODE_MASK) >> $ERROR_CODE_SHIFT)
 #define ERROR_GET_CODE_TEXT(error)   Error_getCodeText(error)
-#define ERROR_GET_DATA_INDEX(error)  (((error) & $ERROR_DATA_INDEX_MASK) >> $ERROR_DATA_INDEX_SHIFT)
+#define ERROR_GET_DATA_INDEX(error)  ((((intptr_t)(error)) & $ERROR_DATA_INDEX_MASK) >> $ERROR_DATA_INDEX_SHIFT)
 #ifndef NDEBUG
 #define ERROR_GET_FILENAME(error)    ((ERROR_GET_DATA_INDEX(error) > 0) ? errorData[ERROR_GET_DATA_INDEX(error)-1].fileName : NONE)
 #define ERROR_GET_LINENB(error)      ((ERROR_GET_DATA_INDEX(error) > 0) ? errorData[ERROR_GET_DATA_INDEX(error)-1].lineNb : 0)
@@ -621,7 +657,7 @@ int _Error_dataToIndex(const char *format, ...)
 #define ERROR_GET_LINENB_TEXT(error) NONE
 #endif
 #define ERROR_GET_DATA(error)        ((ERROR_GET_DATA_INDEX(error) > 0) ? errorData[ERROR_GET_DATA_INDEX(error)-1].text : NONE)
-#define ERROR_GET_ERRNO(error)       ((int)((error) & $ERROR_ERRNO_MASK) >> $ERROR_ERRNO_SHIFT)
+#define ERROR_GET_ERRNO(error)       ((int)(((intptr_t)(error)) & $ERROR_ERRNO_MASK) >> $ERROR_ERRNO_SHIFT)
 #define ERROR_GET_ERRNO_TEXT(error)  Error_getErrnoText(error)
 
 #define ERROR_CODE        ERROR_GET_CODE(error)
@@ -641,8 +677,7 @@ const char *Error_getCodeText(Errors error)
 {
   static char codeText[2+3+1];
 
-  snprintf(codeText,sizeof(codeText)-1,\"0x%03x\",ERROR_GET_CODE(error));
-  codeText[sizeof(codeText)-1] = '\\0';
+  stringFormat(codeText,sizeof(codeText),\"0x%03x\",ERROR_GET_CODE(error));
 
   return codeText;
 }
@@ -668,8 +703,7 @@ const char *Error_getLineNbText(Errors error)
   #ifndef NDEBUG
     static char lineNbText[16+1];
 
-    snprintf(lineNbText,sizeof(lineNbText)-1,\"%d\",ERROR_GET_LINENB(error));
-    lineNbText[sizeof(lineNbText)-1] = '\\0';
+    stringFormat(lineNbText,sizeof(lineNbText),\"%d\",ERROR_GET_LINENB(error));
 
     return lineNbText;
   #else
@@ -684,8 +718,7 @@ const char *Error_getLocationText(Errors error)
   #ifndef NDEBUG
     static char locationText[PATH_MAX+2+16+1];
 
-    snprintf(locationText,sizeof(locationText)-1,\"%s, %d\",ERROR_GET_FILENAME(error),ERROR_GET_LINENB(error));
-    locationText[sizeof(locationText)-1] = '\\0';
+    stringFormat(locationText,sizeof(locationText),\"%s, %d\",ERROR_GET_FILENAME(error),ERROR_GET_LINENB(error));
 
     return locationText;
   #else
@@ -695,12 +728,16 @@ const char *Error_getLocationText(Errors error)
   #endif
 }
 
+int Error_getErrno(Errors error)
+{
+  return ERROR_GET_ERRNO(error);
+}
+
 const char *Error_getErrnoText(Errors error)
 {
   static char errnoText[16+1];
 
-  snprintf(errnoText,sizeof(errnoText)-1,\"%d\",ERROR_GET_ERRNO(error));
-  errnoText[sizeof(errnoText)-1] = '\\0';
+  stringFormat(errnoText,sizeof(errnoText),\"%d\",ERROR_GET_ERRNO(error));
 
   return errnoText;
 }
@@ -822,10 +859,10 @@ class $javaClassName extends Exception
     print JAVAFILE_HANDLE "$s\n";
   }
   print JAVAFILE_HANDLE "    }
-    
+
     return errorText.toString();
   }
-  
+
   /** get formated error text
    * @param error error
    * @return formated error text
@@ -906,7 +943,7 @@ class $javaClassName extends Exception
   {
     return getText(this);
   }
-  
+
   /** convert to string
    * @return string
    */
@@ -914,7 +951,7 @@ class $javaClassName extends Exception
   {
     return getText();
   }
-  
+
   // -------------------------------------------------------------------
 
   private static int sizeof(StringBuilder buffer)
@@ -953,7 +990,7 @@ class $javaClassName extends Exception
     buffer.append(String.format(\"%03x\",n));
   }
 
-  private static void stringFormat(StringBuilder buffer, int size, String format, Object... arguments)
+  private static void stringFormatAppend(StringBuilder buffer, int size, String format, Object... arguments)
   {
     buffer.append(String.format(format,arguments));
   }
@@ -1031,8 +1068,8 @@ if ($javaFileName ne "")
 }
 
 # parse+generate
-my @names;
 my $defaultText;
+my @names;
 my $line;
 my $lineNb=0;
 while ($line=<STDIN>)
@@ -1056,6 +1093,8 @@ while ($line=<STDIN>)
     writeJava2("      case $name:");
     writeJava2("        stringSet(errorText,sizeof(errorText),\"$text\");");
     writeJava2("        break;");
+
+    push(@errorNames,$name);
 #TODO: #define ERROR_xxx Error_(ERROR_xxx,0)
   }
   elsif ($line =~ /^ERROR\s+(\w+)\s+(\S.*)\s*$/)
@@ -1072,6 +1111,8 @@ while ($line=<STDIN>)
     writeJava2("      case $name:");
     writeJava2("        stringSet(errorText,sizeof(errorText),$function);",1);
     writeJava2("        break;");
+
+    push(@errorNames,$name);
 #TODO: #define ERROR_xxx Error_(ERROR_xxx,0)
   }
   elsif ($line =~ /^ERROR\s+(\w+)\s*$/)
@@ -1082,6 +1123,8 @@ while ($line=<STDIN>)
     writeHFile("  $PREFIX$name = $errorNumber,");
     writeJava1("  public final static int $name = $errorNumber;");
     push(@names,$name);
+
+    push(@errorNames,$name);
   }
   elsif ($line =~ /^INCLUDE\s+"(.*)"\s*$/)
   {

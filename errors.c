@@ -9,7 +9,7 @@
 #include <stdarg.h>
 #include <errno.h>
 
-#include "global.h"
+#include "common/global.h"
 
 #include "errors.h"
 
@@ -110,9 +110,9 @@ int _Error_dataToIndex(const char *format, ...)
   return index+1;
 }
 
-#define ERROR_GET_CODE(error)        (((error) & 0x000003FF) >> 0)
+#define ERROR_GET_CODE(error)        ((((intptr_t)(error)) & 0x000003FF) >> 0)
 #define ERROR_GET_CODE_TEXT(error)   Error_getCodeText(error)
-#define ERROR_GET_DATA_INDEX(error)  (((error) & 0x0000FC00) >> 10)
+#define ERROR_GET_DATA_INDEX(error)  ((((intptr_t)(error)) & 0x0000FC00) >> 10)
 #ifndef NDEBUG
 #define ERROR_GET_FILENAME(error)    ((ERROR_GET_DATA_INDEX(error) > 0) ? errorData[ERROR_GET_DATA_INDEX(error)-1].fileName : NONE)
 #define ERROR_GET_LINENB(error)      ((ERROR_GET_DATA_INDEX(error) > 0) ? errorData[ERROR_GET_DATA_INDEX(error)-1].lineNb : 0)
@@ -123,7 +123,7 @@ int _Error_dataToIndex(const char *format, ...)
 #define ERROR_GET_LINENB_TEXT(error) NONE
 #endif
 #define ERROR_GET_DATA(error)        ((ERROR_GET_DATA_INDEX(error) > 0) ? errorData[ERROR_GET_DATA_INDEX(error)-1].text : NONE)
-#define ERROR_GET_ERRNO(error)       ((int)((error) & 0xFFFF0000) >> 16)
+#define ERROR_GET_ERRNO(error)       ((int)(((intptr_t)(error)) & 0xFFFF0000) >> 16)
 #define ERROR_GET_ERRNO_TEXT(error)  Error_getErrnoText(error)
 
 #define ERROR_CODE        ERROR_GET_CODE(error)
@@ -143,8 +143,7 @@ const char *Error_getCodeText(Errors error)
 {
   static char codeText[2+3+1];
 
-  snprintf(codeText,sizeof(codeText)-1,"0x%03x",ERROR_GET_CODE(error));
-  codeText[sizeof(codeText)-1] = '\0';
+  stringFormat(codeText,sizeof(codeText),"0x%03x",ERROR_GET_CODE(error));
 
   return codeText;
 }
@@ -170,8 +169,7 @@ const char *Error_getLineNbText(Errors error)
   #ifndef NDEBUG
     static char lineNbText[16+1];
 
-    snprintf(lineNbText,sizeof(lineNbText)-1,"%d",ERROR_GET_LINENB(error));
-    lineNbText[sizeof(lineNbText)-1] = '\0';
+    stringFormat(lineNbText,sizeof(lineNbText),"%d",ERROR_GET_LINENB(error));
 
     return lineNbText;
   #else
@@ -186,8 +184,7 @@ const char *Error_getLocationText(Errors error)
   #ifndef NDEBUG
     static char locationText[PATH_MAX+2+16+1];
 
-    snprintf(locationText,sizeof(locationText)-1,"%s, %d",ERROR_GET_FILENAME(error),ERROR_GET_LINENB(error));
-    locationText[sizeof(locationText)-1] = '\0';
+    stringFormat(locationText,sizeof(locationText),"%s, %d",ERROR_GET_FILENAME(error),ERROR_GET_LINENB(error));
 
     return locationText;
   #else
@@ -197,12 +194,16 @@ const char *Error_getLocationText(Errors error)
   #endif
 }
 
+int Error_getErrno(Errors error)
+{
+  return ERROR_GET_ERRNO(error);
+}
+
 const char *Error_getErrnoText(Errors error)
 {
   static char errnoText[16+1];
 
-  snprintf(errnoText,sizeof(errnoText)-1,"%d",ERROR_GET_ERRNO(error));
-  errnoText[sizeof(errnoText)-1] = '\0';
+  stringFormat(errnoText,sizeof(errnoText),"%d",ERROR_GET_ERRNO(error));
 
   return errnoText;
 }
@@ -214,201 +215,201 @@ const char *Error_getText(Errors error)
   stringClear(errorText);
   switch (ERROR_GET_CODE(error))
   {
-    case ERROR_NONE: stringSet(errorText,sizeof(errorText),"none"); break;
-    case ERROR_INSUFFICIENT_MEMORY:
+    case ERROR_CODE_NONE: stringSet(errorText,sizeof(errorText),"none"); break;
+    case ERROR_CODE_INSUFFICIENT_MEMORY:
       stringSet(errorText,sizeof(errorText),"insufficient memory");
       break;
-    case ERROR_INIT:
+    case ERROR_CODE_INIT:
       stringSet(errorText,sizeof(errorText),"init");
       break;
-    case ERROR_INVALID_ARGUMENT:
+    case ERROR_CODE_INVALID_ARGUMENT:
       stringSet(errorText,sizeof(errorText),"invalid argument");
       break;
-    case ERROR_CONFIG:
+    case ERROR_CODE_CONFIG:
       stringSet(errorText,sizeof(errorText),"config error");
       break;
-    case ERROR_ABORTED:
+    case ERROR_CODE_ABORTED:
       stringSet(errorText,sizeof(errorText),"aborted");
       break;
-    case ERROR_FUNCTION_NOT_SUPPORTED:
+    case ERROR_CODE_FUNCTION_NOT_SUPPORTED:
       stringSet(errorText,sizeof(errorText),"function not supported");
       break;
-    case ERROR_STILL_NOT_IMPLEMENTED:
+    case ERROR_CODE_STILL_NOT_IMPLEMENTED:
       stringSet(errorText,sizeof(errorText),"function still not implemented");
       break;
-    case ERROR_TESTCODE:
+    case ERROR_CODE_TESTCODE:
       stringSet(errorText,sizeof(errorText),"test code");
       break;
-    case ERROR_INVALID_PATTERN:
+    case ERROR_CODE_INVALID_PATTERN:
       stringSet(errorText,sizeof(errorText),"init pattern matching");
       break;
-    case ERROR_INIT_TLS:
+    case ERROR_CODE_INIT_TLS:
       stringSet(errorText,sizeof(errorText),"init TLS (SSL)");
       break;
-    case ERROR_NO_TLS_CA:
+    case ERROR_CODE_NO_TLS_CA:
       stringSet(errorText,sizeof(errorText),"no TLS (SSL) certificate authority file 'bar-ca.pem'");
       break;
-    case ERROR_NO_TLS_CERTIFICATE:
+    case ERROR_CODE_NO_TLS_CERTIFICATE:
       stringSet(errorText,sizeof(errorText),"no TLS (SSL) certificate file 'bar-server-cert.pem'");
       break;
-    case ERROR_NO_TLS_KEY:
+    case ERROR_CODE_NO_TLS_KEY:
       stringSet(errorText,sizeof(errorText),"no or unreadable TLS (SSL) key file 'bar-server-key.pem'");
       break;
-    case ERROR_INVALID_TLS_CA:
+    case ERROR_CODE_INVALID_TLS_CA:
       stringSet(errorText,sizeof(errorText),"invalid TLS (SSL) certificate authority");
       break;
-    case ERROR_INVALID_TLS_CERTIFICATE:
+    case ERROR_CODE_INVALID_TLS_CERTIFICATE:
       stringSet(errorText,sizeof(errorText),"invalid TLS (SSL) certificate");
       break;
-    case ERROR_TLS_HANDSHAKE:
+    case ERROR_CODE_TLS_HANDSHAKE:
       stringSet(errorText,sizeof(errorText),"TLS (SSL) handshake failure");
       break;
-    case ERROR_INVALID_SSH_SPEFICIER:
+    case ERROR_CODE_INVALID_SSH_SPEFICIER:
       stringSet(errorText,sizeof(errorText),"invalid SSH specifier");
       break;
-    case ERROR_SSH_SESSION_FAIL:
+    case ERROR_CODE_SSH_SESSION_FAIL:
       stringSet(errorText,sizeof(errorText),"initialize ssh session fail");
       break;
-    case ERROR_SSH_AUTHENTIFICATION:
+    case ERROR_CODE_SSH_AUTHENTIFICATION:
       stringSet(errorText,sizeof(errorText),"invalid ssh password");
       break;
-    case ERROR_FTP_SESSION_FAIL:
+    case ERROR_CODE_FTP_SESSION_FAIL:
       stringSet(errorText,sizeof(errorText),"initialize FTP session fail");
       break;
-    case ERROR_FTP_AUTHENTIFICATION:
+    case ERROR_CODE_FTP_AUTHENTIFICATION:
       stringSet(errorText,sizeof(errorText),"invalid FTP user/password");
       break;
-    case ERROR_INIT_COMPRESS:
+    case ERROR_CODE_INIT_COMPRESS:
       stringSet(errorText,sizeof(errorText),"init compress");
       break;
-    case ERROR_COMPRESS_ERROR:
+    case ERROR_CODE_COMPRESS_ERROR:
       stringSet(errorText,sizeof(errorText),"compress");
       break;
-    case ERROR_DEFLATE_ERROR:
+    case ERROR_CODE_DEFLATE_ERROR:
       stringSet(errorText,sizeof(errorText),"deflate");
       break;
-    case ERROR_INFLATE_ERROR:
+    case ERROR_CODE_INFLATE_ERROR:
       stringSet(errorText,sizeof(errorText),"inflate");
       break;
-    case ERROR_COMPRESS_EOF:
+    case ERROR_CODE_COMPRESS_EOF:
       stringSet(errorText,sizeof(errorText),"compress end of file");
       break;
-    case ERROR_UNSUPPORTED_BLOCK_SIZE:
+    case ERROR_CODE_UNSUPPORTED_BLOCK_SIZE:
       stringSet(errorText,sizeof(errorText),"unsupported block size");
       break;
-    case ERROR_INIT_CRYPT:
+    case ERROR_CODE_INIT_CRYPT:
       stringSet(errorText,sizeof(errorText),"init crypt");
       break;
-    case ERROR_NO_CRYPT_PASSWORD:
+    case ERROR_CODE_NO_CRYPT_PASSWORD:
       stringSet(errorText,sizeof(errorText),"no password given for cipher");
       break;
-    case ERROR_INVALID_PASSWORD:
+    case ERROR_CODE_INVALID_PASSWORD:
       stringSet(errorText,sizeof(errorText),"invalid password");
       break;
-    case ERROR_INIT_CIPHER:
+    case ERROR_CODE_INIT_CIPHER:
       stringSet(errorText,sizeof(errorText),"init cipher");
       break;
-    case ERROR_ENCRYPT_FAIL:
+    case ERROR_CODE_ENCRYPT_FAIL:
       stringSet(errorText,sizeof(errorText),"encrypt");
       break;
-    case ERROR_DECRYPT_FAIL:
+    case ERROR_CODE_DECRYPT_FAIL:
       stringSet(errorText,sizeof(errorText),"decrypt");
       break;
-    case ERROR_CREATE_FILE:
-    case ERROR_OPEN_FILE:
-    case ERROR_OPEN_DIRECTORY:
-    case ERROR_IO_ERROR:
+    case ERROR_CODE_CREATE_FILE:
+    case ERROR_CODE_OPEN_FILE:
+    case ERROR_CODE_OPEN_DIRECTORY:
+    case ERROR_CODE_IO_ERROR:
       {
         strncpy(errorText,strerror(ERROR_CODE),sizeof(errorText)-1); errorText[sizeof(errorText)-1] = '\0';
       }
       break;
-    case ERROR_PARSE_DEVICE_LIST:
+    case ERROR_CODE_PARSE_DEVICE_LIST:
       stringSet(errorText,sizeof(errorText),"error parsing device list");
       break;
-    case ERROR_FILE_EXITS:
+    case ERROR_CODE_FILE_EXITS:
       stringSet(errorText,sizeof(errorText),"file already exists");
       break;
-    case ERROR_FILE_NOT_FOUND:
+    case ERROR_CODE_FILE_NOT_FOUND:
       stringSet(errorText,sizeof(errorText),"file not found");
       break;
-    case ERROR_END_OF_ARCHIVE:
+    case ERROR_CODE_END_OF_ARCHIVE:
       stringSet(errorText,sizeof(errorText),"end of archive");
       break;
-    case ERROR_NO_FILE_ENTRY:
+    case ERROR_CODE_NO_FILE_ENTRY:
       stringSet(errorText,sizeof(errorText),"no file entry");
       break;
-    case ERROR_NO_FILE_DATA:
+    case ERROR_CODE_NO_FILE_DATA:
       stringSet(errorText,sizeof(errorText),"no data entry");
       break;
-    case ERROR_NO_DIRECTORY_ENTRY:
+    case ERROR_CODE_NO_DIRECTORY_ENTRY:
       stringSet(errorText,sizeof(errorText),"no directory entry");
       break;
-    case ERROR_NO_LINK_ENTRY:
+    case ERROR_CODE_NO_LINK_ENTRY:
       stringSet(errorText,sizeof(errorText),"no link entry");
       break;
-    case ERROR_NO_SPECIAL_ENTRY:
+    case ERROR_CODE_NO_SPECIAL_ENTRY:
       stringSet(errorText,sizeof(errorText),"no special entry");
       break;
-    case ERROR_END_OF_DATA:
+    case ERROR_CODE_END_OF_DATA:
       stringSet(errorText,sizeof(errorText),"end of data");
       break;
-    case ERROR_CRC_ERROR:
+    case ERROR_CODE_CRC_ERROR:
       stringSet(errorText,sizeof(errorText),"CRC error");
       break;
-    case ERROR_FILE_INCOMPLETE:
+    case ERROR_CODE_FILE_INCOMPLETE:
       stringSet(errorText,sizeof(errorText),"file is incomplete");
       break;
-    case ERROR_WRONG_FILE_TYPE:
+    case ERROR_CODE_WRONG_FILE_TYPE:
       stringSet(errorText,sizeof(errorText),"wrong file type");
       break;
-    case ERROR_FILES_DIFFER:
+    case ERROR_CODE_FILES_DIFFER:
       stringSet(errorText,sizeof(errorText),"files differ");
       break;
-    case ERROR_CORRUPT_DATA:
+    case ERROR_CODE_CORRUPT_DATA:
       stringSet(errorText,sizeof(errorText),"corrupt data or invalid password");
       break;
-    case ERROR_NOT_AN_INCREMENTAL_FILE:
+    case ERROR_CODE_NOT_AN_INCREMENTAL_FILE:
       stringSet(errorText,sizeof(errorText),"invalid incremental file");
       break;
-    case ERROR_WRONG_INCREMENTAL_FILE_VERSION:
+    case ERROR_CODE_WRONG_INCREMENTAL_FILE_VERSION:
       stringSet(errorText,sizeof(errorText),"wrong incremental file version");
       break;
-    case ERROR_CORRUPT_INCREMENTAL_FILE:
+    case ERROR_CODE_CORRUPT_INCREMENTAL_FILE:
       stringSet(errorText,sizeof(errorText),"corrupt incremental file");
       break;
-    case ERROR_HOST_NOT_FOUND:
+    case ERROR_CODE_HOST_NOT_FOUND:
       stringSet(errorText,sizeof(errorText),"host not found");
       break;
-    case ERROR_CONNECT_FAIL:
+    case ERROR_CODE_CONNECT_FAIL:
       {
         strncpy(errorText,strerror(ERROR_CODE),sizeof(errorText)-1); errorText[sizeof(errorText)-1] = '\0';
       }
       break;
-    case ERROR_NO_LOGIN_NAME:
+    case ERROR_CODE_NO_LOGIN_NAME:
       stringSet(errorText,sizeof(errorText),"no login name given");
       break;
-    case ERROR_NO_PASSWORD:
+    case ERROR_CODE_NO_PASSWORD:
       stringSet(errorText,sizeof(errorText),"no password given");
       break;
-    case ERROR_NETWORK_SEND:
+    case ERROR_CODE_NETWORK_SEND:
       stringSet(errorText,sizeof(errorText),"sending data fail");
       break;
-    case ERROR_NETWORK_RECEIVE:
+    case ERROR_CODE_NETWORK_RECEIVE:
       stringSet(errorText,sizeof(errorText),"receiving data fail");
       break;
-    case ERROR_NETWORK_EXECUTE_FAIL:
+    case ERROR_CODE_NETWORK_EXECUTE_FAIL:
       stringSet(errorText,sizeof(errorText),"execute command fail");
       break;
-    case ERROR_INVALID_DEVICE_SPECIFIER:
+    case ERROR_CODE_INVALID_DEVICE_SPECIFIER:
       stringSet(errorText,sizeof(errorText),"invalid device specifier");
       break;
-    case ERROR_LOAD_VOLUME_FAIL:
+    case ERROR_CODE_LOAD_VOLUME_FAIL:
       stringSet(errorText,sizeof(errorText),"load volume fail");
       break;
-    case ERROR_FORK_FAIL:
+    case ERROR_CODE_FORK_FAIL:
       stringSet(errorText,sizeof(errorText),"fork for execute external program fail");
       break;
-    case ERROR_EXEC_FAIL:
+    case ERROR_CODE_EXEC_FAIL:
       stringSet(errorText,sizeof(errorText),"execute external program fail");
       break;
 

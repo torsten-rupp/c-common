@@ -12,7 +12,7 @@
 * Notes  : -
 ***********************************************************************/
 
-#define ERROR_(code,errno) Error_((ERROR_ ## code),errno)
+#define ERROR_(code,errno) Error_((ERROR_CODE_ ## code),errno)
 
 /***********************************************************************
 * Name   : ERRORX_
@@ -26,7 +26,7 @@
 * Notes  : -
 ***********************************************************************/
 
-#define ERRORX_(code,errno,format,...) Errorx_((ERROR_ ## code),errno,format, ## __VA_ARGS__)
+#define ERRORX_(code,errno,format,...) Errorx_((ERROR_CODE_ ## code),errno,format, ## __VA_ARGS__)
 
 /***********************************************************************
 * Name   : ERRORF_
@@ -40,14 +40,14 @@
 ***********************************************************************/
 
 #ifndef NDEBUG
-  #define ERRORF_(error,format,...)      ((Errors)(  ((error) & (0x000003FF|0xFFFF0000)) \
-                                                   | ((_Error_dataToIndex(__FILE__,__LINE__,format, ## __VA_ARGS__) << 10) & 0x0000FC00) \
-                                                  ) \
+  #define ERRORF_(error,format,...)      ((Errors)(intptr_t)(  ((error) & (0x000003FF|0xFFFF0000)) \
+                                                             | ((_Error_dataToIndex(__FILE__,__LINE__,format, ## __VA_ARGS__) << 10) & 0x0000FC00) \
+                                                            ) \
                                          )
 #else
-  #define ERRORF_(error,format,...)      ((Errors)(  ((error) & (0x000003FF|0xFFFF0000)) \
-                                                   | ((_Error_dataToIndex(format, ## __VA_ARGS__) << 10) & 0x0000FC00) \
-                                                  ) \
+  #define ERRORF_(error,format,...)      ((Errors)(intptr_t)(  ((error) & (0x000003FF|0xFFFF0000)) \
+                                                             | ((_Error_dataToIndex(format, ## __VA_ARGS__) << 10) & 0x0000FC00) \
+                                                            ) \
                                          )
 #endif
 
@@ -62,16 +62,16 @@
 ***********************************************************************/
 
 #ifndef NDEBUG
-  #define Error_(code,errno)             ((Errors)(  (((errno) << 16) & 0xFFFF0000) \
-                                                   | ((_Error_dataToIndex(__FILE__,__LINE__,NULL) << 10) & 0x0000FC00) \
-                                                   | (((code) << 0) & 0x000003FF) \
-                                                  ) \
+  #define Error_(code,errno)             ((Errors)(intptr_t)(  (((errno) << 16) & 0xFFFF0000) \
+                                                             | ((_Error_dataToIndex(__FILE__,__LINE__,NULL) << 10) & 0x0000FC00) \
+                                                             | (((code) << 0) & 0x000003FF) \
+                                                            ) \
                                          )
 #else
-  #define Error_(code,errno)             ((Errors)(  (((errno) << 16) & 0xFFFF0000) \
-                                                   | ((_Error_dataToIndex(NULL) << 10) & 0x0000FC00) \
-                                                   | (((code) << 0) & 0x000003FF) \
-                                                  ) \
+  #define Error_(code,errno)             ((Errors)(intptr_t)(  (((errno) << 16) & 0xFFFF0000) \
+                                                             | ((_Error_dataToIndex(NULL) << 10) & 0x0000FC00) \
+                                                             | (((code) << 0) & 0x000003FF) \
+                                                            ) \
                                          )
 #endif
 
@@ -88,91 +88,164 @@
 ***********************************************************************/
 
 #ifndef NDEBUG
-  #define Errorx_(code,errno,format,...) ((Errors)(  (((errno) << 16) & 0xFFFF0000) \
-                                                   | ((_Error_dataToIndex(__FILE__,__LINE__,format, ## __VA_ARGS__) << 10) & 0x0000FC00) \
-                                                   | (((code) << 0) & 0x000003FF) \
-                                                  ) \
+  #define Errorx_(code,errno,format,...) ((Errors)(intptr_t)(  (((errno) << 16) & 0xFFFF0000) \
+                                                             | ((_Error_dataToIndex(__FILE__,__LINE__,format, ## __VA_ARGS__) << 10) & 0x0000FC00) \
+                                                             | (((code) << 0) & 0x000003FF) \
+                                                            ) \
                                          )
 #else
-  #define Errorx_(code,errno,format,...) ((Errors)(  (((errno) << 16) & 0xFFFF0000) \
-                                                   | ((_Error_dataToIndex(format, ## __VA_ARGS__) << 10) & 0x0000FC00) \
-                                                   | (((code) << 0) & 0x000003FF) \
-                                                  ) \
+  #define Errorx_(code,errno,format,...) ((Errors)(intptr_t)(  (((errno) << 16) & 0xFFFF0000) \
+                                                             | ((_Error_dataToIndex(format, ## __VA_ARGS__) << 10) & 0x0000FC00) \
+                                                             | (((code) << 0) & 0x000003FF) \
+                                                            ) \
                                          )
 #endif
 
 typedef enum
 {
-  ERROR_NONE = 0,
-  ERROR_INSUFFICIENT_MEMORY = 1,
-  ERROR_INIT = 2,
-  ERROR_INVALID_ARGUMENT = 3,
-  ERROR_CONFIG = 4,
-  ERROR_ABORTED = 5,
-  ERROR_FUNCTION_NOT_SUPPORTED = 6,
-  ERROR_STILL_NOT_IMPLEMENTED = 7,
-  ERROR_TESTCODE = 8,
-  ERROR_INVALID_PATTERN = 9,
-  ERROR_INIT_TLS = 10,
-  ERROR_NO_TLS_CA = 11,
-  ERROR_NO_TLS_CERTIFICATE = 12,
-  ERROR_NO_TLS_KEY = 13,
-  ERROR_INVALID_TLS_CA = 14,
-  ERROR_INVALID_TLS_CERTIFICATE = 15,
-  ERROR_TLS_HANDSHAKE = 16,
-  ERROR_INVALID_SSH_SPEFICIER = 17,
-  ERROR_SSH_SESSION_FAIL = 18,
-  ERROR_SSH_AUTHENTIFICATION = 19,
-  ERROR_FTP_SESSION_FAIL = 20,
-  ERROR_FTP_AUTHENTIFICATION = 21,
-  ERROR_INIT_COMPRESS = 22,
-  ERROR_COMPRESS_ERROR = 23,
-  ERROR_DEFLATE_ERROR = 24,
-  ERROR_INFLATE_ERROR = 25,
-  ERROR_COMPRESS_EOF = 26,
-  ERROR_UNSUPPORTED_BLOCK_SIZE = 27,
-  ERROR_INIT_CRYPT = 28,
-  ERROR_NO_CRYPT_PASSWORD = 29,
-  ERROR_INVALID_PASSWORD = 30,
-  ERROR_INIT_CIPHER = 31,
-  ERROR_ENCRYPT_FAIL = 32,
-  ERROR_DECRYPT_FAIL = 33,
-  ERROR_CREATE_FILE = 34,
-  ERROR_OPEN_FILE = 35,
-  ERROR_OPEN_DIRECTORY = 36,
-  ERROR_IO_ERROR = 37,
-  ERROR_PARSE_DEVICE_LIST = 38,
-  ERROR_FILE_EXITS = 39,
-  ERROR_FILE_NOT_FOUND = 40,
-  ERROR_END_OF_ARCHIVE = 41,
-  ERROR_NO_FILE_ENTRY = 42,
-  ERROR_NO_FILE_DATA = 43,
-  ERROR_NO_DIRECTORY_ENTRY = 44,
-  ERROR_NO_LINK_ENTRY = 45,
-  ERROR_NO_SPECIAL_ENTRY = 46,
-  ERROR_END_OF_DATA = 47,
-  ERROR_CRC_ERROR = 48,
-  ERROR_FILE_INCOMPLETE = 49,
-  ERROR_WRONG_FILE_TYPE = 50,
-  ERROR_FILES_DIFFER = 51,
-  ERROR_CORRUPT_DATA = 52,
-  ERROR_NOT_AN_INCREMENTAL_FILE = 53,
-  ERROR_WRONG_INCREMENTAL_FILE_VERSION = 54,
-  ERROR_CORRUPT_INCREMENTAL_FILE = 55,
-  ERROR_HOST_NOT_FOUND = 56,
-  ERROR_CONNECT_FAIL = 57,
-  ERROR_NO_LOGIN_NAME = 58,
-  ERROR_NO_PASSWORD = 59,
-  ERROR_NETWORK_SEND = 60,
-  ERROR_NETWORK_RECEIVE = 61,
-  ERROR_NETWORK_EXECUTE_FAIL = 62,
-  ERROR_INVALID_DEVICE_SPECIFIER = 63,
-  ERROR_LOAD_VOLUME_FAIL = 64,
-  ERROR_FORK_FAIL = 65,
-  ERROR_EXEC_FAIL = 66,
+  ERROR_CODE_NONE = 0,
+  ERROR_CODE_INSUFFICIENT_MEMORY = 1,
+  ERROR_CODE_INIT = 2,
+  ERROR_CODE_INVALID_ARGUMENT = 3,
+  ERROR_CODE_CONFIG = 4,
+  ERROR_CODE_ABORTED = 5,
+  ERROR_CODE_FUNCTION_NOT_SUPPORTED = 6,
+  ERROR_CODE_STILL_NOT_IMPLEMENTED = 7,
+  ERROR_CODE_TESTCODE = 8,
+  ERROR_CODE_INVALID_PATTERN = 9,
+  ERROR_CODE_INIT_TLS = 10,
+  ERROR_CODE_NO_TLS_CA = 11,
+  ERROR_CODE_NO_TLS_CERTIFICATE = 12,
+  ERROR_CODE_NO_TLS_KEY = 13,
+  ERROR_CODE_INVALID_TLS_CA = 14,
+  ERROR_CODE_INVALID_TLS_CERTIFICATE = 15,
+  ERROR_CODE_TLS_HANDSHAKE = 16,
+  ERROR_CODE_INVALID_SSH_SPEFICIER = 17,
+  ERROR_CODE_SSH_SESSION_FAIL = 18,
+  ERROR_CODE_SSH_AUTHENTIFICATION = 19,
+  ERROR_CODE_FTP_SESSION_FAIL = 20,
+  ERROR_CODE_FTP_AUTHENTIFICATION = 21,
+  ERROR_CODE_INIT_COMPRESS = 22,
+  ERROR_CODE_COMPRESS_ERROR = 23,
+  ERROR_CODE_DEFLATE_ERROR = 24,
+  ERROR_CODE_INFLATE_ERROR = 25,
+  ERROR_CODE_COMPRESS_EOF = 26,
+  ERROR_CODE_UNSUPPORTED_BLOCK_SIZE = 27,
+  ERROR_CODE_INIT_CRYPT = 28,
+  ERROR_CODE_NO_CRYPT_PASSWORD = 29,
+  ERROR_CODE_INVALID_PASSWORD = 30,
+  ERROR_CODE_INIT_CIPHER = 31,
+  ERROR_CODE_ENCRYPT_FAIL = 32,
+  ERROR_CODE_DECRYPT_FAIL = 33,
+  ERROR_CODE_CREATE_FILE = 34,
+  ERROR_CODE_OPEN_FILE = 35,
+  ERROR_CODE_OPEN_DIRECTORY = 36,
+  ERROR_CODE_IO_ERROR = 37,
+  ERROR_CODE_PARSE_DEVICE_LIST = 38,
+  ERROR_CODE_FILE_EXITS = 39,
+  ERROR_CODE_FILE_NOT_FOUND = 40,
+  ERROR_CODE_END_OF_ARCHIVE = 41,
+  ERROR_CODE_NO_FILE_ENTRY = 42,
+  ERROR_CODE_NO_FILE_DATA = 43,
+  ERROR_CODE_NO_DIRECTORY_ENTRY = 44,
+  ERROR_CODE_NO_LINK_ENTRY = 45,
+  ERROR_CODE_NO_SPECIAL_ENTRY = 46,
+  ERROR_CODE_END_OF_DATA = 47,
+  ERROR_CODE_CRC_ERROR = 48,
+  ERROR_CODE_FILE_INCOMPLETE = 49,
+  ERROR_CODE_WRONG_FILE_TYPE = 50,
+  ERROR_CODE_FILES_DIFFER = 51,
+  ERROR_CODE_CORRUPT_DATA = 52,
+  ERROR_CODE_NOT_AN_INCREMENTAL_FILE = 53,
+  ERROR_CODE_WRONG_INCREMENTAL_FILE_VERSION = 54,
+  ERROR_CODE_CORRUPT_INCREMENTAL_FILE = 55,
+  ERROR_CODE_HOST_NOT_FOUND = 56,
+  ERROR_CODE_CONNECT_FAIL = 57,
+  ERROR_CODE_NO_LOGIN_NAME = 58,
+  ERROR_CODE_NO_PASSWORD = 59,
+  ERROR_CODE_NETWORK_SEND = 60,
+  ERROR_CODE_NETWORK_RECEIVE = 61,
+  ERROR_CODE_NETWORK_EXECUTE_FAIL = 62,
+  ERROR_CODE_INVALID_DEVICE_SPECIFIER = 63,
+  ERROR_CODE_LOAD_VOLUME_FAIL = 64,
+  ERROR_CODE_FORK_FAIL = 65,
+  ERROR_CODE_EXEC_FAIL = 66,
 
-  ERROR_UNKNOWN = 67
-} Errors;
+  ERROR_CODE_UNKNOWN = 67
+} ErrorCodes;
+
+// special errors type
+typedef intptr_t* Errors;
+
+// error macros
+#define ERROR_NONE (Errors)(ERROR_CODE_NONE & (0x000003FF|0xFFFF0000))
+#define ERROR_INSUFFICIENT_MEMORY Error_(ERROR_CODE_INSUFFICIENT_MEMORY,0)
+#define ERROR_INIT Error_(ERROR_CODE_INIT,0)
+#define ERROR_INVALID_ARGUMENT Error_(ERROR_CODE_INVALID_ARGUMENT,0)
+#define ERROR_CONFIG Error_(ERROR_CODE_CONFIG,0)
+#define ERROR_ABORTED Error_(ERROR_CODE_ABORTED,0)
+#define ERROR_FUNCTION_NOT_SUPPORTED Error_(ERROR_CODE_FUNCTION_NOT_SUPPORTED,0)
+#define ERROR_STILL_NOT_IMPLEMENTED Error_(ERROR_CODE_STILL_NOT_IMPLEMENTED,0)
+#define ERROR_TESTCODE Error_(ERROR_CODE_TESTCODE,0)
+#define ERROR_INVALID_PATTERN Error_(ERROR_CODE_INVALID_PATTERN,0)
+#define ERROR_INIT_TLS Error_(ERROR_CODE_INIT_TLS,0)
+#define ERROR_NO_TLS_CA Error_(ERROR_CODE_NO_TLS_CA,0)
+#define ERROR_NO_TLS_CERTIFICATE Error_(ERROR_CODE_NO_TLS_CERTIFICATE,0)
+#define ERROR_NO_TLS_KEY Error_(ERROR_CODE_NO_TLS_KEY,0)
+#define ERROR_INVALID_TLS_CA Error_(ERROR_CODE_INVALID_TLS_CA,0)
+#define ERROR_INVALID_TLS_CERTIFICATE Error_(ERROR_CODE_INVALID_TLS_CERTIFICATE,0)
+#define ERROR_TLS_HANDSHAKE Error_(ERROR_CODE_TLS_HANDSHAKE,0)
+#define ERROR_INVALID_SSH_SPEFICIER Error_(ERROR_CODE_INVALID_SSH_SPEFICIER,0)
+#define ERROR_SSH_SESSION_FAIL Error_(ERROR_CODE_SSH_SESSION_FAIL,0)
+#define ERROR_SSH_AUTHENTIFICATION Error_(ERROR_CODE_SSH_AUTHENTIFICATION,0)
+#define ERROR_FTP_SESSION_FAIL Error_(ERROR_CODE_FTP_SESSION_FAIL,0)
+#define ERROR_FTP_AUTHENTIFICATION Error_(ERROR_CODE_FTP_AUTHENTIFICATION,0)
+#define ERROR_INIT_COMPRESS Error_(ERROR_CODE_INIT_COMPRESS,0)
+#define ERROR_COMPRESS_ERROR Error_(ERROR_CODE_COMPRESS_ERROR,0)
+#define ERROR_DEFLATE_ERROR Error_(ERROR_CODE_DEFLATE_ERROR,0)
+#define ERROR_INFLATE_ERROR Error_(ERROR_CODE_INFLATE_ERROR,0)
+#define ERROR_COMPRESS_EOF Error_(ERROR_CODE_COMPRESS_EOF,0)
+#define ERROR_UNSUPPORTED_BLOCK_SIZE Error_(ERROR_CODE_UNSUPPORTED_BLOCK_SIZE,0)
+#define ERROR_INIT_CRYPT Error_(ERROR_CODE_INIT_CRYPT,0)
+#define ERROR_NO_CRYPT_PASSWORD Error_(ERROR_CODE_NO_CRYPT_PASSWORD,0)
+#define ERROR_INVALID_PASSWORD Error_(ERROR_CODE_INVALID_PASSWORD,0)
+#define ERROR_INIT_CIPHER Error_(ERROR_CODE_INIT_CIPHER,0)
+#define ERROR_ENCRYPT_FAIL Error_(ERROR_CODE_ENCRYPT_FAIL,0)
+#define ERROR_DECRYPT_FAIL Error_(ERROR_CODE_DECRYPT_FAIL,0)
+#define ERROR_CREATE_FILE Error_(ERROR_CODE_CREATE_FILE,0)
+#define ERROR_OPEN_FILE Error_(ERROR_CODE_OPEN_FILE,0)
+#define ERROR_OPEN_DIRECTORY Error_(ERROR_CODE_OPEN_DIRECTORY,0)
+#define ERROR_IO_ERROR Error_(ERROR_CODE_IO_ERROR,0)
+#define ERROR_PARSE_DEVICE_LIST Error_(ERROR_CODE_PARSE_DEVICE_LIST,0)
+#define ERROR_FILE_EXITS Error_(ERROR_CODE_FILE_EXITS,0)
+#define ERROR_FILE_NOT_FOUND Error_(ERROR_CODE_FILE_NOT_FOUND,0)
+#define ERROR_END_OF_ARCHIVE Error_(ERROR_CODE_END_OF_ARCHIVE,0)
+#define ERROR_NO_FILE_ENTRY Error_(ERROR_CODE_NO_FILE_ENTRY,0)
+#define ERROR_NO_FILE_DATA Error_(ERROR_CODE_NO_FILE_DATA,0)
+#define ERROR_NO_DIRECTORY_ENTRY Error_(ERROR_CODE_NO_DIRECTORY_ENTRY,0)
+#define ERROR_NO_LINK_ENTRY Error_(ERROR_CODE_NO_LINK_ENTRY,0)
+#define ERROR_NO_SPECIAL_ENTRY Error_(ERROR_CODE_NO_SPECIAL_ENTRY,0)
+#define ERROR_END_OF_DATA Error_(ERROR_CODE_END_OF_DATA,0)
+#define ERROR_CRC_ERROR Error_(ERROR_CODE_CRC_ERROR,0)
+#define ERROR_FILE_INCOMPLETE Error_(ERROR_CODE_FILE_INCOMPLETE,0)
+#define ERROR_WRONG_FILE_TYPE Error_(ERROR_CODE_WRONG_FILE_TYPE,0)
+#define ERROR_FILES_DIFFER Error_(ERROR_CODE_FILES_DIFFER,0)
+#define ERROR_CORRUPT_DATA Error_(ERROR_CODE_CORRUPT_DATA,0)
+#define ERROR_NOT_AN_INCREMENTAL_FILE Error_(ERROR_CODE_NOT_AN_INCREMENTAL_FILE,0)
+#define ERROR_WRONG_INCREMENTAL_FILE_VERSION Error_(ERROR_CODE_WRONG_INCREMENTAL_FILE_VERSION,0)
+#define ERROR_CORRUPT_INCREMENTAL_FILE Error_(ERROR_CODE_CORRUPT_INCREMENTAL_FILE,0)
+#define ERROR_HOST_NOT_FOUND Error_(ERROR_CODE_HOST_NOT_FOUND,0)
+#define ERROR_CONNECT_FAIL Error_(ERROR_CODE_CONNECT_FAIL,0)
+#define ERROR_NO_LOGIN_NAME Error_(ERROR_CODE_NO_LOGIN_NAME,0)
+#define ERROR_NO_PASSWORD Error_(ERROR_CODE_NO_PASSWORD,0)
+#define ERROR_NETWORK_SEND Error_(ERROR_CODE_NETWORK_SEND,0)
+#define ERROR_NETWORK_RECEIVE Error_(ERROR_CODE_NETWORK_RECEIVE,0)
+#define ERROR_NETWORK_EXECUTE_FAIL Error_(ERROR_CODE_NETWORK_EXECUTE_FAIL,0)
+#define ERROR_INVALID_DEVICE_SPECIFIER Error_(ERROR_CODE_INVALID_DEVICE_SPECIFIER,0)
+#define ERROR_LOAD_VOLUME_FAIL Error_(ERROR_CODE_LOAD_VOLUME_FAIL,0)
+#define ERROR_FORK_FAIL Error_(ERROR_CODE_FORK_FAIL,0)
+#define ERROR_EXEC_FAIL Error_(ERROR_CODE_EXEC_FAIL,0)
+#define ERROR_UNKNOWN (Errors)(ERROR_CODE_UNKNOWN & (0x000003FF|0xFFFF0000))
 
 #ifdef __cplusplus
   extern "C" {
@@ -261,6 +334,17 @@ const char *Error_getLineNbText(Errors error);
 ***********************************************************************/
 
 const char *Error_getLocationText(Errors error);
+
+/***********************************************************************
+* Name   : Error_getErrno
+* Purpose: get errno
+* Input  : error - error
+* Output : -
+* Return : errno
+* Notes  : -
+***********************************************************************/
+
+int Error_getErrno(Errors error);
 
 /***********************************************************************
 * Name   : Error_getErrnoText
