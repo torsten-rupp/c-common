@@ -1510,7 +1510,7 @@ Errors Misc_executeCommand(const char        *commandTemplate,
   uint            n,z;
 
   error = ERROR_NONE;
-  if (commandTemplate != NULL)
+  if (!stringIsEmpty(commandTemplate))
   {
     commandLine = String_new();
     name        = String_new();
@@ -1678,7 +1678,7 @@ Errors Misc_executeScript(const char        *script,
                     arguments,
                     script,
                     CALLBACK(stdoutExecuteIOFunction,stdoutExecuteIOUserData),
-                    0,
+                    0,  // stdoutStripCount
                     CALLBACK(stderrExecuteIOFunction,stderrExecuteIOUserData),
                     String_length(tmpFileName)+1+1
                    );
