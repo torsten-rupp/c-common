@@ -527,7 +527,7 @@ LOCAL DictionaryEntry *growTable(DictionaryEntry *entries, uint oldSize, uint ne
   entries = realloc(entries,newSize*sizeof(DictionaryEntry));
   if (entries != NULL)
   {
-    memset(&entries[oldSize],0,(newSize-oldSize)*sizeof(DictionaryEntry));
+    memClear(&entries[oldSize],(newSize-oldSize)*sizeof(DictionaryEntry));
   }
 
   return entries;
@@ -677,6 +677,7 @@ void Dictionary_clear(Dictionary *dictionary)
           {
             assert(dictionary->entryTables[z].entries[index].data != NULL);
             free(dictionary->entryTables[z].entries[index].data);
+            dictionary->entryTables[z].entries[index].allocatedFlag = FALSE;
           }
 
           free(dictionary->entryTables[z].entries[index].keyData);
@@ -1105,6 +1106,7 @@ void Dictionary_remove(Dictionary *dictionary,
       {
         assert(dictionaryEntryTable->entries[entryIndex].data != NULL);
         free(dictionaryEntryTable->entries[entryIndex].data);
+        dictionaryEntryTable->entries[entryIndex].allocatedFlag = FALSE;
       }
 
       free(dictionaryEntryTable->entries[entryIndex].keyData);
@@ -1288,7 +1290,7 @@ void Dictionary_debugDump(Dictionary *dictionary)
                        UNUSED_VARIABLE(length);
                        UNUSED_VARIABLE(userData);
 
-                       printf("%s: %s\n",(const char*)keyData,(const char*)data);
+                       fwrite(keyData,1,keyLength,stdout); printf(": %p %lu\n",(const char*)data,length);
 
                        return TRUE;
                      },
