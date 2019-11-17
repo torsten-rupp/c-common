@@ -47,7 +47,10 @@
 #include <assert.h>
 
 #if   defined(PLATFORM_LINUX)
+  #include <pthread.h>
 #elif defined(PLATFORM_WINDOWS)
+  #include <windows.h>
+  #include <pthread.h>
   #include <intrin.h>
 #endif /* PLATFORM_... */
 
@@ -286,6 +289,9 @@ typedef struct
   Codepoint  codepoint;
 } StringIterator;
 
+// execute once handle
+typedef pthread_once_t ExecuteOnceHandle;
+
 #ifndef NDEBUG
 
 /***********************************************************************\
@@ -375,18 +381,34 @@ typedef void(*DebugDumpStackTraceOutputFunction)(const char *text, void *userDat
 #endif /* __GNUC__ */
 
 // only for better reading
-#define CALLBACK(code,argument) code,argument
-#define CALLBACK_NULL NULL,NULL
+#define CALLBACK_(code,argument) code,argument
 
 // mask and shift value
 #define MASKSHIFT(n,maskShift) (((n) & maskShift.mask) >> maskShift.shift)
 
-// debugging
-#if defined(__x86_64__) || defined(__i386)
-  #define __B() do { fprintf(stderr,"%s, %d: \n",__FILE__,__LINE__); asm(" int3"); } while (0)
-#else
-  #define __B() do { } while (0)
-#endif
+/***********************************************************************\
+* Name   : EXECUTE_ONCE
+* Purpose: execute block once
+* Input  : functionReturnType - call-back function return type
+*          functionSignature  - call-back function signature
+*          functionBody       - call-back function body
+* Output : -
+* Return : -
+* Notes  : example
+*          List_removeAndFree(list,
+*                             node,
+*                             LAMBDA(void,(...),{ ... })
+*                            );
+\***********************************************************************/
+
+#define EXECUTE_ONCE(functionBody) \
+  ({ \
+    static ExecuteOnceHandle __executeOnceHandle ## COUNTER = PTHREAD_ONCE_INIT; \
+    \
+    auto void __closure__ (void); \
+    void __closure__ (void) functionBody \
+    pthread_once(&__executeOnceHandle ## COUNTER,__closure__); \
+  })
 
 /***********************************************************************\
 * Name   : LAMBDA
@@ -429,7 +451,7 @@ typedef void(*DebugDumpStackTraceOutputFunction)(const char *text, void *userDat
   })
 
 /***********************************************************************\
-* Name   : CALLBACK_INLINE
+* Name   : CALLBACK__INLINE
 * Purpose: define an inline call-back function (anonymouse function)
 * Input  : functionReturnType - call-back function signature
 *          functionSignature  - call-back function signature
@@ -440,11 +462,11 @@ typedef void(*DebugDumpStackTraceOutputFunction)(const char *text, void *userDat
 * Notes  : example
 *          List_removeAndFree(list,
 *                             node,
-*                             CALLBACK_INLINE(void,(...),{ ... },NULL)
+*                             CALLBACK__INLINE(void,(...),{ ... },NULL)
 *                            );
 \***********************************************************************/
 
-#define CALLBACK_INLINE(functionReturnType,functionSignature,functionBody,functionUserData) \
+#define CALLBACK__INLINE(functionReturnType,functionSignature,functionBody,functionUserData) \
   ({ \
     auto functionReturnType __closure__ functionSignature; \
     functionReturnType __closure__ functionSignature functionBody \
@@ -1206,6 +1228,21 @@ typedef byte* BitSet;
 #endif /* not NDEBUG */
 
 /***********************************************************************\
+* Name   : __B
+* Purpose: braakpoint
+* Input  : -
+* Output : -
+* Return : -
+* Notes  : for debugging only!
+\***********************************************************************/
+
+#if defined(__x86_64__) || defined(__i386)
+  #define __B() do { fprintf(stderr,"%s, %d: \n",__FILE__,__LINE__); asm(" int3"); } while (0)
+#else
+  #define __B() do { } while (0)
+#endif
+
+/***********************************************************************\
 * Name   : DEBUG_MEMORY_FENCE, DEBUG_MEMORY_FENCE_INIT,
 *          DEBUG_MEMORY_FENCE_CHECK
 * Purpose: declare/init/check memory fences
@@ -1540,26 +1577,22 @@ unsigned long lcm(unsigned long a, unsigned long b);
 * Notes  : -
 \***********************************************************************/
 
-#ifdef PLATFORM_LINUX
 static inline uint64 getCycleCounter(void)
 {
-  #if defined(__x86_64__) || defined(__i386)
-    unsigned int l,h;
+  #ifdef PLATFORM_LINUX
+    #if defined(__x86_64__) || defined(__i386)
+      unsigned int l,h;
 
-    asm __volatile__ ("rdtsc" : "=a" (l), "=d" (h));
+      asm __volatile__ ("rdtsc" : "=a" (l), "=d" (h));
 
-    return ((uint64)h << 32) | ((uint64)l << 0);
-  #else
-    return 0LL;
-  #endif
+      return ((uint64)h << 32) | ((uint64)l << 0);
+    #else
+      return 0LL;
+    #endif
+  #elif PLATFORM_WINDOWS
+    return __rdtsc();
+  #endif /* PLATFORM_... */
 }
-#elif PLATFORM_WINDOWS
-#include <intrin.h>
-static inline uint64 rdtsc(void)
-{
-  return __rdtsc();
-}
-#endif /* PLATFORM_... */
 
 /***********************************************************************\
 * Name   : atomicIncrement
@@ -1621,7 +1654,7 @@ static inline bool atomicCompareSwap64(uint *n, uint64 oldValue, uint64 newValue
 * Notes  : -
 \***********************************************************************/
 
-static inline ushort swapBytes16(ushort n)
+static inline uint16_t swapBytes16(uint16_t n)
 {
   return   ((n & 0xFF00) >> 8)
          | ((n & 0x00FF) << 8);
@@ -1636,7 +1669,7 @@ static inline ushort swapBytes16(ushort n)
 * Notes  : -
 \***********************************************************************/
 
-static inline ulong swapBytes32(ulong n)
+static inline uint32_t swapBytes32(uint32_t n)
 {
   return   ((n & 0xFF000000) >> 24)
          | ((n & 0x00FF0000) >>  8)
@@ -2172,6 +2205,38 @@ static inline char* stringSet(char *destination, ulong n, const char *source)
 }
 
 /***********************************************************************\
+* Name   : stringSetBuffer
+* Purpose: set string
+* Input  : destination - destination string
+*          n           - size of string (including terminating NUL)
+*          buffer      - buffer
+*          bufferSize  - buffer size
+* Output : -
+* Return : destination string
+* Notes  : string is always NULL or NUL-terminated
+\***********************************************************************/
+
+static inline char* stringSetBuffer(char *destination, ulong n, const char *buffer, ulong bufferSize)
+{
+  assert(n > 0);
+
+  if (destination != NULL)
+  {
+    if (buffer != NULL)
+    {
+      strncpy(destination,buffer,MIN(n-1,bufferSize)); destination[MIN(n-1,bufferSize)] = NUL;
+    }
+    else
+    {
+      destination[0] = NUL;
+    }
+  }
+
+  return destination;
+}
+
+
+/***********************************************************************\
 * Name   : stringFormat
 * Purpose: format string
 * Input  : string - string
@@ -2423,25 +2488,23 @@ static inline char* stringNew(ulong n)
 /***********************************************************************\
 * Name   : stringNewBuffer
 * Purpose: new string from buffer
-* Input  : buffer - buffer (can be NULL)
-*          n      - string size (including terminating NUL)
+* Input  : buffer     - buffer (can be NULL)
+*          bufferSize - buffer size
 * Output : -
 * Return : new string
 * Notes  : string is always NULL or NUL-terminated
 \***********************************************************************/
 
-static inline char* stringNewBuffer(const char *buffer, ulong n)
+static inline char* stringNewBuffer(const char *buffer, ulong bufferSize)
 {
   char *string;
 
-  assert(n > 0);
-
-  string = (char*)malloc(n*sizeof(char));
+  string = (char*)malloc(bufferSize*sizeof(char)+1);
   if (string != NULL)
   {
     if (buffer != NULL)
     {
-      strncpy(string,buffer,n-1); string[n-1] = NUL;
+      strncpy(string,buffer,bufferSize); string[bufferSize] = NUL;
     }
     else
     {
@@ -3060,52 +3123,21 @@ static inline bool stringToDouble(const char *string, double *d)
 /***********************************************************************\
 * Name   : stringMatch
 * Purpose: match string
-* Input  : string  - string
-*          pattern - pattern
+* Input  : string            - string
+*          pattern           - pattern
+*          matchedString     - string matching regular expression (can
+*                              be NULL)
+*          matchedStringSize - size of string matching regular
+*                              expression
+*          ...               - optional matching strings of sub-patterns
+*                              (char*,ulong), last value have to be
+*                              NULL!
 * Output : -
 * Return : TRUE iff pattern match with string
 * Notes  :
 \***********************************************************************/
 
-static inline bool stringMatch(const char *string, const char *pattern)
-{
-  bool matchFlag;
-  #if defined(HAVE_PCRE) || defined(HAVE_REGEX_H)
-    regex_t regex;
-  #endif /* HAVE_PCRE || HAVE_REGEX_H */
-
-  assert(pattern != NULL);
-
-  matchFlag = FALSE;
-
-  if (string != NULL)
-  {
-    #if defined(HAVE_PCRE) || defined(HAVE_REGEX_H)
-      // compile pattern
-      if (regcomp(&regex,pattern,REG_ICASE|REG_EXTENDED) == 0)
-      {
-        // match
-        matchFlag = (regexec(&regex,
-                             string,
-                             0,  // subMatchCount
-                             NULL,  // subMatches
-                             0  // eflags
-                            ) == 0
-                    );
-
-        // free resources
-        regfree(&regex);
-      }
-    #else /* not HAVE_PCRE || HAVE_REGEX_H */
-      UNUSED_VARIABLE(string);
-      UNUSED_VARIABLE(pattern);
-
-      matchFlag = FALSE;
-    #endif /* HAVE_PCRE || HAVE_REGEX_H */
-  }
-
-  return matchFlag;
-}
+bool stringMatch(const char *string, const char *pattern, char *matchedString, ulong matchedStringSize, ...);
 
 /*---------------------------------------------------------------------*/
 
