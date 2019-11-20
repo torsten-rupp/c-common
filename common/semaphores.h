@@ -22,6 +22,7 @@
   #include <pthread.h>
 #elif defined(PLATFORM_WINDOWS)
   #include <windows.h>
+  #include <pthread.h>
 #endif /* PLATFORM_... */
 
 #include "common/global.h"
@@ -34,7 +35,7 @@
 
 /***************************** Constants *******************************/
 #ifndef NDEBUG
-  #define __SEMAPHORE_MAX_THREAD_INFO 16
+  #define __SEMAPHORE_MAX_THREAD_INFO 256
 #endif /* not NDEBUG */
 
 /***************************** Datatypes *******************************/
@@ -161,7 +162,8 @@ typedef enum
 *              ...
 *            }
 *
-*          semaphore must be unlocked manually if 'break' is used!
+*          semaphore must be unlocked manually if 'break'  or
+*          'return' is used!
 \***********************************************************************/
 
 #define SEMAPHORE_LOCKED_DO(semaphore,semaphoreLockType,timeout) \

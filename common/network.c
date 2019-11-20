@@ -33,7 +33,6 @@
 #ifdef HAVE_SYS_IOCTL_H
   #include <sys/ioctl.h>
 #endif /* HAVE_SYS_IOCTL_H */
-#include <poll.h>
 #include <signal.h>
 #ifdef HAVE_SSH2
   #include <openssl/crypto.h>
@@ -51,6 +50,7 @@
 #elif defined(PLATFORM_WINDOWS)
   #include <windows.h>
   #include <winsock2.h>
+  #include <in6addr.h>
 #endif /* PLATFORM_... */
 
 #include "common/global.h"
@@ -74,6 +74,12 @@
 #endif /* HAVE_GNU_TLS */
 
 #define SEND_TIMEOUT 30000
+
+#if   defined(PLATFORM_LINUX)
+  #define SHUTDOWN_FLAGS SHUT_RDWR
+#elif defined(PLATFORM_WINDOWS)
+  #define SHUTDOWN_FLAGS SD_BOTH
+#endif /* PLATFORM_... */
 
 /***************************** Datatypes *******************************/
 
@@ -607,7 +613,7 @@ Errors Network_connect(SocketHandle *socketHandle,
            )
         {
           error = ERRORX_(CONNECT_FAIL,errno,"%E",errno);
-          shutdown(socketHandle->handle,SHUT_RDWR);
+          shutdown(socketHandle->handle,SHUTDOWN_FLAGS);
           close(socketHandle->handle);
           return error;
         }
@@ -728,7 +734,7 @@ Errors Network_connect(SocketHandle *socketHandle,
            )
         {
           error = ERRORX_(CONNECT_FAIL,errno,"%E",errno);
-          shutdown(socketHandle->handle,SHUT_RDWR);
+          shutdown(socketHandle->handle,SHUTDOWN_FLAGS);
           close(socketHandle->handle);
           return error;
         }
@@ -737,7 +743,7 @@ Errors Network_connect(SocketHandle *socketHandle,
         socketHandle->ssh2.session = libssh2_session_init();
         if (socketHandle->ssh2.session == NULL)
         {
-          shutdown(socketHandle->handle,SHUT_RDWR);
+          shutdown(socketHandle->handle,SHUTDOWN_FLAGS);
           close(socketHandle->handle);
           return ERROR_SSH_SESSION_FAIL;
         }
@@ -769,7 +775,7 @@ Errors Network_connect(SocketHandle *socketHandle,
         {
           libssh2_session_disconnect(socketHandle->ssh2.session,"");
           libssh2_session_free(socketHandle->ssh2.session);
-          shutdown(socketHandle->handle,SHUT_RDWR);
+          shutdown(socketHandle->handle,SHUTDOWN_FLAGS);
           close(socketHandle->handle);
           return ERROR_SSH_SESSION_FAIL;
         }
@@ -852,7 +858,7 @@ Errors Network_connect(SocketHandle *socketHandle,
         {
           libssh2_session_disconnect(socketHandle->ssh2.session,"");
           libssh2_session_free(socketHandle->ssh2.session);
-          shutdown(socketHandle->handle,SHUT_RDWR);
+          shutdown(socketHandle->handle,SHUTDOWN_FLAGS);
           close(socketHandle->handle);
           return error;
         }
@@ -876,7 +882,7 @@ Errors Network_connect(SocketHandle *socketHandle,
           }
           libssh2_session_disconnect(socketHandle->ssh2.session,"");
           libssh2_session_free(socketHandle->ssh2.session);
-          shutdown(socketHandle->handle,SHUT_RDWR);
+          shutdown(socketHandle->handle,SHUTDOWN_FLAGS);
           close(socketHandle->handle);
           return error;
         }
@@ -917,7 +923,7 @@ Errors Network_connect(SocketHandle *socketHandle,
         UNUSED_VARIABLE(sshPrivateKeyData);
         UNUSED_VARIABLE(sshPrivateKeyLength);
 
-        shutdown(socketHandle->handle,SHUT_RDWR);
+        shutdown(socketHandle->handle,SHUTDOWN_FLAGS);
         close(socketHandle->handle);
         return ERROR_FUNCTION_NOT_SUPPORTED;
       #endif /* HAVE_SSH2 */
@@ -1163,7 +1169,7 @@ Errors Network_connectDescriptor(SocketHandle *socketHandle,
         UNUSED_VARIABLE(sshPrivateKeyData);
         UNUSED_VARIABLE(sshPrivateKeyLength);
 
-        shutdown(socketHandle->handle,SHUT_RDWR);
+        shutdown(socketHandle->handle,SHUTDOWN_FLAGS);
         close(socketHandle->handle);
         return ERROR_FUNCTION_NOT_SUPPORTED;
       #endif /* HAVE_SSH2 */
@@ -1212,7 +1218,7 @@ void Network_disconnect(SocketHandle *socketHandle)
         break; /* not reached */
     #endif /* NDEBUG */
   }
-  shutdown(socketHandle->handle,SHUT_RDWR);
+  shutdown(socketHandle->handle,SHUTDOWN_FLAGS);
   close(socketHandle->handle);
 }
 
@@ -1321,10 +1327,9 @@ Errors Network_receive(SocketHandle *socketHandle,
                        ulong        *bytesReceived
                       )
 {
-  sigset_t        signalMask;
-  struct timespec pollTimeout;
-  struct pollfd   pollfds[1];
-  long            n;
+  SignalMask signalMask;
+  uint       events;
+  long       n;
 
   assert(socketHandle != NULL);
   assert(bytesReceived != NULL);
@@ -1340,19 +1345,16 @@ Errors Network_receive(SocketHandle *socketHandle,
       }
       else
       {
-        // Note: ignore SIGALRM in ppoll()
-        sigemptyset(&signalMask);
-        sigaddset(&signalMask,SIGALRM);
+        // Note: ignore SIGALRM in Misc_wait()
+        #ifdef HAVE_SIGALRM
+          // Note: ignore SIGALRM in poll()/pselect()
+          MISC_SIGNAL_MASK_CLEAR(signalMask);
+          MISC_SIGNAL_MASK_SET(signalMask,SIGALRM);
+        #endif /* HAVE_SIGALRM */
 
         // wait for data
-        pollTimeout.tv_sec  = timeout/1000L;
-        pollTimeout.tv_nsec = (timeout%1000L)*1000000L;
-        pollfds[0].fd      = socketHandle->handle;
-        pollfds[0].events  = POLLIN|POLLERR|POLLNVAL;
-        pollfds[0].revents = 0;
-        if (   (ppoll(pollfds,1,&pollTimeout,&signalMask) >= 0)
-            && ((pollfds[0].revents & POLLIN) != 0)
-           )
+        events = Misc_waitHandle(socketHandle->handle,&signalMask,HANDLE_EVENT_INPUT,timeout);
+        if ((events & HANDLE_EVENT_INPUT) != 0)
         {
           // receive
           n = recv(socketHandle->handle,buffer,maxLength,0);
@@ -1362,6 +1364,7 @@ Errors Network_receive(SocketHandle *socketHandle,
         }
         else
         {
+          // disconnected
           socketHandle->isConnected = FALSE;
         }
       }
@@ -1375,25 +1378,22 @@ Errors Network_receive(SocketHandle *socketHandle,
         }
         else
         {
-          // Note: ignore SIGALRM in ppoll()
-          sigemptyset(&signalMask);
-          sigaddset(&signalMask,SIGALRM);
+          // Note: ignore SIGALRM in Misc_wait()
+          #ifdef HAVE_SIGALRM
+            // Note: ignore SIGALRM in poll()/pselect()
+            MISC_SIGNAL_MASK_CLEAR(signalMask);
+            MISC_SIGNAL_MASK_SET(signalMask,SIGALRM);
+          #endif /* HAVE_SIGALRM */
 
           // wait for data
-          pollTimeout.tv_sec  = timeout/1000L;
-          pollTimeout.tv_nsec = (timeout%1000L)*1000000L;
-          pollfds[0].fd       = socketHandle->handle;
-          pollfds[0].events   = POLLIN|POLLERR|POLLNVAL;
-          pollfds[0].revents  = 0;
-          if (   (ppoll(pollfds,1,&pollTimeout,&signalMask) >= 0)
-              && ((pollfds[0].revents & (POLLERR|POLLNVAL)) == 0)
-             )
+          events = Misc_waitHandle(socketHandle->handle,&signalMask,HANDLE_EVENT_INPUT,timeout);
+          if ((events & HANDLE_EVENT_INPUT) != 0)
           {
             // receive
             n = gnutls_record_recv(socketHandle->gnuTLS.session,buffer,maxLength);
 
-            // check if disconected
-            socketHandle->isConnected = (n > 0);
+           // check if disconected
+           socketHandle->isConnected = (n > 0);
           }
           else
           {
@@ -1427,11 +1427,10 @@ Errors Network_send(SocketHandle *socketHandle,
                     ulong        length
                    )
 {
-  ulong           sentBytes;
-  sigset_t        signalMask;
-  struct timespec pollTimeout;
-  struct pollfd   pollfds[1];
-  long            n;
+  ulong      sentBytes;
+  SignalMask signalMask;
+  uint       events;
+  long       n;
 
   assert(socketHandle != NULL);
 
@@ -1443,22 +1442,25 @@ Errors Network_send(SocketHandle *socketHandle,
       case SOCKET_TYPE_PLAIN:
         do
         {
-          // Note: ignore SIGALRM in ppoll()
-          sigemptyset(&signalMask);
-          sigaddset(&signalMask,SIGALRM);
+          // Note: ignore SIGALRM in Misc_wait()
+          #ifdef HAVE_SIGALRM
+            // Note: ignore SIGALRM in poll()/pselect()
+            MISC_SIGNAL_MASK_CLEAR(signalMask);
+            MISC_SIGNAL_MASK_SET(signalMask,SIGALRM);
+          #endif /* HAVE_SIGALRM */
 
           // wait until space in buffer is available
-          pollTimeout.tv_sec  = SEND_TIMEOUT/1000L;
-          pollTimeout.tv_nsec = (SEND_TIMEOUT%1000L)*1000000L;
-          pollfds[0].fd      = socketHandle->handle;
-          pollfds[0].events  = POLLOUT|POLLERR|POLLNVAL;
-          pollfds[0].revents = 0;
-          if (   (ppoll(pollfds,1,&pollTimeout,&signalMask) >= 0)
-              && ((pollfds[0].revents & POLLOUT) != 0)
-             )
+          events = Misc_waitHandle(socketHandle->handle,&signalMask,HANDLE_EVENT_OUTPUT,SEND_TIMEOUT);
+          if ((events & HANDLE_EVENT_OUTPUT) != 0)
           {
             // send data
-            n = send(socketHandle->handle,((byte*)buffer)+sentBytes,length-sentBytes,MSG_NOSIGNAL);
+            #ifdef HAVE_MSG_NOSIGNAL
+              #define FLAGS MSG_NOSIGNAL
+            #else
+              #define FLAGS 0
+            #endif
+            n = send(socketHandle->handle,((byte*)buffer)+sentBytes,length-sentBytes,FLAGS);
+            #undef FLAGS
             if      (n > 0) sentBytes += (ulong)n;
             else if ((n == -1) && (errno != EAGAIN)) break;
           }
@@ -1473,19 +1475,16 @@ Errors Network_send(SocketHandle *socketHandle,
         #ifdef HAVE_GNU_TLS
           do
           {
-            // Note: ignore SIGALRM in ppoll()
-            sigemptyset(&signalMask);
-            sigaddset(&signalMask,SIGALRM);
+            // Note: ignore SIGALRM in Misc_wait()
+            #ifdef HAVE_SIGALRM
+              // Note: ignore SIGALRM in poll()/pselect()
+              MISC_SIGNAL_MASK_CLEAR(signalMask);
+              MISC_SIGNAL_MASK_SET(signalMask,SIGALRM);
+            #endif /* HAVE_SIGALRM */
 
             // wait until space in buffer is available
-            pollTimeout.tv_sec  = SEND_TIMEOUT/1000L;
-            pollTimeout.tv_nsec = (SEND_TIMEOUT%1000L)*1000000L;
-            pollfds[0].fd      = socketHandle->handle;
-            pollfds[0].events  = POLLOUT|POLLERR|POLLNVAL;
-            pollfds[0].revents = 0;
-            if (   (ppoll(pollfds,1,&pollTimeout,&signalMask) >= 0)
-                && ((pollfds[0].revents & POLLOUT) != 0)
-               )
+            events = Misc_waitHandle(socketHandle->handle,&signalMask,HANDLE_EVENT_OUTPUT,SEND_TIMEOUT);
+            if ((events & HANDLE_EVENT_OUTPUT) != 0)
             {
               // send data
               n = gnutls_record_send(socketHandle->gnuTLS.session,((byte*)buffer)+sentBytes,length-sentBytes);
@@ -1621,7 +1620,7 @@ Errors Network_initServer(ServerSocketHandle *serverSocketHandle,
   if (setsockopt(serverSocketHandle->handle,SOL_SOCKET,SO_REUSEADDR,(void*)&n,sizeof(int)) != 0)
   {
     error = ERRORX_(CONNECT_FAIL,errno,"%E",errno);
-    shutdown(serverSocketHandle->handle,SHUT_RDWR);
+    shutdown(serverSocketHandle->handle,SHUTDOWN_FLAGS);
     close(serverSocketHandle->handle);
     return error;
   }
@@ -1637,7 +1636,7 @@ Errors Network_initServer(ServerSocketHandle *serverSocketHandle,
      )
   {
     error = ERRORX_(CONNECT_FAIL,errno,"%E",errno);
-    shutdown(serverSocketHandle->handle,SHUT_RDWR);
+    shutdown(serverSocketHandle->handle,SHUTDOWN_FLAGS);
     close(serverSocketHandle->handle);
     return error;
   }
@@ -1658,19 +1657,19 @@ Errors Network_initServer(ServerSocketHandle *serverSocketHandle,
         // check if all key files exists
         if (caData == NULL)
         {
-          shutdown(serverSocketHandle->handle,SHUT_RDWR);
+          shutdown(serverSocketHandle->handle,SHUTDOWN_FLAGS);
           close(serverSocketHandle->handle);
           return ERROR_NO_TLS_CA;
         }
         if (certData == NULL)
         {
-          shutdown(serverSocketHandle->handle,SHUT_RDWR);
+          shutdown(serverSocketHandle->handle,SHUTDOWN_FLAGS);
           close(serverSocketHandle->handle);
           return ERROR_NO_TLS_CERTIFICATE;
         }
         if (keyData == NULL)
         {
-          shutdown(serverSocketHandle->handle,SHUT_RDWR);
+          shutdown(serverSocketHandle->handle,SHUTDOWN_FLAGS);
           close(serverSocketHandle->handle);
           return ERROR_NO_TLS_KEY;
         }
@@ -1678,7 +1677,7 @@ Errors Network_initServer(ServerSocketHandle *serverSocketHandle,
         // check if certificate is valid
         if (gnutls_x509_crt_init(&cert) != GNUTLS_E_SUCCESS)
         {
-          shutdown(serverSocketHandle->handle,SHUT_RDWR);
+          shutdown(serverSocketHandle->handle,SHUTDOWN_FLAGS);
           close(serverSocketHandle->handle);
           return ERROR_INVALID_TLS_CERTIFICATE;
         }
@@ -1687,7 +1686,7 @@ Errors Network_initServer(ServerSocketHandle *serverSocketHandle,
         if (gnutls_x509_crt_import(cert,&datum,GNUTLS_X509_FMT_PEM) != GNUTLS_E_SUCCESS)
         {
           gnutls_x509_crt_deinit(cert);
-          shutdown(serverSocketHandle->handle,SHUT_RDWR);
+          shutdown(serverSocketHandle->handle,SHUTDOWN_FLAGS);
           close(serverSocketHandle->handle);
           return ERROR_INVALID_TLS_CERTIFICATE;
         }
@@ -1697,7 +1696,7 @@ Errors Network_initServer(ServerSocketHandle *serverSocketHandle,
           if (time(NULL) < certActivationTime)
           {
             gnutls_x509_crt_deinit(cert);
-            shutdown(serverSocketHandle->handle,SHUT_RDWR);
+            shutdown(serverSocketHandle->handle,SHUTDOWN_FLAGS);
             close(serverSocketHandle->handle);
             return ERRORX_(TLS_CERTIFICATE_NOT_ACTIVE,0,"%s",Misc_formatDateTimeCString(buffer,sizeof(buffer),(uint64)certActivationTime,DATE_TIME_FORMAT_LOCALE));
           }
@@ -1708,7 +1707,7 @@ Errors Network_initServer(ServerSocketHandle *serverSocketHandle,
           if (time(NULL) > certExpireTime)
           {
             gnutls_x509_crt_deinit(cert);
-            shutdown(serverSocketHandle->handle,SHUT_RDWR);
+            shutdown(serverSocketHandle->handle,SHUTDOWN_FLAGS);
             close(serverSocketHandle->handle);
             return ERRORX_(TLS_CERTIFICATE_EXPIRED,0,"%s",Misc_formatDateTimeCString(buffer,sizeof(buffer),(uint64)certExpireTime,DATE_TIME_FORMAT_LOCALE));
           }
@@ -1732,7 +1731,7 @@ or
         if (result < 0)
         {
           gnutls_certificate_free_credentials(serverSocketHandle->gnuTLSCredentials);
-          shutdown(socketHandle->handle,SHUT_RDWR);
+          shutdown(serverSocketHandle->handle,SHUTDOWN_FLAGS);
           close(serverSocketHandle->handle);
           return ERROR_INVALID_TLS_CA;
         }
@@ -1785,7 +1784,7 @@ void Network_doneServer(ServerSocketHandle *serverSocketHandle)
         break; /* not reached */
     #endif /* NDEBUG */
   }
-  shutdown(serverSocketHandle->handle,SHUT_RDWR);
+  shutdown(serverSocketHandle->handle,SHUTDOWN_FLAGS);
   close(serverSocketHandle->handle);
 }
 
@@ -1918,7 +1917,7 @@ Errors Network_accept(SocketHandle             *socketHandle,
   if (socketHandle->handle == -1)
   {
     error = ERRORX_(CONNECT_FAIL,errno,"%E",errno);
-    shutdown(socketHandle->handle,SHUT_RDWR);
+    shutdown(socketHandle->handle,SHUTDOWN_FLAGS);
     close(socketHandle->handle);
     return error;
   }
@@ -2179,6 +2178,10 @@ bool Network_isLocalHost(const SocketAddress *socketAddress)
     struct in_addr v4;
     struct in6_addr v6;
   } address;
+  #if   defined(PLATFORM_LINUX)
+  #elif defined(PLATFORM_WINDOWS)
+    int addressSize;
+  #endif /* PLATFORM_... */
 
   assert(socketAddress != NULL);
 
@@ -2188,12 +2191,26 @@ bool Network_isLocalHost(const SocketAddress *socketAddress)
     case SOCKET_ADDRESS_TYPE_NONE:
       break;
     case SOCKET_ADDRESS_TYPE_V4:
-      inet_pton(AF_INET,"127.0.0.1",&address.v4);
-      isLocalHost = (memcmp(&socketAddress->address.v4,&address.v4,sizeof(socketAddress->address.v4)) == 0);
+      #if   defined(PLATFORM_LINUX)
+        inet_pton(AF_INET,"127.0.0.1",&address.v4);
+        isLocalHost = (memcmp(&socketAddress->address.v4,&address.v4,sizeof(socketAddress->address.v4)) == 0);
+      #elif defined(PLATFORM_WINDOWS)
+        addressSize = sizeof(socketAddress->address.v4);
+        isLocalHost =    (WSAStringToAddressA("127.0.0.1",AF_INET,NULL,(LPSOCKADDR)&address.v4,&addressSize) == 0)
+                      && (addressSize == sizeof(socketAddress->address.v4))
+                      && (memcmp(&socketAddress->address.v4,&address.v4,sizeof(socketAddress->address.v4)) == 0);
+      #endif /* PLATFORM_... */
       break;
     case SOCKET_ADDRESS_TYPE_V6:
-      inet_pton(AF_INET,"::1",&address.v6);
-      isLocalHost = (memcmp(&socketAddress->address.v6,&address.v6,sizeof(socketAddress->address.v6)) == 0);
+      #if   defined(PLATFORM_LINUX)
+        inet_pton(AF_INET,"::1",&address.v6);
+        isLocalHost = (memcmp(&socketAddress->address.v6,&address.v6,sizeof(socketAddress->address.v6)) == 0);
+      #elif defined(PLATFORM_WINDOWS)
+        addressSize = sizeof(socketAddress->address.v6);
+        isLocalHost =    (WSAStringToAddressA("::1",AF_INET6,NULL,(LPSOCKADDR)&address.v6,&addressSize) == 0)
+                      && (addressSize == sizeof(socketAddress->address.v6))
+                      && (memcmp(&socketAddress->address.v6,&address.v6,sizeof(socketAddress->address.v6)) == 0);
+      #endif /* PLATFORM_... */
       break;
   }
 

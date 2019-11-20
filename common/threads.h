@@ -26,9 +26,6 @@
 /****************** Conditional compilation switches *******************/
 
 /***************************** Constants *******************************/
-//TODO: correct usage?
-#define THREAD_ID_NONE     -1
-
 #define THREAD_NUMBER_NONE 0
 
 /***************************** Datatypes *******************************/
@@ -71,6 +68,7 @@ typedef struct
 } ThreadLocalStorage;
 
 /***************************** Variables *******************************/
+extern const ThreadId THREAD_ID_NONE;
 
 /****************************** Macros *********************************/
 
