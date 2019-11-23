@@ -917,15 +917,24 @@ uint64 Misc_parseDateTime(const char *string)
   uint       z;
   const char *s;
   uint64     dateTime;
+  #if   defined(PLATFORM_LINUX)
+  #elif defined(PLATFORM_WINDOWS)
+  #endif /* PLATFORM_... */
 
   assert(string != NULL);
 
-  #ifdef HAVE_GETDATE_R
+  #if   defined(HAVE_GETDATE_R)
     memClear(&tmBuffer,sizeof(struct tm));
     tm = (getdate_r(string,&tmBuffer) == 0) ? &tmBuffer : NULL;
-  #else /* not HAVE_GETDATE_R */
+  #elif defined(HAVE_GETDATE)
     tm = getdate(string);
-  #endif /* HAVE_GETDATE_R */
+   #else
+#ifndef WERROR
+#warning implement strptime
+#endif
+//TODO: use http://cvsweb.netbsd.org/bsdweb.cgi/src/lib/libc/time/strptime.c?rev=HEAD
+    tm = NULL;
+  #endif /* HAVE_GETDATE... */
 
   if (tm == NULL)
   {
@@ -933,7 +942,15 @@ uint64 Misc_parseDateTime(const char *string)
     z = 0;
     while ((z < SIZE_OF_ARRAY(DATE_TIME_FORMATS)) && (tm == NULL))
     {
-      s = (const char*)strptime(string,DATE_TIME_FORMATS[z],&tmBuffer);
+      #ifdef HAVE_STRPTIME
+        s = (const char*)strptime(string,DATE_TIME_FORMATS[z],&tmBuffer);
+      #else
+#ifndef WERROR
+#warning implement strptime
+#endif
+//TODO: use http://cvsweb.netbsd.org/bsdweb.cgi/src/lib/libc/time/strptime.c?rev=HEAD
+        s = NULL;
+      #endif
       if ((s != NULL) && ((*s) == '\0'))
       {
         tm = &tmBuffer;
@@ -1219,12 +1236,16 @@ String Misc_expandMacros(String           string,
     } \
     while (0)
 
-  String expanded;
-  bool   macroFlag;
-  ulong  i;
-  uint   j;
-  char   name[128];
-  char   format[128];
+  String          expanded;
+  bool            macroFlag;
+  ulong           i;
+  uint            j;
+  char            name[128];
+  char            format[128];
+  CStringIterator cStringIterator;
+  Codepoint       codepoint;
+  StringIterator  stringIterator;
+  char            ch;
 
   assert(string != NULL);
   assert(templateString != NULL);
@@ -1386,10 +1407,44 @@ String Misc_expandMacros(String           string,
                   String_appendFormat(expanded,format,macros[j].value.d);
                   break;
                 case TEXT_MACRO_TYPE_CSTRING:
-                  String_appendFormat(expanded,format,macros[j].value.s);
+                  if (expandMacroCharacter)
+                  {
+                    String_appendFormat(expanded,format,macros[j].value.s);
+                  }
+                  else
+                  {
+                    CSTRING_CHAR_ITERATE(macros[j].value.s,cStringIterator,codepoint)
+                    {
+                      if (codepoint != '%')
+                      {
+                        String_appendChar(expanded,codepoint);
+                      }
+                      else
+                      {
+                        String_appendCString(expanded,"%%");
+                      }
+                    }
+                  }
                   break;
                 case TEXT_MACRO_TYPE_STRING:
-                  String_appendFormat(expanded,format,macros[j].value.string);
+                  if (expandMacroCharacter)
+                  {
+                    String_appendFormat(expanded,format,macros[j].value.string);
+                  }
+                  else
+                  {
+                    STRING_CHAR_ITERATE(macros[j].value.string,stringIterator,ch)
+                    {
+                      if (ch != '%')
+                      {
+                        String_appendChar(expanded,ch);
+                      }
+                      else
+                      {
+                        String_appendCString(expanded,"%%");
+                      }
+                    }
+                  }
                   break;
                 #ifndef NDEBUG
                   default:
@@ -1458,6 +1513,221 @@ String Misc_expandMacros(String           string,
 }
 
 /*---------------------------------------------------------------------*/
+
+uint Misc_waitHandle(int        handle,
+                     SignalMask *signalMask,
+                     uint       events,
+                     long       timeout
+                    )
+{
+  #if  defined(PLATFORM_LINUX)
+    struct pollfd   pollfds[1];
+    struct timespec pollTimeout;
+  #elif defined(PLATFORM_WINDOWS)
+    #ifdef HAVE_WSAPOLL
+      WSAPOLLFD pollfds[1];
+    #else /* not HAVE_WSAPOLL */
+      fd_set          readfds;
+      fd_set          writefds;
+      fd_set          exceptionfds;
+      #ifdef HAVE_PSELECT
+        struct timespec selectTimeout;
+      #else /* not HAVE_PSELECT */
+        struct timeval selectTimeout;
+      #endif /* HAVE_PSELECT */
+      int             n;
+    #endif /* HAVE_WSAPOLL */
+  #endif /* PLATFORM_... */
+
+  assert(handle >= 0);
+
+  #if   defined(PLATFORM_LINUX)
+    pollfds[0].fd       = handle;
+    pollfds[0].events   = events;
+    pollfds[0].revents  = 0;
+    pollTimeout.tv_sec  = (long)(timeout /MS_PER_SECOND);
+    pollTimeout.tv_nsec = (long)((timeout%MS_PER_SECOND)*NS_PER_MS);
+    events = (ppoll(pollfds,1,&pollTimeout,signalMask) > 0) ? pollfds[0].revents : 0;
+  #elif defined(PLATFORM_WINDOWS)
+    #ifdef HAVE_WSAPOLL
+      pollfds[0].fd      = handle;
+      pollfds[0].events  = events;
+      pollfds[0].revents = 0;
+      events = (WSAPoll(waitHandle->pollfds,waitHandle->handleCount,timeout) > 0) ? pollfds[0].revents : 0;
+    #else /* not HAVE_WSAPOLL */
+      FD_ZERO(&readfds);
+      FD_ZERO(&writefds);
+      FD_ZERO(&exceptionfds);
+      FD_SET(handle,&readfds);
+      FD_SET(handle,&writefds);
+      FD_SET(handle,&exceptionfds);
+      #ifdef HAVE_PSELECT
+        selectTimeout.tv_sec  = (long)(timeout/MS_PER_SECOND);
+        selectTimeout.tv_nsec = (long)(timeout%MS_PER_SECOND)*NS_PER_MS;
+        n = pselect(handle+1,&readfds,&writefds,&exceptionfds,&selectTimeout,signalMask);
+      #else /* not HAVE_PSELECT */
+        selectTimeout.tv_sec  = (long)(timeout/MS_PER_SECOND);
+        selectTimeout.tv_usec = (long)(timeout%MS_PER_SECOND)*US_PER_MS;
+        n = select(handle+1,&readfds,&writefds,&exceptionfds,&selectTimeout);
+      #endif /* HAVE_PSELECT */
+      if (n > 0)
+      {
+        events = 0;
+        if (FD_ISSET(handle,&readfds     )) events |= HANDLE_EVENT_INPUT;
+        if (FD_ISSET(handle,&writefds    )) events |= HANDLE_EVENT_OUTPUT;
+        if (FD_ISSET(handle,&exceptionfds)) events |= HANDLE_EVENT_ERROR;
+      }
+      else
+      {
+        events = 0;
+      }
+    #endif /* HAVE_WSAPOLL */
+  #endif /* PLATFORM_... */
+
+  return events;
+}
+
+void Misc_initWait(WaitHandle *waitHandle, uint maxHandleCount)
+{
+  assert(waitHandle != NULL);
+
+  #if   defined(PLATFORM_LINUX)
+    waitHandle->pollfds = (struct pollfd*)malloc(maxHandleCount*sizeof(struct pollfd));
+    if (waitHandle->pollfds == NULL)
+    {
+      HALT_INSUFFICIENT_MEMORY();
+    }
+  #elif defined(PLATFORM_WINDOWS)
+    #ifdef HAVE_WSAPOLL
+      waitHandle->pollfds = (struct pollfd*)malloc(maxHandleCount*sizeof(WSAPOLLFD));
+      if (waitHandle->pollfds == NULL)
+      {
+        HALT_INSUFFICIENT_MEMORY();
+      }
+    #else /* not HAVE_WSAPOLL */
+    #endif /* HAVE_WSAPOLL */
+  #endif /* PLATFORM_... */
+  waitHandle->handleCount    = 0;
+  waitHandle->maxHandleCount = maxHandleCount;
+}
+
+void Misc_doneWait(WaitHandle *waitHandle)
+{
+  assert(waitHandle != NULL);
+
+  #if   defined(PLATFORM_LINUX)
+    assert(waitHandle->pollfds != NULL);
+
+    free(waitHandle->pollfds);
+  #elif defined(PLATFORM_WINDOWS)
+    #ifdef HAVE_WSAPOLL
+      assert(waitHandle->pollfds != NULL);
+
+      free(waitHandle->pollfds);
+    #else /* not HAVE_WSAPOLL */
+    #endif /* HAVE_WSAPOLL */
+  #endif /* PLATFORM_... */
+}
+
+void Misc_waitReset(WaitHandle *waitHandle)
+{
+  assert(waitHandle != NULL);
+
+  waitHandle->handleCount = 0;
+  #if   defined(PLATFORM_LINUX)
+  #elif defined(PLATFORM_WINDOWS)
+    #ifdef HAVE_WSAPOLL
+    #else /* not HAVE_WSAPOLL */
+      FD_ZERO(&waitHandle->readfds);
+      FD_ZERO(&waitHandle->writefds);
+      FD_ZERO(&waitHandle->exceptionfds);
+    #endif /* HAVE_WSAPOLL */
+  #endif /* PLATFORM_... */
+}
+
+void Misc_waitAdd(WaitHandle *waitHandle, int handle, uint events)
+{
+  assert(waitHandle != NULL);
+
+  #if   defined(PLATFORM_LINUX)
+    assert(waitHandle->pollfds != NULL);
+
+    if (waitHandle->handleCount >= waitHandle->maxHandleCount)
+    {
+      waitHandle->maxHandleCount += 64;
+      waitHandle->pollfds = (struct pollfd*)realloc(waitHandle->pollfds,waitHandle->maxHandleCount*sizeof(struct pollfd));
+      if (waitHandle->pollfds == NULL) HALT_INSUFFICIENT_MEMORY();
+    }
+    waitHandle->pollfds[waitHandle->handleCount].fd      = handle;
+    waitHandle->pollfds[waitHandle->handleCount].events  = events;
+    waitHandle->pollfds[waitHandle->handleCount].revents = 0;
+  #elif defined(PLATFORM_WINDOWS)
+    #ifdef HAVE_WSAPOLL
+      assert(waitHandle->pollfds != NULL);
+
+      if (waitHandle->handleCount >= waitHandle->maxHandleCount)
+      {
+        waitHandle->maxHandleCount += 64;
+        waitHandle->pollfds = (struct pollfd*)realloc(waitHandle->pollfds,waitHandle->maxHandleCount*sizeof(struct WSAPOLLFD));
+        if (waitHandle->pollfds == NULL) HALT_INSUFFICIENT_MEMORY();
+      }
+      waitHandle->pollfds[waitHandle->handleCount].fd      = handle;
+      waitHandle->pollfds[waitHandle->handleCount].events  = events;
+      waitHandle->pollfds[waitHandle->handleCount].revents = 0;
+    #else /* not HAVE_WSAPOLL */
+      assert(handle < FD_SETSIZE);
+
+      if ((events & HANDLE_EVENT_INPUT ) != 0) FD_SET(handle,&waitHandle->readfds);
+      if ((events & HANDLE_EVENT_OUTPUT) != 0) FD_SET(handle,&waitHandle->writefds);
+      if ((events & HANDLE_EVENT_ERROR ) != 0) FD_SET(handle,&waitHandle->exceptionfds);
+      waitHandle->handleCount = MAX(handle,waitHandle->handleCount);
+    #endif /* HAVE_WSAPOLL */
+  #endif /* PLATFORM_... */
+  waitHandle->handleCount++;
+}
+
+int Misc_waitHandles(WaitHandle *waitHandle,
+                     SignalMask *signalMask,
+                     long       timeout
+                    )
+{
+  #if  defined(PLATFORM_LINUX)
+    struct timespec pollTimeout;
+  #elif defined(PLATFORM_WINDOWS)
+    #ifdef HAVE_WSAPOLL
+    #else /* not HAVE_WSAPOLL */
+      #ifdef HAVE_PSELECT
+        struct timespec selectTimeout;
+      #else /* not HAVE_PSELECT */
+        struct timeval selectTimeout;
+      #endif /* HAVE_PSELECT */
+    #endif /* HAVE_WSAPOLL */
+  #endif /* PLATFORM_... */
+
+  assert(waitHandle != NULL);
+
+  #if   defined(PLATFORM_LINUX)
+    assert(waitHandle->pollfds != NULL);
+
+    pollTimeout.tv_sec  = (long)(timeout /MS_PER_SECOND);
+    pollTimeout.tv_nsec = (long)((timeout%MS_PER_SECOND)*NS_PER_MS);
+    return ppoll(waitHandle->pollfds,waitHandle->handleCount,&pollTimeout,signalMask);
+  #elif defined(PLATFORM_WINDOWS)
+    #ifdef HAVE_WSAPOLL
+      return WSAPoll(waitHandle->pollfds,waitHandle->handleCount,timeout);
+    #else /* not HAVE_WSAPOLL */
+      #ifdef HAVE_PSELECT
+        selectTimeout.tv_sec  = (long)(timeout/MS_PER_SECOND);
+        selectTimeout.tv_nsec = (long)(timeout%MS_PER_SECOND)*NS_PER_MS;
+        return pselect(waitHandle->handleCount+1,&waitHandle->readfds,&waitHandle->writefds,&waitHandle->exceptionfds,&selectTimeout,signalMask);
+      #else /* not HAVE_PSELECT */
+        selectTimeout.tv_sec  = (long)(timeout/MS_PER_SECOND);
+        selectTimeout.tv_usec = (long)(timeout%MS_PER_SECOND)*US_PER_MS;
+        return select(waitHandle->handleCount+1,&waitHandle->readfds,&waitHandle->writefds,&waitHandle->exceptionfds,&selectTimeout);
+      #endif /* HAVE_PSELECT */
+    #endif /* HAVE_WSAPOLL */
+  #endif /* PLATFORM_... */
+}
 
 bool Misc_findCommandInPath(String     command,
                             const char *name
@@ -1580,9 +1850,9 @@ stringNode = stringNode->next;
     error = execute(String_cString(command),
                     arguments,
                     NULL,  // errorText
-                    CALLBACK(stdoutExecuteIOFunction,stdoutExecuteIOUserData),
+                    CALLBACK_(stdoutExecuteIOFunction,stdoutExecuteIOUserData),
                     0,  // stdoutStripCount
-                    CALLBACK(stderrExecuteIOFunction,stderrExecuteIOUserData),
+                    CALLBACK_(stderrExecuteIOFunction,stderrExecuteIOUserData),
                     0  // stderrStripCount
                    );
 
@@ -1677,9 +1947,9 @@ Errors Misc_executeScript(const char        *script,
     error = execute(String_cString(command),
                     arguments,
                     script,
-                    CALLBACK(stdoutExecuteIOFunction,stdoutExecuteIOUserData),
+                    CALLBACK_(stdoutExecuteIOFunction,stdoutExecuteIOUserData),
                     0,  // stdoutStripCount
-                    CALLBACK(stderrExecuteIOFunction,stderrExecuteIOUserData),
+                    CALLBACK_(stderrExecuteIOFunction,stderrExecuteIOUserData),
                     String_length(tmpFileName)+1+1
                    );
 
@@ -1777,16 +2047,23 @@ bool Misc_getYesNo(const char *message)
 
 void Misc_getConsoleSize(uint *rows, uint *columns)
 {
-  struct winsize size;
+  #if   defined(PLATFORM_LINUX)
+    struct winsize size;
+  #elif defined(PLATFORM_WINDOWS)
+  #endif /* PLATFORM_... */
 
   if (rows    != NULL) (*rows   ) = 25;
   if (columns != NULL) (*columns) = 80;
 
-  if (ioctl(STDOUT_FILENO,TIOCGWINSZ,&size) == 0)
-  {
-    if (rows    != NULL) (*rows   ) = size.ws_row;
-    if (columns != NULL) (*columns) = size.ws_col;
-  }
+  #if   defined(PLATFORM_LINUX)
+    if (ioctl(STDOUT_FILENO,TIOCGWINSZ,&size) == 0)
+    {
+      if (rows    != NULL) (*rows   ) = size.ws_row;
+      if (columns != NULL) (*columns) = size.ws_col;
+    }
+  #elif defined(PLATFORM_WINDOWS)
+    // TODO: NYI
+  #endif /* PLATFORM_... */
 }
 
 /*---------------------------------------------------------------------*/

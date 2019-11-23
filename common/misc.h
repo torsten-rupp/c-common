@@ -18,6 +18,13 @@
 #include <stdio.h>
 #include <assert.h>
 
+// file/socket handle events
+#if   defined(PLATFORM_LINUX)
+  #include <poll.h>
+#elif defined(PLATFORM_WINDOWS)
+  #include <winsock2.h>
+#endif /* PLATFORM_... */
+
 #include "common/global.h"
 #include "common/strings.h"
 
@@ -56,7 +63,7 @@ typedef enum
   WEEKDAY_SUN = 6,
 } WeekDays;
 
-// length of UUID string (xxxxxxxx-xxxx-Mxxx-Nxxx-xxxxxxxxxxxx)
+// length of UUID string (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
 #define MISC_UUID_STRING_LENGTH 36
 
 // text macro patterns
@@ -65,6 +72,32 @@ typedef enum
 #define TEXT_MACRO_PATTERN_DOUBLE    "[+-]{0,1}(\\d+|\\d+\.\\d*|\\d*\.\\d+)"
 #define TEXT_MACRO_PATTERN_CSTRING   "\\S+"
 #define TEXT_MACRO_PATTERN_STRING    "\\S+"
+
+// file/socket handle events
+#if   defined(PLATFORM_LINUX)
+  #define HANDLE_EVENT_INPUT   POLLIN
+  #define HANDLE_EVENT_OUTPUT  POLLOUT
+  #define HANDLE_EVENT_ERROR   POLLERR
+  #define HANDLE_EVENT_INVALID POLLNVAL
+#elif defined(PLATFORM_WINDOWS)
+  #ifdef HAVE_WSAPOLL
+    #define HANDLE_EVENT_INPUT   POLLIN
+    #define HANDLE_EVENT_OUTPUT  POLLOUT
+    #define HANDLE_EVENT_ERROR   POLLERR
+    #define HANDLE_EVENT_INVALID POLLNVAL
+  #else /* not HAVE_WSAPOLL */
+    #define HANDLE_EVENT_INPUT   (1 << 0)
+    #define HANDLE_EVENT_OUTPUT  (1 << 1)
+    #define HANDLE_EVENT_ERROR   (1 << 2)
+    #define HANDLE_EVENT_INVALID (1 << 3)
+  #endif /* HAVE_WSAPOLL */
+#endif /* PLATFORM_... */
+#define HANDLE_EVENT_ALL (  HANDLE_EVENT_INPUT \
+                          | HANDLE_EVENT_OUTPUT \
+                          | HANDLE_EVENT_ERROR \
+                          | HANDLE_EVENT_INPUT \
+                          | HANDLE_EVENT_INVALID \
+                         )
 
 /***************************** Datatypes *******************************/
 
@@ -84,7 +117,11 @@ typedef struct
 #endif
 
 // timeout info
-typedef uint64 TimeoutInfo;
+typedef struct
+{
+  long   timeout;
+  uint64 endTimestamp;
+} TimeoutInfo;
 
 // text macros
 typedef enum
@@ -111,12 +148,46 @@ typedef struct
   const char *pattern;
 } TextMacro;
 
+// internal text macros type
+typedef struct
+{
+  uint            count;
+  const uint      maxCount;
+  const TextMacro *data;
+} __TextMacros;
+
 // expand types
 typedef enum
 {
   EXPAND_MACRO_MODE_STRING,
   EXPAND_MACRO_MODE_PATTERN
 } ExpandMacroModes;
+
+// signal mask
+#ifdef HAVE_SIGSET_T
+  typedef sigset_t SignalMask;
+#else /* not HAVE_SIGSET_T */
+  typedef uint SignalMask;
+#endif /* HAVE_SIGSET_T */
+
+// file/socket wait handle
+typedef struct
+{
+  #if   defined(PLATFORM_LINUX)
+    struct pollfd *pollfds;
+  #elif defined(PLATFORM_WINDOWS)
+    #ifdef HAVE_WSAPOLL
+      WSAPOLLFD   *pollfds;
+    #else /* not HAVE_WSAPOLL */
+      int         handles[FD_SETSIZE];
+      fd_set      readfds;
+      fd_set      writefds;
+      fd_set      exceptionfds;
+    #endif /* HAVE_WSAPOLL */
+  #endif /* PLATFORM_... */
+  uint          handleCount;
+  uint          maxHandleCount;
+} WaitHandle;
 
 /***********************************************************************\
 * Name   : ExecuteIOFunction
@@ -153,6 +224,65 @@ typedef struct
 /***************************** Variables *******************************/
 
 /****************************** Macros *********************************/
+
+// define text macros variable
+#define __TEXT_MACROS_IDENTIFIER1(name,suffix) __TEXT_MACROS_IDENTIFIER2(name,suffix)
+#define __TEXT_MACROS_IDENTIFIER2(name,suffix) __##name##suffix
+#ifndef NDEBUG
+  #define TextMacros(name,count) \
+    TextMacro __TEXT_MACROS_IDENTIFIER1(name,_data)[count]; \
+    __TextMacros name = \
+    { \
+      0, \
+      count, \
+      __TEXT_MACROS_IDENTIFIER1(name,_data) \
+    }
+#else /* NDEBUG */
+  #define TextMacros(name,count) \
+    TextMacro __TEXT_MACROS_IDENTIFIER1(name,_data)[count]; \
+    __TextMacros name = \
+    { \
+      0, \
+      count, \
+      __TEXT_MACROS_IDENTIFIER1(name,_data) \
+    }
+#endif /* not NDEBUG */
+
+/***********************************************************************\
+* Name   : TEXT_MACROS_INIT
+* Purpose: init text macros
+* Input  : variable - variable
+* Output : -
+* Return : -
+* Notes  : usage:
+*          TextMacros (textMacros, 3);
+*
+*          TEXT_MACROS_INIT(textMacros)
+*          {
+*            TEXT_MACRO_INTEGER(name,value,pattern);
+*            TEXT_MACRO_CSTRING(name,value,pattern);
+*            TEXT_MACRO_STRING (name,value,pattern);
+*          }
+*          Misc_expandMacros(...,
+*                            textMacros.data,
+*                            textMacros.count,
+*                            ...
+*                           );
+\***********************************************************************/
+
+#ifndef NDEBUG
+  #define TEXT_MACROS_INIT(variable) \
+    for (TextMacro *__textMacro = (TextMacro*)&(variable).data[0], *__textMacroEnd = (TextMacro*)&(variable).data[variable.maxCount]; \
+         __textMacro <= &(variable).data[0]; \
+         (variable).count = __textMacro-&(variable).data[0] \
+        )
+#else /* NDEBUG */
+  #define TEXT_MACROS_INIT(variable) \
+    for (TextMacro *__textMacro = (TextMacro*)&(variable).data[0]; \
+         __textMacro <= &(variable).data[0]; \
+         (variable).count = __textMacro-&(variable).data[0] \
+        )
+#endif /* not NDEBUG */
 
 /***********************************************************************\
 * Name   : TEXT_MACRO_*
@@ -202,52 +332,158 @@ typedef struct
   }
 
 /***********************************************************************\
-* Name   : TEXT_MACRO_*
+* Name   : TEXT_MACRO_N_*
 * Purpose: init text macro
-* Input  : macro    - macro variable
-*          _name    - macro name (including %)
-*          _value   - value
-*          _pattern - regular expression pattern
+* Input  : textMacro - text macro variable
+*          _name     - macro name (including %)
+*          _value    - value
+*          _pattern  - regular expression pattern
 * Output : -
 * Return : -
 * Notes  : -
 \***********************************************************************/
 
-#define TEXT_MACRO_N_INTEGER(macro,_name,_value,_pattern) \
+#define TEXT_MACRO_N_INTEGER(textMacro,_name,_value,_pattern) \
   do { \
-    macro.type    = TEXT_MACRO_TYPE_INTEGER; \
-    macro.name    = _name; \
-    macro.value.i = _value; \
-    macro.pattern = _pattern; \
+    textMacro.type    = TEXT_MACRO_TYPE_INTEGER; \
+    textMacro.name    = _name; \
+    textMacro.value.i = _value; \
+    textMacro.pattern = _pattern; \
   } while (0)
-#define TEXT_MACRO_N_INTEGER64(macro,_name,_value,_pattern) \
+#define TEXT_MACRO_N_INTEGER64(textMacro,_name,_value,_pattern) \
   do { \
-    macro.type    = TEXT_MACRO_TYPE_INTEGER64; \
-    macro.name    = _name; \
-    macro.value.l = _value; \
-    macro.pattern = _pattern; \
+    textMacro.type    = TEXT_MACRO_TYPE_INTEGER64; \
+    textMacro.name    = _name; \
+    textMacro.value.l = _value; \
+    textMacro.pattern = _pattern; \
   } while (0)
-#define TEXT_MACRO_N_DOUBLE(macro,_name,_value,_pattern) \
+#define TEXT_MACRO_N_DOUBLE(textMacro,_name,_value,_pattern) \
   do { \
-    macro.type    = TEXT_MACRO_TYPE_DOUBLE; \
-    macro.name    = _name; \
-    macro.value.d = _value; \
-    macro.pattern = _pattern; \
+    textMacro.type    = TEXT_MACRO_TYPE_DOUBLE; \
+    textMacro.name    = _name; \
+    textMacro.value.d = _value; \
+    textMacro.pattern = _pattern; \
   } while (0)
-#define TEXT_MACRO_N_CSTRING(macro,_name,_value,_pattern) \
+#define TEXT_MACRO_N_CSTRING(textMacro,_name,_value,_pattern) \
   do { \
-    macro.type    = TEXT_MACRO_TYPE_CSTRING; \
-    macro.name    = _name; \
-    macro.value.s = _value; \
-    macro.pattern = _pattern; \
+    textMacro.type    = TEXT_MACRO_TYPE_CSTRING; \
+    textMacro.name    = _name; \
+    textMacro.value.s = _value; \
+    textMacro.pattern = _pattern; \
   } while (0)
-#define TEXT_MACRO_N_STRING(macro,_name,_value,_pattern) \
+#define TEXT_MACRO_N_STRING(textMacro,_name,_value,_pattern) \
   do { \
-    macro.type         = TEXT_MACRO_TYPE_STRING; \
-    macro.name         = _name; \
-    macro.value.string = (String)_value; \
-    macro.pattern      = _pattern; \
+    textMacro.type         = TEXT_MACRO_TYPE_STRING; \
+    textMacro.name         = _name; \
+    textMacro.value.string = (String)_value; \
+    textMacro.pattern      = _pattern; \
   } while (0)
+
+/***********************************************************************\
+* Name   : TEXT_MACRO_X_*
+* Purpose: init text macro
+* Input  : name    - macro name (including %)
+*          value   - value
+*          pattern - regular expression pattern
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+#define TEXT_MACRO_X_INTEGER(_name,_value,_pattern) \
+  do { \
+    assert(__textMacro < __textMacroEnd); \
+    __textMacro->type    = TEXT_MACRO_TYPE_INTEGER; \
+    __textMacro->name    = _name; \
+    __textMacro->value.i = _value; \
+    __textMacro->pattern = _pattern; \
+    __textMacro++; \
+  } while (0)
+#define TEXT_MACRO_X_INTEGER64(_name,_value,_pattern) \
+  do { \
+    assert(__textMacro < __textMacroEnd); \
+    __textMacro->type    = TEXT_MACRO_TYPE_INTEGER64; \
+    __textMacro->name    = _name; \
+    __textMacro->value.l = _value; \
+    __textMacro->pattern = _pattern; \
+    __textMacro++; \
+  } while (0)
+#define TEXT_MACRO_X_DOUBLE(_name,_value,_pattern) \
+  do { \
+    assert(__textMacro < __textMacroEnd); \
+    __textMacro->type    = TEXT_MACRO_TYPE_DOUBLE; \
+    __textMacro->name    = _name; \
+    __textMacro->value.d = _value; \
+    __textMacro->pattern = _pattern; \
+    __textMacro++; \
+  } while (0)
+#define TEXT_MACRO_X_CSTRING(_name,_value,_pattern) \
+  do { \
+    assert(__textMacro < __textMacroEnd); \
+    __textMacro->type    = TEXT_MACRO_TYPE_CSTRING; \
+    __textMacro->name    = _name; \
+    __textMacro->value.s = _value; \
+    __textMacro->pattern = _pattern; \
+    __textMacro++; \
+  } while (0)
+#define TEXT_MACRO_X_STRING(_name,_value,_pattern) \
+  do { \
+    assert(__textMacro < __textMacroEnd); \
+    __textMacro->type         = TEXT_MACRO_TYPE_STRING; \
+    __textMacro->name         = _name; \
+    __textMacro->value.string = (String)_value; \
+    __textMacro->pattern      = _pattern; \
+    __textMacro++; \
+  } while (0)
+
+/***********************************************************************\
+* Name   : MISC_SIGNAL_MASK_CLEAR
+* Purpose: clear signal mask
+* Input  : signalMask - signal mask
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+#define MISC_SIGNAL_MASK_CLEAR(signalMaks) sigemptyset(&signalMask);
+
+/***********************************************************************\
+* Name   : MISC_SIGNAL_MASK_SET
+* Purpose: add signal mask
+* Input  : signalMask - signal mask
+*          signal     - signal to add
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+#define MISC_SIGNAL_MASK_SET(signalMaks,signal) sigaddset(&signalMask,signal);
+
+/***********************************************************************\
+* Name   : MISC_HANDLES_ITERATE
+* Purpose: iterated over handles and execute block
+* Input  : waitHandle - wait handle
+*          handle     - iteration handle
+*          events     - events
+* Output : handle - handle
+*          events - events
+* Return : -
+* Notes  : variable will contain all active handles
+*          usage:
+*            int  handle;
+*            uint events;
+*            MISC_HANDLES_ITERATE(&waitHandle,handle,event)
+*            {
+*              ...
+*            }
+\***********************************************************************/
+
+#define MISC_HANDLES_ITERATE(waitHandle,handle,events) \
+  for (uint __i ## COUNTER = Misc_handleIterate(waitHandle,0,&handle,&events); \
+       __i ## COUNTER < Misc_handlesIterateCount(waitHandle); \
+       __i ## COUNTER = Misc_handleIterate(waitHandle,__i ## COUNTER +1,&handle,&events) \
+      ) \
+  if (events != 0)
 
 /***************************** Forwards ********************************/
 
@@ -297,7 +533,8 @@ INLINE void Misc_initTimeout(TimeoutInfo *timeoutInfo, long timeout)
 {
   assert(timeoutInfo != NULL);
 
-  (*timeoutInfo) = (timeout != WAIT_FOREVER) ? Misc_getTimestamp()+(uint64)timeout*US_PER_MS : 0LL;
+  timeoutInfo->timeout      = timeout;
+  timeoutInfo->endTimestamp = (timeout != WAIT_FOREVER) ? Misc_getTimestamp()+(uint64)timeout*US_PER_MS : 0LL;
 }
 #endif /* NDEBUG || __MISC_IMPLEMENTATION__ */
 
@@ -336,7 +573,8 @@ INLINE void Misc_restartTimeout(TimeoutInfo *timeoutInfo, long timeout)
 {
   assert(timeoutInfo != NULL);
 
-  (*timeoutInfo) = (timeout != WAIT_FOREVER) ? Misc_getTimestamp()+(uint64)timeout*US_PER_MS : 0LL;
+  timeoutInfo->timeout      = timeout;
+  timeoutInfo->endTimestamp = (timeout != WAIT_FOREVER) ? Misc_getTimestamp()+(uint64)timeout*US_PER_MS : 0LL;
 }
 #endif /* NDEBUG || __MISC_IMPLEMENTATION__ */
 
@@ -355,7 +593,7 @@ INLINE void Misc_stopTimeout(TimeoutInfo *timeoutInfo)
 {
   assert(timeoutInfo != NULL);
 
-  (*timeoutInfo) = 0LL;
+  timeoutInfo->endTimestamp = 0LL;
 }
 #endif /* NDEBUG || __MISC_IMPLEMENTATION__ */
 
@@ -372,19 +610,38 @@ INLINE long Misc_getRestTimeout(const TimeoutInfo *timeoutInfo);
 #if defined(NDEBUG) || defined(__MISC_IMPLEMENTATION__)
 INLINE long Misc_getRestTimeout(const TimeoutInfo *timeoutInfo)
 {
-  int64 restTime;
+  uint64 timestamp;
 
   assert(timeoutInfo != NULL);
 
-  if ((*timeoutInfo) != 0LL)
+  if (timeoutInfo->timeout != WAIT_FOREVER)
   {
-    restTime = (int64)(*timeoutInfo)-(int64)Misc_getTimestamp();
-    return (restTime >= 0LL) ? (long)(restTime/US_PER_MS) : 0L;
+    timestamp = Misc_getTimestamp();
+    return (timestamp < timeoutInfo->endTimestamp) ? (long)((timeoutInfo->endTimestamp-timestamp)/US_PER_MS) : 0L;
   }
   else
   {
     return WAIT_FOREVER;
   }
+}
+#endif /* NDEBUG || __MISC_IMPLEMENTATION__ */
+
+/***********************************************************************\
+* Name   : Misc_getTotalTimeout
+* Purpose: get total timeout
+* Input  : timeoutInfo - timeout info
+* Output : -
+* Return : total timeout [ms]
+* Notes  : -
+\***********************************************************************/
+
+INLINE long Misc_getTotalTimeout(const TimeoutInfo *timeoutInfo);
+#if defined(NDEBUG) || defined(__MISC_IMPLEMENTATION__)
+INLINE long Misc_getTotalTimeout(const TimeoutInfo *timeoutInfo)
+{
+  assert(timeoutInfo != NULL);
+
+  return timeoutInfo->timeout;
 }
 #endif /* NDEBUG || __MISC_IMPLEMENTATION__ */
 
@@ -403,7 +660,7 @@ INLINE bool Misc_isTimeout(const TimeoutInfo *timeoutInfo)
 {
   assert(timeoutInfo != NULL);
 
-  return (Misc_getTimestamp() > (*timeoutInfo));
+  return (Misc_getTimestamp() > timeoutInfo->endTimestamp);
 }
 #endif /* NDEBUG || __MISC_IMPLEMENTATION__ */
 
@@ -606,6 +863,156 @@ String Misc_expandMacros(String           string,
                         );
 
 /*---------------------------------------------------------------------*/
+
+/***********************************************************************\
+* Name   : Misc_waitHandle
+* Purpose: wait for handle
+* Input  : handle     - handle
+*          signalMask - signal mask (can be NULL)
+*          events     - events to wait for
+*          timeout    - timeout [ms[
+* Output : -
+* Return : events; see HANDLE_EVENT_...
+* Notes  : -
+\***********************************************************************/
+
+uint Misc_waitHandle(int        handle,
+                     SignalMask *signalMask,
+                     uint       events,
+                     long       timeout
+                    );
+
+/***********************************************************************\
+* Name   : Misc_initWait
+* Purpose: init handle wait
+* Input  : waitHandle     - wait handle
+*          maxHandleCount - inital max. handle count
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+void Misc_initWait(WaitHandle *waitHandle, uint maxHandleCount);
+
+/***********************************************************************\
+* Name   : Misc_doneWait
+* Purpose: done handle wait
+* Input  : waitHandle - wait handle
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+void Misc_doneWait(WaitHandle *waitHandle);
+
+/***********************************************************************\
+* Name   : Misc_waitReset
+* Purpose: reset handles
+* Input  : waitHandle - wait handle
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+void Misc_waitReset(WaitHandle *waitHandle);
+
+/***********************************************************************\
+* Name   : Misc_waitAdd
+* Purpose: add handle
+* Input  : waitHandle - wait handle
+*          handle     - handle
+*          events     - events to wait for
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+void Misc_waitAdd(WaitHandle *waitHandle, int handle, uint events);
+
+/***********************************************************************\
+* Name   : Misc_waitHandles
+* Purpose: wait for handles
+* Input  : waitHandle - wait handle
+*          signalMask - signal mask (can be NULL)
+*          timeout    - timeout [ms[
+* Output : -
+* Return : number of active handles or -1 on error
+* Notes  : -
+\***********************************************************************/
+
+int Misc_waitHandles(WaitHandle *waitHandle,
+                     SignalMask *signalMask,
+                     long       timeout
+                    );
+
+/***********************************************************************\
+* Name   : Misc_handlesIterateCount
+* Purpose: get handles iterator couont
+* Input  : waitHandle - wait handle
+* Output : -
+* Return : handles iterator count
+* Notes  : -
+\***********************************************************************/
+
+INLINE uint Misc_handlesIterateCount(const WaitHandle *waitHandle);
+#if defined(NDEBUG) || defined(__MISC_IMPLEMENTATION__)
+INLINE uint Misc_handlesIterateCount(const WaitHandle *waitHandle)
+{
+  assert(waitHandle != NULL);
+
+  #if   defined(PLATFORM_LINUX)
+    return waitHandle->handleCount;
+  #elif defined(PLATFORM_WINDOWS)
+    #ifdef HAVE_WSAPOLL
+      return waitHandle->handleCount;
+    #else /* not HAVE_WSAPOLL */
+      return waitHandle->handleCount*3;
+    #endif /* HAVE_WSAPOLL */
+  #endif /* PLATFORM_... */
+}
+#endif /* NDEBUG || __MISC_IMPLEMENTATION__ */
+
+/***********************************************************************\
+* Name   : Misc_handleIterate
+* Purpose: handles iterator
+* Input  : waitHandle - wait handle
+*          i          - iterator counter
+*          handle     - handle variable
+*          events     - events variable
+* Output : handle - handle
+*          events - events
+* Return : iterator counter
+* Notes  : -
+\***********************************************************************/
+
+INLINE uint Misc_handleIterate(const WaitHandle *waitHandle, uint i, int *handle, uint *events);
+#if defined(NDEBUG) || defined(__MISC_IMPLEMENTATION__)
+INLINE uint Misc_handleIterate(const WaitHandle *waitHandle, uint i, int *handle, uint *events)
+{
+  assert(waitHandle != NULL);
+  assert(handle != NULL);
+  assert(events != NULL);
+
+  #if   defined(PLATFORM_LINUX)
+    (*handle) = waitHandle->pollfds[i].fd;
+    (*events) =  waitHandle->pollfds[i].revents;
+  #elif defined(PLATFORM_WINDOWS)
+    #ifdef HAVE_WSAPOLL
+      (*handle) = waitHandle->pollfds[i].fd;
+      (*events) =  waitHandle->pollfds[i].revents;
+    #else /* not HAVE_WSAPOLL */
+      switch (i%3)
+      {
+        case 0: (*handle) = waitHandle->handles[i/3]; (*events) = FD_ISSET(waitHandle->handles[i/3],&waitHandle->readfds     ) ? HANDLE_EVENT_INPUT  : 0; break;
+        case 1: (*handle) = waitHandle->handles[i/3]; (*events) = FD_ISSET(waitHandle->handles[i/3],&waitHandle->writefds    ) ? HANDLE_EVENT_OUTPUT : 0; break;
+        case 2: (*handle) = waitHandle->handles[i/3]; (*events) = FD_ISSET(waitHandle->handles[i/3],&waitHandle->exceptionfds) ? HANDLE_EVENT_ERROR  : 0; break;
+      }
+    #endif /* HAVE_WSAPOLL */
+  #endif /* PLATFORM_... */
+
+  return i;
+}
+#endif /* NDEBUG || __MISC_IMPLEMENTATION__ */
 
 /***********************************************************************\
 * Name   : Misc_findCommandInPath
