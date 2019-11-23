@@ -2421,9 +2421,9 @@ String __String_new(const char *__fileName__, ulong __lineNb__)
         debugAddString(&debugStringAllocList,debugStringNode);
         #ifdef MAX_STRINGS_CHECK
           debugStringCount = List_count(&debugStringAllocList);
-          if (debugStringCount > debugMaxStringNextWarningCount)
+          if (debugStringCount >= debugMaxStringNextWarningCount)
           {
-            fprintf(stderr,"DEBUG WARNING: %lu strings allocated!\n",debugStringCount);
+            fprintf(stderr,"DEBUG Warning: %lu strings allocated!\n",debugStringCount);
             debugMaxStringNextWarningCount += WARN_MAX_STRINGS_DELTA;
 //String_debugDumpInfo(stderr);
 //          sleep(1);
@@ -4770,8 +4770,9 @@ String String_unescape(String     string,
   return string;
 }
 
-String String_quote(String string, char quoteChar)
+String String_quote(String string, char quoteChar, const char *forceQuoteChars)
 {
+  bool   quoteFlag;
   String s;
   ulong  i;
 
@@ -4782,22 +4783,41 @@ String String_quote(String string, char quoteChar)
   {
     assert(string->data != NULL);
 
-    #ifdef NDEBUG
-      s = allocTmpString();
-    #else /* not NDEBUG */
-      s = allocTmpString(__FILE__,__LINE__);
-    #endif /* NDEBUG */
-    String_appendChar(s,quoteChar);
-    for (i = 0L; i < string->length; i++)
+    if (forceQuoteChars != NULL)
     {
-      if (string->data[i] == quoteChar)
+      for (i = 0L; i < string->length; i++)
       {
-        String_appendChar(s,STRING_ESCAPE_CHARACTER);
+        if (strchr(forceQuoteChars,string->data[i]) != NULL)
+        {
+          quoteFlag = TRUE;
+          break;
+        }
       }
-      String_appendChar(s,string->data[i]);
     }
-    String_appendChar(s,quoteChar);
-    assignTmpString(string,s);
+    else
+    {
+      quoteFlag = TRUE;
+    }
+
+    if (quoteFlag)
+    {
+      #ifdef NDEBUG
+        s = allocTmpString();
+      #else /* not NDEBUG */
+        s = allocTmpString(__FILE__,__LINE__);
+      #endif /* NDEBUG */
+      String_appendChar(s,quoteChar);
+      for (i = 0L; i < string->length; i++)
+      {
+        if (string->data[i] == quoteChar)
+        {
+          String_appendChar(s,STRING_ESCAPE_CHARACTER);
+        }
+        String_appendChar(s,string->data[i]);
+      }
+      String_appendChar(s,quoteChar);
+      assignTmpString(string,s);
+    }
   }
 
   return string;
