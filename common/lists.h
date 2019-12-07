@@ -235,9 +235,9 @@ typedef enum
 * Output : -
 * Return : node or NULL if not found
 * Notes  : usage:
-*          LIST_FIND_FIRST(list,variable,variable->...)
-*          LIST_FIND_LAST(list,variable,variable->...)
-*          LIST_FIND(list,variable,variable->...)
+*          node = LIST_FIND_FIRST(list,variable,variable->...)
+*          node = LIST_FIND_LAST(list,variable,variable->...)
+*          node = LIST_FIND(list,variable,variable->...)
 \***********************************************************************/
 
 #define LIST_FIND_FIRST(list,variable,condition) \
@@ -285,8 +285,8 @@ typedef enum
 * Output : -
 * Return : node or NULL if not found
 * Notes  : usage:
-*          LIST_FIND_PREV(node,variable,variable->...)
-*          LIST_FIND_NEXT(node,variable,variable->...)
+*          node = LIST_FIND_PREV(node,variable,variable->...)
+*          node = LIST_FIND_NEXT(node,variable,variable->...)
 \***********************************************************************/
 
 #define LIST_FIND_PREV(node,variable,condition) \
@@ -333,7 +333,7 @@ typedef enum
 * Output : -
 * Return : TRUE iff in list
 * Notes  : usage:
-*          LIST_CONTAINS(list,variable,variable->... == ...)
+*          boolean = LIST_CONTAINS(list,variable,variable->... == ...)
 \***********************************************************************/
 
 #define LIST_CONTAINS(list,variable,condition) (LIST_FIND(list,variable,condition) != NULL)
