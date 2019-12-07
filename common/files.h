@@ -645,6 +645,7 @@ Errors File_getTmpDirectoryNameCString(String     directoryName,
                                        const char *directory
                                       );
 
+//TODO
 void File_registerTmpFile(FileHandle *fileHandle);
 void File_unregisterTmpFile(FileHandle *fileHandle);
 uint64 File_getRegisterTmpFileSize(void);
@@ -1199,6 +1200,17 @@ const char *File_permissionToString(char *string, uint stringSize, FilePermissio
 FileTypes File_getType(ConstString fileName);
 
 /***********************************************************************\
+* Name   : File_getRealType
+* Purpose: get real file type (follow symbolic links)
+* Input  : fileName - file name
+* Output : -
+* Return : file type; see FileTypes
+* Notes  : -
+\***********************************************************************/
+
+FileTypes File_getRealType(ConstString fileName);
+
+/***********************************************************************\
 * Name   : File_getData
 * Purpose: read file content into buffer
 * Input  : fileName - file name
@@ -1424,8 +1436,8 @@ Errors File_setAttributesCString(FileAttributes fileAttributes,
                                 );
 
 /***********************************************************************\
-* Name   : File_haveAttributeCompress, File_haveAttributeNoCompress,
-*          File_haveAttributeNoDump
+* Name   : File_hasAttributeCompress, File_hasAttributeNoCompress,
+*          File_hasAttributeNoDump
 * Purpose: check if compress/no-compress/no-dump attribute is set
 * Input  : fileInfo - file info variable
 * Output : -
@@ -1433,9 +1445,9 @@ Errors File_setAttributesCString(FileAttributes fileAttributes,
 * Notes  : -
 \***********************************************************************/
 
-INLINE bool File_haveAttributeCompress(const FileInfo *fileInfo);
+INLINE bool File_hasAttributeCompress(const FileInfo *fileInfo);
 #if defined(NDEBUG) || defined(__FILES_IMPLEMENTATION__)
-INLINE bool File_haveAttributeCompress(const FileInfo *fileInfo)
+INLINE bool File_hasAttributeCompress(const FileInfo *fileInfo)
 {
   assert(fileInfo != NULL);
 
@@ -1449,13 +1461,13 @@ INLINE bool File_haveAttributeCompress(const FileInfo *fileInfo)
 }
 #endif /* NDEBUG || __FILES_IMPLEMENTATION__ */
 
-INLINE bool File_haveAttributeNoCompress(const FileInfo *fileInfo);
+INLINE bool File_hasAttributeNoCompress(const FileInfo *fileInfo);
 #if defined(NDEBUG) || defined(__FILES_IMPLEMENTATION__)
-INLINE bool File_haveAttributeNoCompress(const FileInfo *fileInfo)
+INLINE bool File_hasAttributeNoCompress(const FileInfo *fileInfo)
 {
   assert(fileInfo != NULL);
 
-  #ifdef HAVE_FS_COMPR_FL
+  #ifdef HAVE_FS_NOCOMP_FL
     return (fileInfo->attributes & FILE_ATTRIBUTE_NO_COMPRESS) != 0;
   #else
     UNUSED_VARIABLE(fileInfo);
@@ -1465,13 +1477,13 @@ INLINE bool File_haveAttributeNoCompress(const FileInfo *fileInfo)
 }
 #endif /* NDEBUG || __FILES_IMPLEMENTATION__ */
 
-INLINE bool File_haveAttributeNoDump(const FileInfo *fileInfo);
+INLINE bool File_hasAttributeNoDump(const FileInfo *fileInfo);
 #if defined(NDEBUG) || defined(__FILES_IMPLEMENTATION__)
-INLINE bool File_haveAttributeNoDump(const FileInfo *fileInfo)
+INLINE bool File_hasAttributeNoDump(const FileInfo *fileInfo)
 {
   assert(fileInfo != NULL);
 
-  #ifdef HAVE_FS_COMPR_FL
+  #ifdef HAVE_FS_NODUMP_FL
     return (fileInfo->attributes & FILE_ATTRIBUTE_NO_DUMP) != 0;
   #else
     UNUSED_VARIABLE(fileInfo);
@@ -1642,6 +1654,17 @@ Errors File_makeDirectoryCString(const char     *pathName,
 
 Errors File_changeDirectory(ConstString pathName);
 Errors File_changeDirectoryCString(const char *pathName);
+
+/***********************************************************************\
+* Name   : File_getCurrentDirectory
+* Purpose: get current directory
+* Input  : -
+* Output : -
+* Return : current path name
+* Notes  : -
+\***********************************************************************/
+
+String File_getCurrentDirectory(String pathName);
 
 /***********************************************************************\
 * Name   : File_readLink
