@@ -50,6 +50,7 @@ typedef struct
 {
   FILE *file;
   char line[256];
+  char deviceName[256];
   bool readFlag;
 } DeviceListHandle;
 
@@ -324,16 +325,19 @@ Errors Device_readDeviceList(DeviceListHandle *deviceListHandle,
 * Purpose: get device info
 * Input  : deviceInfo - device info variable to fill
 *          deviceName - device name
+*          sizesFlag  - TRUE to detect block size+device size
 * Output : deviceInfo - device info
 * Return : ERROR_NONE or error code
 * Notes  : -
 \***********************************************************************/
 
 Errors Device_getInfo(DeviceInfo  *deviceInfo,
-                      ConstString deviceName
+                      ConstString deviceName,
+                      bool        sizesFlag
                      );
 Errors Device_getInfoCString(DeviceInfo *deviceInfo,
-                             const char *deviceName
+                             const char *deviceName,
+                             bool        sizesFlag
                             );
 
 #ifdef __cplusplus
