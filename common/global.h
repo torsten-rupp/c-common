@@ -49,6 +49,7 @@
 #if   defined(PLATFORM_LINUX)
   #include <pthread.h>
 #elif defined(PLATFORM_WINDOWS)
+  #include <winsock2.h>
   #include <windows.h>
   #include <pthread.h>
   #include <intrin.h>
@@ -281,6 +282,14 @@ typedef struct
 // Unicode codepoint (4 bytes)
 typedef uint32_t Codepoint;
 
+// string tokenizer
+typedef struct
+{
+  const char *delimiters;
+  const char *nextToken;
+  char       *p;
+} CStringTokenizer;
+
 // string iterator
 typedef struct
 {
@@ -388,6 +397,10 @@ typedef void(*DebugDumpStackTraceOutputFunction)(const char *text, void *userDat
 // mask and shift value
 #define MASKSHIFT(n,maskShift) (((n) & maskShift.mask) >> maskShift.shift)
 
+// stringify
+#define STRINGIFY(s) __STRINGIFY(s)
+#define __STRINGIFY(s) #s
+
 /***********************************************************************\
 * Name   : EXECUTE_ONCE
 * Purpose: execute block once
@@ -452,7 +465,7 @@ typedef void(*DebugDumpStackTraceOutputFunction)(const char *text, void *userDat
   })
 
 /***********************************************************************\
-* Name   : CALLBACK__INLINE
+* Name   : CALLBACK_INLINE
 * Purpose: define an inline call-back function (anonymouse function)
 * Input  : functionReturnType - call-back function signature
 *          functionSignature  - call-back function signature
@@ -467,7 +480,7 @@ typedef void(*DebugDumpStackTraceOutputFunction)(const char *text, void *userDat
 *                            );
 \***********************************************************************/
 
-#define CALLBACK__INLINE(functionReturnType,functionSignature,functionBody,functionUserData) \
+#define CALLBACK_INLINE(functionReturnType,functionSignature,functionBody,functionUserData) \
   ({ \
     auto functionReturnType __closure__ functionSignature; \
     functionReturnType __closure__ functionSignature functionBody \
@@ -482,7 +495,7 @@ typedef void(*DebugDumpStackTraceOutputFunction)(const char *text, void *userDat
 * Output : -
 * Return : -
 * Notes  : Windows does not support %ll format token, instead it tries
-*          - as usual according to the MS principle: ignore any standard
+*          - as usually according to the MS principle: ignore any standard
 *          whenever possible - its own way (and of course fail...).
 *          Thus use the MinGW implementation of printf/fprintf.
 \***********************************************************************/
@@ -491,12 +504,32 @@ typedef void(*DebugDumpStackTraceOutputFunction)(const char *text, void *userDat
 #elif defined(PLATFORM_WINDOWS)
   /* Work-around for Windows:
   */
+#if 1
   #ifndef printf
     #define printf __mingw_printf
+  #endif
+  #ifndef vprintf
+    #define vprintf __mingw_vprintf
   #endif
   #ifndef fprintf
     #define fprintf __mingw_fprintf
   #endif
+  #ifndef vfprintf
+    #define vfprintf __mingw_vfprintf
+  #endif
+  #ifndef sprintf
+    #define sprintf __mingw_sprintf
+  #endif
+  #ifndef vsprintf
+    #define vsprintf __mingw_vsprintf
+  #endif
+  #ifndef snprintf
+    #define snprintf __mingw_snprintf
+  #endif
+  #ifndef vsnprintf
+    #define vsnprintf __mingw_vsnprintf
+  #endif
+#endif
 #endif /* PLATFORM_... */
 
 /***********************************************************************\
@@ -1238,8 +1271,8 @@ typedef byte* BitSet;
     { \
       if (!(condition)) \
       { \
-        fprintf(stderr, "%s:%d: %s: Assertion '%s' failed.\n",__FILE__,__LINE__,__FUNCTION__,__ASSERTX_STRING1(condition)); \
-        fprintf(stderr, "  " format "\n" , ## __VA_ARGS__); \
+        fprintf(stderr, "%s:%d: %s: Assertion '%s' failed: ",__FILE__,__LINE__,__FUNCTION__,__ASSERTX_STRING1(condition)); \
+        fprintf(stderr, format "\n" , ## __VA_ARGS__); \
         abort(); \
       } \
     } \
@@ -2142,6 +2175,21 @@ static inline bool stringEquals(const char *s1, const char *s2)
 }
 
 /***********************************************************************\
+* Name   : stringEqualsPrefix
+* Purpose: compare string prefixes for equal
+* Input  : s1, s2 - strings
+*          n      - prefix length
+* Output : -
+* Return : TRUE iff equals
+* Notes  : -
+\***********************************************************************/
+
+static inline bool stringEqualsPrefix(const char *s1, const char *s2, uint n)
+{
+  return strncmp(s1,s2,n) == 0;
+}
+
+/***********************************************************************\
 * Name   : stringEqualsIgnoreCase
 * Purpose: compare strings for equal and ignore case
 * Input  : s1, s2 - strings
@@ -2153,6 +2201,21 @@ static inline bool stringEquals(const char *s1, const char *s2)
 static inline bool stringEqualsIgnoreCase(const char *s1, const char *s2)
 {
   return strcasecmp(s1,s2) == 0;
+}
+
+/***********************************************************************\
+* Name   : stringEqualsPrefixIgnoreCase
+* Purpose: compare string prefixes for equal and ignore case
+* Input  : s1, s2 - strings
+*          n      - prefix length
+* Output : -
+* Return : TRUE iff equals
+* Notes  : -
+\***********************************************************************/
+
+static inline bool stringEqualsPrefixIgnoreCase(const char *s1, const char *s2, uint n)
+{
+  return strncasecmp(s1,s2,n) == 0;
 }
 
 /***********************************************************************\
@@ -2788,7 +2851,7 @@ static inline const char *charUTF8(Codepoint codepoint)
 }
 
 /***********************************************************************\
-* Name   : stringFind, stringFindChar
+* Name   : stringFind, stringFindChar stringFindReverseChar
 * Purpose: find string/character in string
 * Input  : s                   - string
 *          findString,findChar - string/character to find
@@ -2810,6 +2873,14 @@ static inline long stringFindChar(const char *s, char findChar)
   const char *t;
 
   t = strchr(s,findChar);
+  return (t != NULL) ? (long)(t-s) : -1L;
+}
+
+static inline long stringFindReverseChar(const char *s, char findChar)
+{
+  const char *t;
+
+  t = strrchr(s,findChar);
   return (t != NULL) ? (long)(t-s) : -1L;
 }
 
@@ -3012,6 +3083,62 @@ static inline Codepoint stringIteratorGet(CStringIterator *cStringIterator)
   stringIteratorNext(cStringIterator);
 
   return codepoint;
+}
+
+/***********************************************************************\
+* Name   : stringTokenizerInit
+* Purpose: init string tokenizer
+* Input  : cStringTokenizer - string tokenizer
+*          string           - string
+*          delimiters       - token delimiters
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+static inline void stringTokenizerInit(CStringTokenizer *cStringTokenizer, const char *string, const char *delimiters)
+{
+  assert(cStringTokenizer != NULL);
+  assert(string != NULL);
+
+  cStringTokenizer->nextToken  = strtok_r((char*)string,delimiters,&cStringTokenizer->p);
+  cStringTokenizer->delimiters = delimiters;
+}
+
+/***********************************************************************\
+* Name   : stringTokenizerDone
+* Purpose: done string tokenizer
+* Input  : cStringTokenizer - string tokenizer
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+static inline void stringTokenizerDone(CStringTokenizer *cStringTokenizer)
+{
+  assert(cStringTokenizer != NULL);
+
+  UNUSED_VARIABLE(cStringTokenizer);
+}
+
+/***********************************************************************\
+* Name   : stringGetNextToken
+* Purpose: get next string token
+* Input  : cStringTokenizer - string tokenizer
+* Output : token - next token
+* Return : TRUE iff next token
+* Notes  : -
+\***********************************************************************/
+
+static inline bool stringGetNextToken(CStringTokenizer *cStringTokenizer, const char **token)
+{
+  assert(cStringTokenizer != NULL);
+  assert(token != NULL);
+
+  (*token) = cStringTokenizer->nextToken;
+  cStringTokenizer->nextToken = strtok_r(NULL,cStringTokenizer->delimiters,&cStringTokenizer->p);
+
+  return (*token) != NULL;
 }
 
 /***********************************************************************\
