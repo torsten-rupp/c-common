@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <inttypes.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #ifdef HAVE_SYS_WAIT
@@ -80,20 +81,16 @@
 #endif
 
 #ifdef HAVE_STAT64
-  #define STAT  stat64
-  #define LSTAT lstat64
+  #define STAT stat64
   typedef struct stat64 FileStat;
 #elif HAVE___STAT64
-  #define STAT  stat64
-  #define LSTAT lstat64
+  #define STAT stat64
   typedef struct __stat64 FileStat;
 #elif HAVE__STATI64
-  #define STAT  _stati64
-  #define LSTAT _stati64
+  #define STAT _stati64
   typedef struct _stati64 FileStat;
 #elif HAVE_STAT
-  #define STAT  stat
-  #define LSTAT lstat
+  #define STAT stat
   typedef struct stat FileStat;
 #else
   #error No struct stat64 nor struct __stat64
@@ -534,9 +531,9 @@ bool Device_isMounted(ConstString mountPointName)
 {
   bool          mounted;
   String        absoluteName;
-  FILE          *mtab;
-  char          buffer[4096];
   #if   defined(PLATFORM_LINUX)
+    FILE          *mtab;
+    char          buffer[4096];
     struct mntent mountEntry;
     char          *s;
   #elif defined(PLATFORM_WINDOWS)
@@ -590,21 +587,30 @@ Errors Device_openDeviceList(DeviceListHandle *deviceListHandle)
 {
   assert(deviceListHandle != NULL);
 
-  // open partition list file
-  deviceListHandle->file = fopen("/proc/partitions","r");
-  if (deviceListHandle->file == NULL)
-  {
-    return ERROR_(OPEN_FILE,errno);
-  }
+  #if   defined(PLATFORM_LINUX)
+    // open partition list file
+    deviceListHandle->file = fopen("/proc/partitions","r");
+    if (deviceListHandle->file == NULL)
+    {
+      return ERROR_(OPEN_FILE,errno);
+    }
 
-  // skip first line (header line)
-  if (fgets(deviceListHandle->line,sizeof(deviceListHandle->line),deviceListHandle->file) == NULL)
-  {
-    // ignore error
-  }
+    // skip first line (header line)
+    if (fgets(deviceListHandle->line,sizeof(deviceListHandle->line),deviceListHandle->file) == NULL)
+    {
+      // ignore error
+    }
 
-  // no line read yet
-  deviceListHandle->readFlag = FALSE;
+    // no line read yet
+    deviceListHandle->readFlag = FALSE;
+  #elif defined(PLATFORM_WINDOWS)
+    deviceListHandle->logicalDrives = GetLogicalDrives();
+    if (deviceListHandle->logicalDrives == 0)
+    {
+      return ERROR_(OPEN_FILE,GetLastError());
+    }
+    deviceListHandle->i = 0;
+  #endif /* PLATFORM_... */
 
   return ERROR_NONE;
 }
@@ -612,127 +618,157 @@ Errors Device_openDeviceList(DeviceListHandle *deviceListHandle)
 void Device_closeDeviceList(DeviceListHandle *deviceListHandle)
 {
   assert(deviceListHandle != NULL);
-  assert(deviceListHandle->file != NULL);
 
-  fclose(deviceListHandle->file);
+  #if   defined(PLATFORM_LINUX)
+    assert(deviceListHandle->file != NULL);
+
+    fclose(deviceListHandle->file);
+  #elif defined(PLATFORM_WINDOWS)
+  #endif /* PLATFORM_... */
 }
 
 bool Device_endOfDeviceList(DeviceListHandle *deviceListHandle)
 {
-  uint        i,j;
-  struct stat fileStat;
-  char        buffer[256];
+  #if   defined(PLATFORM_LINUX)
+    uint        i,j;
+    struct stat fileStat;
+    char        buffer[256];
+  #elif defined(PLATFORM_WINDOWS)
+  #endif /* PLATFORM_... */
 
   assert(deviceListHandle != NULL);
-  assert(deviceListHandle->file != NULL);
 
-  // read entry iff not read
-  while (   !deviceListHandle->readFlag
-         && (fgets(deviceListHandle->line,sizeof(deviceListHandle->line),deviceListHandle->file) != NULL)
-        )
-  {
-    // skip leading spaces
-    i = 0;
-    while ((deviceListHandle->line[i] != '\0') && isspace(deviceListHandle->line[i]))
-    {
-      i++;
-    }
+  #if   defined(PLATFORM_LINUX)
+    assert(deviceListHandle->file != NULL);
 
-    // skip trailing spaces
-    j = i;
-    while (deviceListHandle->line[j] != '\0')
+    // read entry iff not read
+    while (   !deviceListHandle->readFlag
+           && (fgets(deviceListHandle->line,sizeof(deviceListHandle->line),deviceListHandle->file) != NULL)
+          )
     {
-      j++;
-    }
-    while ((j > i) && isspace(deviceListHandle->line[j-1]))
-    {
-      j--;
-    }
-    deviceListHandle->line[j] = '\0';
-
-    if (j > i)
-    {
-      // parse and get device name
-      if (String_scanCString(&deviceListHandle->line[i],"%* %* %* %256s %*",buffer))
+      // skip leading spaces
+      i = 0;
+      while ((deviceListHandle->line[i] != '\0') && isspace(deviceListHandle->line[i]))
       {
-        stringSet(deviceListHandle->deviceName,sizeof(deviceListHandle->deviceName),"/dev/");
-        stringAppend(deviceListHandle->deviceName,sizeof(deviceListHandle->deviceName),buffer);
-        if (stat(deviceListHandle->deviceName,&fileStat) == 0)
+        i++;
+      }
+
+      // skip trailing spaces
+      j = i;
+      while (deviceListHandle->line[j] != '\0')
+      {
+        j++;
+      }
+      while ((j > i) && isspace(deviceListHandle->line[j-1]))
+      {
+        j--;
+      }
+      deviceListHandle->line[j] = '\0';
+
+      if (j > i)
+      {
+        // parse and get device name
+        if (String_scanCString(&deviceListHandle->line[i],"%* %* %* %256s %*",buffer))
         {
-          // mark entry available
-          deviceListHandle->readFlag = TRUE;
+          stringSet(deviceListHandle->deviceName,sizeof(deviceListHandle->deviceName),"/dev/");
+          stringAppend(deviceListHandle->deviceName,sizeof(deviceListHandle->deviceName),buffer);
+          if (stat(deviceListHandle->deviceName,&fileStat) == 0)
+          {
+            // mark entry available
+            deviceListHandle->readFlag = TRUE;
+          }
         }
       }
     }
-  }
 
-  return !deviceListHandle->readFlag;
+    return !deviceListHandle->readFlag;
+  #elif defined(PLATFORM_WINDOWS)
+    return ((deviceListHandle->logicalDrives >> deviceListHandle->i) <= 0);
+  #endif /* PLATFORM_... */
 }
 
 Errors Device_readDeviceList(DeviceListHandle *deviceListHandle,
                              String           deviceName
                             )
 {
-  uint        i,j;
-  struct stat fileStat;
-  char        buffer[256];
+  #if   defined(PLATFORM_LINUX)
+    uint        i,j;
+    struct stat fileStat;
+    char        buffer[256];
+  #elif defined(PLATFORM_WINDOWS)
+  #endif /* PLATFORM_... */
 
   assert(deviceListHandle != NULL);
-  assert(deviceListHandle->file != NULL);
   assert(deviceName != NULL);
 
-  // read entry iff not read
-  while (   !deviceListHandle->readFlag
-         && (fgets(deviceListHandle->line,sizeof(deviceListHandle->line),deviceListHandle->file) != NULL)
-        )
-  {
-    // skip leading spaces
-    i = 0;
-    while ((deviceListHandle->line[i] != '\0') && isspace(deviceListHandle->line[i]))
-    {
-      i++;
-    }
+  String_clear(deviceName);
 
-    // skip trailing spaces
-    j = i;
-    while (deviceListHandle->line[j] != '\0')
-    {
-      j++;
-    }
-    while ((j > i) && isspace(deviceListHandle->line[j-1]))
-    {
-      j--;
-    }
-    deviceListHandle->line[j] = '\0';
+  #if   defined(PLATFORM_LINUX)
+    assert(deviceListHandle->file != NULL);
 
-    // if line is not empty set read flag
-    if (j > i)
+    // read entry iff not read
+    while (   !deviceListHandle->readFlag
+           && (fgets(deviceListHandle->line,sizeof(deviceListHandle->line),deviceListHandle->file) != NULL)
+          )
     {
-      // parse and get device name
-      if (String_scanCString(&deviceListHandle->line[i],"%* %* %* %256s %*",buffer))
+      // skip leading spaces
+      i = 0;
+      while ((deviceListHandle->line[i] != '\0') && isspace(deviceListHandle->line[i]))
       {
-        stringSet(deviceListHandle->deviceName,sizeof(deviceListHandle->deviceName),"/dev/");
-        stringAppend(deviceListHandle->deviceName,sizeof(deviceListHandle->deviceName),buffer);
-        if (stat(deviceListHandle->deviceName,&fileStat) == 0)
+        i++;
+      }
+
+      // skip trailing spaces
+      j = i;
+      while (deviceListHandle->line[j] != '\0')
+      {
+        j++;
+      }
+      while ((j > i) && isspace(deviceListHandle->line[j-1]))
+      {
+        j--;
+      }
+      deviceListHandle->line[j] = '\0';
+
+      // if line is not empty set read flag
+      if (j > i)
+      {
+        // parse and get device name
+        if (String_scanCString(&deviceListHandle->line[i],"%* %* %* %256s %*",buffer))
         {
-          // mark entry available
-          deviceListHandle->readFlag = TRUE;
+          stringSet(deviceListHandle->deviceName,sizeof(deviceListHandle->deviceName),"/dev/");
+          stringAppend(deviceListHandle->deviceName,sizeof(deviceListHandle->deviceName),buffer);
+          if (stat(deviceListHandle->deviceName,&fileStat) == 0)
+          {
+            // mark entry available
+            deviceListHandle->readFlag = TRUE;
+          }
         }
       }
     }
-  }
 
-  if (deviceListHandle->readFlag)
-  {
-    String_setCString(deviceName,deviceListHandle->deviceName);
+    if (deviceListHandle->readFlag)
+    {
+      String_setCString(deviceName,deviceListHandle->deviceName);
 
-    // mark entry read
-    deviceListHandle->readFlag = FALSE;
-  }
-  else
-  {
-    String_clear(deviceName);
-  }
+      // mark entry read
+      deviceListHandle->readFlag = FALSE;
+    }
+  #elif defined(PLATFORM_WINDOWS)
+    while ((deviceListHandle->logicalDrives >> deviceListHandle->i) > 0)
+    {
+      if (((1UL << deviceListHandle->i) & deviceListHandle->logicalDrives) != 0)
+      {
+        String_format(deviceName,"%c:",'A'+deviceListHandle->i);
+        deviceListHandle->i++;
+        break;
+      }
+      else
+      {
+        deviceListHandle->i++;
+      }
+    }
+  #endif /* PLATFORM_... */
 
   return ERROR_NONE;
 }
@@ -753,19 +789,20 @@ Errors Device_getInfoCString(DeviceInfo *deviceInfo,
                              bool        sizesFlag
                             )
 {
-  FileStat fileStat;
-  int      handle;
-  #if defined(HAVE_IOCTL) && defined(HAVE_BLKSSZGET)
-    int      i;
-  #endif
-  #if defined(HAVE_IOCTL) && defined(HAVE_BLKGETSIZE)
-    long     l;
-  #endif
-  char          buffer[4096];
   #if   defined(PLATFORM_LINUX)
+    FileStat      fileStat;
+    int      handle;
+    #if defined(HAVE_IOCTL) && defined(HAVE_BLKSSZGET)
+      int           i;
+    #endif
+    #if defined(HAVE_IOCTL) && defined(HAVE_BLKGETSIZE)
+      long          l;
+    #endif
     struct mntent mountEntry;
+    char          buffer[4096];
     FILE          *mtab;
   #elif defined(PLATFORM_WINDOWS)
+    ULARGE_INTEGER freeSpace,totalSpace,totalFreeSpace;
   #endif /* PLATFORM_... */
 
   assert(deviceInfo != NULL);
@@ -780,45 +817,74 @@ Errors Device_getInfoCString(DeviceInfo *deviceInfo,
 //  deviceInfo->totalBlocks = 0LL;
   deviceInfo->mounted     = FALSE;
 
-  // get device meta data
-  if (LSTAT(deviceName,&fileStat) != 0)
-  {
-    return ERRORX_(IO,errno,"%E",errno);
-  }
-  deviceInfo->timeLastAccess  = fileStat.st_atime;
-  deviceInfo->timeModified    = fileStat.st_mtime;
-  deviceInfo->timeLastChanged = fileStat.st_ctime;
-  deviceInfo->userId          = fileStat.st_uid;
-  deviceInfo->groupId         = fileStat.st_gid;
-  deviceInfo->permission      = (DevicePermission)fileStat.st_mode;
-  #ifdef HAVE_MAJOR
-    deviceInfo->major         = major(fileStat.st_rdev);
-  #else
-    deviceInfo->major         = 0;
-  #endif
-  #ifdef HAVE_MINOR
-    deviceInfo->minor         = minor(fileStat.st_rdev);
-  #else
-    deviceInfo->minor         = 0;
-  #endif
-  deviceInfo->id              = (uint64)fileStat.st_ino;
-
-  if      (S_ISCHR(fileStat.st_mode)) deviceInfo->type = DEVICE_TYPE_CHARACTER;
-  else if (S_ISBLK(fileStat.st_mode)) deviceInfo->type = DEVICE_TYPE_BLOCK;
-
-  if (deviceInfo->type == DEVICE_TYPE_BLOCK)
-  {
-    // get block size, total size
-    handle = open(deviceName,O_RDONLY);
-    if      (handle != -1)
+  #if   defined(PLATFORM_LINUX)
+    // get device meta data
+    if (STAT(deviceName,&fileStat) != 0)
     {
-    #if defined(HAVE_IOCTL) && defined(HAVE_BLKSSZGET)
-      if (ioctl(handle,BLKSSZGET, &i) == 0) deviceInfo->blockSize = (ulong)i;
+      return ERRORX_(IO,errno,"%E",errno);
+    }
+    deviceInfo->timeLastAccess  = fileStat.st_atime;
+    deviceInfo->timeModified    = fileStat.st_mtime;
+    deviceInfo->timeLastChanged = fileStat.st_ctime;
+    deviceInfo->userId          = fileStat.st_uid;
+    deviceInfo->groupId         = fileStat.st_gid;
+    deviceInfo->permission      = (DevicePermission)fileStat.st_mode;
+    #ifdef HAVE_MAJOR
+      deviceInfo->major         = major(fileStat.st_rdev);
+    #else
+      deviceInfo->major         = 0;
     #endif
-    #if defined(HAVE_IOCTL) && defined(HAVE_BLKGETSIZE)
-      if (ioctl(handle,BLKGETSIZE,&l) == 0) deviceInfo->size      = (int64)l*512;
+    #ifdef HAVE_MINOR
+      deviceInfo->minor         = minor(fileStat.st_rdev);
+    #else
+      deviceInfo->minor         = 0;
     #endif
-    close(handle);
+    deviceInfo->id              = (uint64)fileStat.st_ino;
+
+    if      (S_ISCHR(fileStat.st_mode)) deviceInfo->type = DEVICE_TYPE_CHARACTER;
+    else if (S_ISBLK(fileStat.st_mode)) deviceInfo->type = DEVICE_TYPE_BLOCK;
+
+    if (deviceInfo->type == DEVICE_TYPE_BLOCK)
+    {
+      // get block size, total size
+      handle = open(deviceName,O_RDONLY);
+      if      (handle != -1)
+      {
+        #if defined(HAVE_IOCTL) && defined(HAVE_BLKSSZGET)
+          if (ioctl(handle,BLKSSZGET, &i) == 0) deviceInfo->blockSize = (ulong)i;
+        #endif
+        #if defined(HAVE_IOCTL) && defined(HAVE_BLKGETSIZE)
+          if (ioctl(handle,BLKGETSIZE,&l) == 0) deviceInfo->size      = (int64)l*512;
+        #endif
+        close(handle);
+      }
+      else if (!sizesFlag)
+      {
+        deviceInfo->blockSize = 0;
+        deviceInfo->size      = 0LL;
+      }
+      else
+      {
+        return ERRORX_(IO,errno,"%E",errno);
+      }
+    }
+  #elif defined(PLATFORM_WINDOWS)
+    deviceInfo->type            = DEVICE_TYPE_BLOCK;
+//TODO: NYI
+    deviceInfo->timeLastAccess  = 0;
+    deviceInfo->timeModified    = 0;
+    deviceInfo->timeLastChanged = 0;
+    deviceInfo->userId          = 0;
+    deviceInfo->groupId         = 0;
+    deviceInfo->permission      = 0;
+    deviceInfo->major           = 0;
+    deviceInfo->minor           = 0;
+    deviceInfo->id              = 0;
+
+    if      (GetDiskFreeSpaceEx(deviceName,&freeSpace,&totalSpace,&totalFreeSpace))
+    {
+      deviceInfo->blockSize = 0;
+      deviceInfo->size      = (uint64)totalSpace.QuadPart;
     }
     else if (!sizesFlag)
     {
@@ -829,7 +895,7 @@ Errors Device_getInfoCString(DeviceInfo *deviceInfo,
     {
       return ERRORX_(IO,errno,"%E",errno);
     }
-  }
+  #endif /* PLATFORM_... */
 
   // check if mounted
   #if   defined(PLATFORM_LINUX)
