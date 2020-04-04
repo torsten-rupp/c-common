@@ -48,8 +48,8 @@
 #if   defined(PLATFORM_LINUX)
   #include <linux/tcp.h>
 #elif defined(PLATFORM_WINDOWS)
-  #include <windows.h>
   #include <winsock2.h>
+  #include <windows.h>
   #include <in6addr.h>
 #endif /* PLATFORM_... */
 
@@ -1459,7 +1459,7 @@ Errors Network_send(SocketHandle *socketHandle,
             #else
               #define FLAGS 0
             #endif
-            n = send(socketHandle->handle,((byte*)buffer)+sentBytes,length-sentBytes,FLAGS);
+            n = send(socketHandle->handle,(const char*)(((byte*)buffer)+sentBytes),length-sentBytes,FLAGS);
             #undef FLAGS
             if      (n > 0) sentBytes += (ulong)n;
             else if ((n == -1) && (errno != EAGAIN)) break;
@@ -1788,7 +1788,7 @@ void Network_doneServer(ServerSocketHandle *serverSocketHandle)
   close(serverSocketHandle->handle);
 }
 
-Errors Network_startSSL(SocketHandle *socketHandle,
+Errors Network_startTLS(SocketHandle *socketHandle,
                         const void   *caData,
                         uint         caLength,
                         const void   *certData,
@@ -1940,6 +1940,8 @@ Errors Network_accept(SocketHandle             *socketHandle,
                        );
         if (error != ERROR_NONE)
         {
+          shutdown(socketHandle->handle,SHUTDOWN_FLAGS);
+          close(socketHandle->handle);
           return error;
         }
 
@@ -1948,6 +1950,9 @@ Errors Network_accept(SocketHandle             *socketHandle,
         UNUSED_VARIABLE(socketHandle);
         UNUSED_VARIABLE(serverSocketHandle);
         UNUSED_VARIABLE(socketFlags);
+
+        shutdown(socketHandle->handle,SHUTDOWN_FLAGS);
+        close(socketHandle->handle);
 
         return ERROR_FUNCTION_NOT_SUPPORTED;
       #endif /* HAVE_GNU_TLS */
@@ -2127,7 +2132,7 @@ void Network_getRemoteInfo(SocketHandle  *socketHandle,
           String_setCString(name,inet_ntoa(sockAddrIn.sin_addr));
         }
       #elif defined(HAVE_GETHOSTBYADDR)
-        hostEntry = gethostbyaddr(&sockAddrIn.sin_addr,
+        hostEntry = gethostbyaddr((const void*)&sockAddrIn.sin_addr,
                                   sizeof(sockAddrIn.sin_addr),
                                   AF_INET
                                  );
