@@ -23,6 +23,7 @@
   #include <poll.h>
 #elif defined(PLATFORM_WINDOWS)
   #include <winsock2.h>
+  #include <windows.h>
 #endif /* PLATFORM_... */
 
 #include "common/global.h"
@@ -83,8 +84,8 @@ typedef enum
   #ifdef HAVE_WSAPOLL
     #define HANDLE_EVENT_INPUT   POLLIN
     #define HANDLE_EVENT_OUTPUT  POLLOUT
-    #define HANDLE_EVENT_ERROR   POLLERR
-    #define HANDLE_EVENT_INVALID POLLNVAL
+    #define HANDLE_EVENT_ERROR   POLLHUP  // POLLERR: not supported
+    #define HANDLE_EVENT_INVALID 0  // POLLNVAL: not supported
   #else /* not HAVE_WSAPOLL */
     #define HANDLE_EVENT_INPUT   (1 << 0)
     #define HANDLE_EVENT_OUTPUT  (1 << 1)
@@ -445,7 +446,11 @@ typedef struct
 * Notes  : -
 \***********************************************************************/
 
-#define MISC_SIGNAL_MASK_CLEAR(signalMaks) sigemptyset(&signalMask);
+#ifdef HAVE_SIGSET_T
+  #define MISC_SIGNAL_MASK_CLEAR(signalMaks) sigemptyset(&signalMask)
+#else /* not HAVE_SIGSET_T */
+  #define MISC_SIGNAL_MASK_CLEAR(signalMaks) memClear(&signalMask,sizeof(signalMask))
+#endif  /* HAVE_SIGSET_T */
 
 /***********************************************************************\
 * Name   : MISC_SIGNAL_MASK_SET
@@ -457,7 +462,11 @@ typedef struct
 * Notes  : -
 \***********************************************************************/
 
-#define MISC_SIGNAL_MASK_SET(signalMaks,signal) sigaddset(&signalMask,signal);
+#ifdef HAVE_SIGSET_T
+  #define MISC_SIGNAL_MASK_SET(signalMaks,signal) sigaddset(&signalMask,signal)
+#else /* not HAVE_SIGSET_T */
+  #define MISC_SIGNAL_MASK_SET(signalMaks,signal) do {} while (0)
+#endif  /* HAVE_SIGSET_T */
 
 /***********************************************************************\
 * Name   : MISC_HANDLES_ITERATE
@@ -561,7 +570,7 @@ INLINE void Misc_doneTimeout(TimeoutInfo *timeoutInfo)
 * Name   : Misc_restartTimeout
 * Purpose: restart timeout
 * Input  : timeoutInfo - timeout info
-*          timeout     - timeout [ms]
+*          timeout     - timeout [ms] (can be 0)
 * Output : -
 * Return : -
 * Notes  : -
@@ -573,8 +582,11 @@ INLINE void Misc_restartTimeout(TimeoutInfo *timeoutInfo, long timeout)
 {
   assert(timeoutInfo != NULL);
 
-  timeoutInfo->timeout      = timeout;
-  timeoutInfo->endTimestamp = (timeout != WAIT_FOREVER) ? Misc_getTimestamp()+(uint64)timeout*US_PER_MS : 0LL;
+  if (timeout != 0L)
+  {
+    timeoutInfo->timeout = timeout;
+  }
+  timeoutInfo->endTimestamp = (timeoutInfo->timeout != WAIT_FOREVER) ? Misc_getTimestamp()+(uint64)timeoutInfo->timeout*US_PER_MS : 0LL;
 }
 #endif /* NDEBUG || __MISC_IMPLEMENTATION__ */
 
@@ -617,7 +629,7 @@ INLINE long Misc_getRestTimeout(const TimeoutInfo *timeoutInfo)
   if (timeoutInfo->timeout != WAIT_FOREVER)
   {
     timestamp = Misc_getTimestamp();
-    return (timestamp < timeoutInfo->endTimestamp) ? (long)((timeoutInfo->endTimestamp-timestamp)/US_PER_MS) : 0L;
+    return (timestamp <= timeoutInfo->endTimestamp) ? (long)((timeoutInfo->endTimestamp-timestamp)/US_PER_MS) : 0L;
   }
   else
   {
@@ -660,7 +672,7 @@ INLINE bool Misc_isTimeout(const TimeoutInfo *timeoutInfo)
 {
   assert(timeoutInfo != NULL);
 
-  return (Misc_getTimestamp() > timeoutInfo->endTimestamp);
+  return (Misc_getTimestamp() >= timeoutInfo->endTimestamp);
 }
 #endif /* NDEBUG || __MISC_IMPLEMENTATION__ */
 
@@ -802,6 +814,54 @@ INLINE void Misc_mdelay(uint64 time)
 /*---------------------------------------------------------------------*/
 
 /***********************************************************************\
+* Name   : Misc_userNameToUserId
+* Purpose: convert user name to user id
+* Input  : name - user name
+* Output : -
+* Return : user id or FILE_DEFAULT_USER_ID if user not found
+* Notes  : -
+\***********************************************************************/
+
+uint32 Misc_userNameToUserId(const char *name);
+
+/***********************************************************************\
+* Name   : Misc_userNameToUserId
+* Purpose: convert user name to user id
+* Input  : name     - name variable
+*          nameSize - max. size of name
+*          userId   - user id
+* Output : name - user name
+* Return : user name or "NONE" if user not found
+* Notes  : -
+\***********************************************************************/
+
+const char *Misc_userIdToUserName(char *name, uint nameSize, uint32 userId);
+
+/***********************************************************************\
+* Name   : Misc_groupNameToGroupId
+* Purpose: convert group name to group id
+* Input  : name - group name
+* Output : -
+* Return : user id or FILE_DEFAULT_GROUP_ID if group not found
+* Notes  : -
+\***********************************************************************/
+
+uint32 Misc_groupNameToGroupId(const char *name);
+
+/***********************************************************************\
+* Name   : Misc_groupNameToGroupId
+* Purpose: convert group name to group id
+* Input  : name     - name variable
+*          nameSize - max. size of name
+*          groupId  - group id
+* Output : name - group name
+* Return : group name or "NONE" if user not found
+* Notes  : -
+\***********************************************************************/
+
+const char *Misc_groupIdToGroupName(char *name, uint nameSize, uint32 groupId);
+
+/***********************************************************************\
 * Name   : Misc_getCurrentUserName
 * Purpose: get current user name
 * Input  : string - string variable
@@ -866,7 +926,7 @@ String Misc_expandMacros(String           string,
 
 /***********************************************************************\
 * Name   : Misc_waitHandle
-* Purpose: wait for handle
+* Purpose: wait for single handle
 * Input  : handle     - handle
 *          signalMask - signal mask (can be NULL)
 *          events     - events to wait for
@@ -1011,6 +1071,24 @@ INLINE uint Misc_handleIterate(const WaitHandle *waitHandle, uint i, int *handle
   #endif /* PLATFORM_... */
 
   return i;
+}
+#endif /* NDEBUG || __MISC_IMPLEMENTATION__ */
+
+/***********************************************************************\
+* Name   : Misc_isHandleEvent
+* Purpose: check if event occured
+* Input  : events - events
+*          event  - event to check
+* Output : -
+* Return : TRUE iff event occured
+* Notes  : -
+\***********************************************************************/
+
+INLINE bool Misc_isHandleEvent(uint events, uint event);
+#if defined(NDEBUG) || defined(__MISC_IMPLEMENTATION__)
+INLINE bool Misc_isHandleEvent(uint events, uint event)
+{
+  return (events & event) != 0;
 }
 #endif /* NDEBUG || __MISC_IMPLEMENTATION__ */
 

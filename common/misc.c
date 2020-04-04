@@ -16,6 +16,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <inttypes.h>
 #include <unistd.h>
 #include <sys/types.h>
 #ifdef HAVE_SYS_WAIT_H
@@ -32,12 +33,19 @@
 #ifdef HAVE_UUID_UUID_H
   #include <uuid/uuid.h>
 #endif /* HAVE_UUID_UUID_H */
+#ifdef HAVE_PWD_H
+  #include <pwd.h>
+#endif
+#ifdef HAVE_GRP_H
+  #include <grp.h>
+#endif
 #include <errno.h>
 #include <assert.h>
 
 #if   defined(PLATFORM_LINUX)
 #elif defined(PLATFORM_WINDOWS)
   #include <windows.h>
+  #include <rpcdce.h>
 #endif /* PLATFORM_... */
 
 #include "common/global.h"
@@ -77,6 +85,7 @@
 * Notes  : -
 \***********************************************************************/
 
+#if defined(HAVE_PIPE) && defined(HAVE_FORK) && defined(HAVE_WAITPID)
 LOCAL bool readProcessIO(int fd, String line)
 {
   #if   defined(PLATFORM_LINUX)
@@ -125,6 +134,7 @@ LOCAL bool readProcessIO(int fd, String line)
 
   return FALSE;
 }
+#endif /* defined(HAVE_PIPE) && defined(HAVE_FORK) && defined(HAVE_WAITPID) */
 
 /***********************************************************************\
 * Name   : execute
@@ -192,7 +202,6 @@ LOCAL Errors execute(const char        *command,
 //fprintf(stderr,"%s,%d: command %s\n",__FILE__,__LINE__,String_cString(text));
 
   #if defined(HAVE_PIPE) && defined(HAVE_FORK) && defined(HAVE_WAITPID)
-#if 1
     // create i/o pipes
     if (pipe(pipeStdin) != 0)
     {
@@ -268,9 +277,6 @@ LOCAL Errors execute(const char        *command,
     close(pipeStderr[1]);
     close(pipeStdout[1]);
     close(pipeStdin[0]);
-#else /* 0 */
-error = ERROR_NONE;
-#endif /* 0 */
 
     // read stdout/stderr and wait until process terminate
     line   = String_new();
@@ -876,55 +882,56 @@ void Misc_splitDateTime(uint64   dateTime,
 
 uint64 Misc_parseDateTime(const char *string)
 {
-  const char *DATE_TIME_FORMATS[] =
-  {
-    "%Y-%m-%dT%H:%i:%s%Q",       // 2011-03-11T14:46:23-06:00
+  #if defined(HAVE_STRPTIME)
+    const char *DATE_TIME_FORMATS[] =
+    {
+      "%Y-%m-%dT%H:%i:%s%Q",       // 2011-03-11T14:46:23-06:00
 
-    "%A, %d %b %y %H:%M:%S %z",  // Fri, 11 Mar 11 14:46:23 -0500
-    "%a, %d %b %y %H:%M:%S %z",  // Friday, 11 Mar 11 14:46:23 -0500
-    "%A, %d %B %y %H:%M:%S %z",  // Fri, 11 Mar 11 14:46:23 -0500
-    "%a, %d %B %y %H:%M:%S %z",  // Friday, 11 Mar 11 14:46:23 -0500
-    "%A, %d %b %Y %H:%M:%S %z",  // Fri, 11 Mar 2011 14:46:23 -0500
-    "%a, %d %b %Y %H:%M:%S %z",  // Friday, 11 Mar 2011 14:46:23 -0500
-    "%A, %d %B %Y %H:%M:%S %z",  // Fri, 11 Mar 2011 14:46:23 -0500
-    "%a, %d %B %Y %H:%M:%S %z",  // Friday, 11 Mar 2011 14:46:23 -0500
+      "%A, %d %b %y %H:%M:%S %z",  // Fri, 11 Mar 11 14:46:23 -0500
+      "%a, %d %b %y %H:%M:%S %z",  // Friday, 11 Mar 11 14:46:23 -0500
+      "%A, %d %B %y %H:%M:%S %z",  // Fri, 11 Mar 11 14:46:23 -0500
+      "%a, %d %B %y %H:%M:%S %z",  // Friday, 11 Mar 11 14:46:23 -0500
+      "%A, %d %b %Y %H:%M:%S %z",  // Fri, 11 Mar 2011 14:46:23 -0500
+      "%a, %d %b %Y %H:%M:%S %z",  // Friday, 11 Mar 2011 14:46:23 -0500
+      "%A, %d %B %Y %H:%M:%S %z",  // Fri, 11 Mar 2011 14:46:23 -0500
+      "%a, %d %B %Y %H:%M:%S %z",  // Friday, 11 Mar 2011 14:46:23 -0500
 
-    "%A, %d-%b-%y %H:%M:%S UTC", // Fri, 11-Mar-11 14:46:23 UTC
-    "%a, %d-%b-%y %H:%M:%S UTC", // Friday, 11-Mar-11 14:46:23 UTC
-    "%A, %d-%B-%y %H:%M:%S UTC", // Fri, 11-March-11 14:46:23 UTC
-    "%a, %d-%B-%y %H:%M:%S UTC", // Friday, 11-March-11 14:46:23 UTC
-    "%A, %d-%b-%Y %H:%M:%S UTC", // Fri, 11-Mar-2011 14:46:23 UTC
-    "%a, %d-%b-%Y %H:%M:%S UTC", // Friday, 11-Mar-2-11 14:46:23 UTC
-    "%A, %d-%B-%Y %H:%M:%S UTC", // Fri, 11-March-2011 14:46:23 UTC
-    "%a, %d-%B-%Y %H:%M:%S UTC", // Friday, 11-March-2011 14:46:23 UTC
+      "%A, %d-%b-%y %H:%M:%S UTC", // Fri, 11-Mar-11 14:46:23 UTC
+      "%a, %d-%b-%y %H:%M:%S UTC", // Friday, 11-Mar-11 14:46:23 UTC
+      "%A, %d-%B-%y %H:%M:%S UTC", // Fri, 11-March-11 14:46:23 UTC
+      "%a, %d-%B-%y %H:%M:%S UTC", // Friday, 11-March-11 14:46:23 UTC
+      "%A, %d-%b-%Y %H:%M:%S UTC", // Fri, 11-Mar-2011 14:46:23 UTC
+      "%a, %d-%b-%Y %H:%M:%S UTC", // Friday, 11-Mar-2-11 14:46:23 UTC
+      "%A, %d-%B-%Y %H:%M:%S UTC", // Fri, 11-March-2011 14:46:23 UTC
+      "%a, %d-%B-%Y %H:%M:%S UTC", // Friday, 11-March-2011 14:46:23 UTC
 
-    "%A, %d %b %y %H:%M:%S GMT",  // Fri, 11 Mar 11 14:46:23 GMT
-    "%a, %d %b %y %H:%M:%S GMT",  // Friday, 11 Mar 11 14:46:23 GMT
-    "%A, %d %B %y %H:%M:%S GMT",  // Fri, 11 March 11 14:46:23 GMT
-    "%a, %d %B %y %H:%M:%S GMT",  // Friday, 11 March 11 14:46:23 GMT
-    "%A, %d %b %Y %H:%M:%S GMT",  // Fri, 11 Mar 2011 14:46:23 GMT
-    "%a, %d %b %Y %H:%M:%S GMT",  // Friday, 11 Mar 2011 14:46:23 GMT
-    "%A, %d %B %Y %H:%M:%S GMT",  // Fri, 11 March 2011 14:46:23 GMT
-    "%a, %d %B %Y %H:%M:%S GMT",  // Friday, 11 March 2011 14:46:23 GMT
+      "%A, %d %b %y %H:%M:%S GMT",  // Fri, 11 Mar 11 14:46:23 GMT
+      "%a, %d %b %y %H:%M:%S GMT",  // Friday, 11 Mar 11 14:46:23 GMT
+      "%A, %d %B %y %H:%M:%S GMT",  // Fri, 11 March 11 14:46:23 GMT
+      "%a, %d %B %y %H:%M:%S GMT",  // Friday, 11 March 11 14:46:23 GMT
+      "%A, %d %b %Y %H:%M:%S GMT",  // Fri, 11 Mar 2011 14:46:23 GMT
+      "%a, %d %b %Y %H:%M:%S GMT",  // Friday, 11 Mar 2011 14:46:23 GMT
+      "%A, %d %B %Y %H:%M:%S GMT",  // Fri, 11 March 2011 14:46:23 GMT
+      "%a, %d %B %Y %H:%M:%S GMT",  // Friday, 11 March 2011 14:46:23 GMT
 
-     DATE_TIME_FORMAT_DEFAULT
-  };
+       DATE_TIME_FORMAT_DEFAULT
+    };
+  #endif /* HAVE_STRPTIME */
 
-  #ifdef HAVE_GETDATE_R
+  #if defined(HAVE_GETDATE_R) || defined(HAVE_STRPTIME)
     struct tm tmBuffer;
   #endif /* HAVE_GETDATE_R */
   struct tm  *tm;
-  uint       z;
-  const char *s;
+  #if defined(HAVE_STRPTIME)
+    uint       i;
+    const char *s;
+  #endif /* HAVE_STRPTIME */
   uint64     dateTime;
-  #if   defined(PLATFORM_LINUX)
-  #elif defined(PLATFORM_WINDOWS)
-  #endif /* PLATFORM_... */
 
   assert(string != NULL);
 
   #if   defined(HAVE_GETDATE_R)
-    memClear(&tmBuffer,sizeof(struct tm));
+    memClear(&tmBuffer,sizeof(tmBuffer));
     tm = (getdate_r(string,&tmBuffer) == 0) ? &tmBuffer : NULL;
   #elif defined(HAVE_GETDATE)
     tm = getdate(string);
@@ -938,25 +945,24 @@ uint64 Misc_parseDateTime(const char *string)
 
   if (tm == NULL)
   {
-    memClear(&tmBuffer,sizeof(struct tm));
-    z = 0;
-    while ((z < SIZE_OF_ARRAY(DATE_TIME_FORMATS)) && (tm == NULL))
-    {
-      #ifdef HAVE_STRPTIME
-        s = (const char*)strptime(string,DATE_TIME_FORMATS[z],&tmBuffer);
-      #else
+    #ifdef HAVE_STRPTIME
+      memClear(&tmBuffer,sizeof(tmBuffer));
+      i = 0;
+      while ((i < SIZE_OF_ARRAY(DATE_TIME_FORMATS)) && (tm == NULL))
+      {
+        s = (const char*)strptime(string,DATE_TIME_FORMATS[i],&tmBuffer);
+        if ((s != NULL) && ((*s) == '\0'))
+        {
+          tm = &tmBuffer;
+        }
+        i++;
+      }
+    #else
 #ifndef WERROR
 #warning implement strptime
 #endif
 //TODO: use http://cvsweb.netbsd.org/bsdweb.cgi/src/lib/libc/time/strptime.c?rev=HEAD
-        s = NULL;
-      #endif
-      if ((s != NULL) && ((*s) == '\0'))
-      {
-        tm = &tmBuffer;
-      }
-      z++;
-    }
+    #endif
   }
 
   if (tm != NULL)
@@ -1089,30 +1095,326 @@ uint64 Misc_makeDateTime(uint year,
 
 void Misc_udelay(uint64 time)
 {
-  #if   defined(HAVE_USLEEP)
-  #elif defined(HAVE_NANOSLEEP)
-    struct timespec ts;
-  #endif /* HAVE_NANOSLEEP */
-
-  #if   defined(HAVE_USLEEP)
-    usleep(time);
-  #elif defined(HAVE_NANOSLEEP)
-    ts.tv_sec  = (ulong)(time/1000000LL);
-    ts.tv_nsec = (ulong)((time%1000000LL)*1000);
-    while (   (nanosleep(&ts,&ts) == -1)
-           && (errno == EINTR)
-          )
-    {
-      // nothing to do
-    }
+  #if   defined(PLATFORM_LINUX)
+    #if   defined(HAVE_USLEEP)
+    #elif defined(HAVE_NANOSLEEP)
+      struct timespec ts;
+    #endif /* HAVE_NANOSLEEP */
   #elif defined(PLATFORM_WINDOWS)
-    Sleep(time/1000LL);
-  #else
-    #error usleep()/nanosleep() not available nor Windows system!
-  #endif
+  #endif /* PLATFORM_... */
+
+  // Note: usleep() seems not work on MinGW
+  #if   defined(PLATFORM_LINUX)
+    #if   defined(HAVE_USLEEP)
+      usleep(time);
+    #elif defined(HAVE_NANOSLEEP)
+      ts.tv_sec  = (ulong)(time/1000000LL);
+      ts.tv_nsec = (ulong)((time%1000000LL)*1000);
+      while (   (nanosleep(&ts,&ts) == -1)
+             && (errno == EINTR)
+            )
+      {
+        // nothing to do
+      }
+    #else
+      #error usleep()/nanosleep() not available nor Windows system!
+    #endif
+  #elif defined(PLATFORM_WINDOWS)
+    Sleep((time+1000L-1L)/1000LL);
+  #endif /* PLATFORM_... */
 }
 
 /*---------------------------------------------------------------------*/
+
+uint32 Misc_userNameToUserId(const char *name)
+{
+  #define BUFFER_DELTA_SIZE 1024
+  #define MAX_BUFFER_SIZE   (64*1024)
+
+  #if defined(HAVE_SYSCONF) && defined(HAVE_GETPWNAM_R)
+    long          bufferSize;
+    char          *buffer,*newBuffer;
+    struct passwd passwordEntry;
+    struct passwd *result;
+  #endif /* defined(HAVE_SYSCONF) && defined(HAVE_GETPWNAM_R) */
+  uint32        userId;
+
+  assert(name != NULL);
+
+  #if defined(HAVE_SYSCONF) && defined(HAVE_GETPWNAM_R)
+    // allocate buffer
+    bufferSize = sysconf(_SC_GETPW_R_SIZE_MAX);
+    if (bufferSize == -1L)
+    {
+      return FILE_DEFAULT_USER_ID;
+    }
+    buffer = (char*)malloc(bufferSize);
+    if (buffer == NULL)
+    {
+      return FILE_DEFAULT_USER_ID;
+    }
+
+    // get user passwd entry
+    while (getpwnam_r(name,&passwordEntry,buffer,bufferSize,&result) != 0)
+    {
+      if ((errno != ERANGE) || ((bufferSize+BUFFER_DELTA_SIZE) >= MAX_BUFFER_SIZE))
+      {
+        free(buffer);
+        return FILE_DEFAULT_USER_ID;
+      }
+      else
+      {
+        // Note: returned size may not be enough. Increase buffer size.
+        newBuffer = (char*)realloc(buffer,bufferSize+BUFFER_DELTA_SIZE);
+        if (newBuffer == NULL)
+        {
+          free(buffer);
+          return FILE_DEFAULT_USER_ID;
+        }
+        buffer     =  newBuffer;
+        bufferSize += BUFFER_DELTA_SIZE;
+      }
+    }
+
+    // get user id
+    userId = (result != NULL) ? result->pw_uid : FILE_DEFAULT_USER_ID;
+
+    // free resources
+    free(buffer);
+  #else /* not defined(HAVE_SYSCONF) && defined(HAVE_GETPWNAM_R) */
+    UNUSED_VARIABLE(name);
+
+    userId = FILE_DEFAULT_USER_ID;
+  #endif /* defined(HAVE_SYSCONF) && defined(HAVE_GETPWNAM_R) */
+
+  return userId;
+
+  #undef BUFFER_DELTA_SIZE
+  #undef MAX_BUFFER_SIZE
+}
+
+const char *Misc_userIdToUserName(char *name, uint nameSize, uint32 userId)
+{
+  #define BUFFER_DELTA_SIZE 1024
+  #define MAX_BUFFER_SIZE   (64*1024)
+
+  #if defined(HAVE_SYSCONF) && defined(HAVE_GETPWUID_R)
+    long          bufferSize;
+    char          *buffer,*newBuffer;
+    struct passwd groupEntry;
+    struct passwd *result;
+  #endif /* defined(HAVE_SYSCONF) && defined(HAVE_GETPWUID_R) */
+
+  assert(name != NULL);
+  assert(nameSize > 0);
+
+  stringClear(name);
+
+  #if defined(HAVE_SYSCONF) && defined(HAVE_GETPWUID_R)
+    // allocate buffer
+    bufferSize = sysconf(_SC_GETPW_R_SIZE_MAX);
+    if (bufferSize == -1L)
+    {
+      return NULL;
+    }
+    buffer = (char*)malloc(bufferSize);
+    if (buffer == NULL)
+    {
+      return NULL;
+    }
+
+    // get user passwd entry
+    while (getpwuid_r((uid_t)userId,&groupEntry,buffer,bufferSize,&result) != 0)
+    {
+      if ((errno != ERANGE) || ((bufferSize+BUFFER_DELTA_SIZE) >= MAX_BUFFER_SIZE))
+      {
+        free(buffer);
+        return NULL;
+      }
+      else
+      {
+        // Note: returned size may not be enough. Increase buffer size.
+        newBuffer = (char*)realloc(buffer,bufferSize+BUFFER_DELTA_SIZE);
+        if (newBuffer == NULL)
+        {
+          free(buffer);
+          return NULL;
+        }
+        buffer     =  newBuffer;
+        bufferSize += BUFFER_DELTA_SIZE;
+      }
+    }
+
+    // get user name
+    if (result != NULL)
+    {
+      strncpy(name,result->pw_name,nameSize);
+    }
+    else
+    {
+      strncpy(name,"NONE",nameSize);
+    }
+    name[nameSize-1] = NUL;
+
+    // free resources
+    free(buffer);
+  #else /* not defined(HAVE_SYSCONF) && defined(HAVE_GETPWUID_R) */
+    UNUSED_VARIABLE(userId);
+
+    strncpy(name,"NONE",nameSize);
+    name[nameSize-1] = NUL;
+  #endif /* defined(HAVE_SYSCONF) && defined(HAVE_GETPWUID_R) */
+
+  return name;
+
+  #undef BUFFER_DELTA_SIZE
+  #undef MAX_BUFFER_SIZE
+}
+
+uint32 Misc_groupNameToGroupId(const char *name)
+{
+  #define BUFFER_DELTA_SIZE 1024
+  #define MAX_BUFFER_SIZE   (64*1024)
+
+  #if defined(HAVE_SYSCONF) && defined(HAVE_GETGRNAM_R)
+    long         bufferSize;
+    char         *buffer,*newBuffer;
+    struct group groupEntry;
+    struct group *result;
+  #endif /* defined(HAVE_SYSCONF) && defined(HAVE_GETPWUID_R) */
+  uint32       groupId;
+
+  assert(name != NULL);
+
+  #if defined(HAVE_SYSCONF) && defined(HAVE_GETGRNAM_R)
+    // allocate buffer
+    bufferSize = sysconf(_SC_GETGR_R_SIZE_MAX);
+    if (bufferSize == -1L)
+    {
+      return FILE_DEFAULT_GROUP_ID;
+    }
+    buffer = (char*)malloc(bufferSize);
+    if (buffer == NULL)
+    {
+      return FILE_DEFAULT_GROUP_ID;
+    }
+
+    // get user passwd entry
+    while (getgrnam_r(name,&groupEntry,buffer,bufferSize,&result) != 0)
+    {
+      if ((errno != ERANGE) || ((bufferSize+BUFFER_DELTA_SIZE) >= MAX_BUFFER_SIZE))
+      {
+        free(buffer);
+        return FILE_DEFAULT_GROUP_ID;
+      }
+      else
+      {
+        // Note: returned size may not be enough. Increase buffer size.
+        newBuffer = (char*)realloc(buffer,bufferSize+BUFFER_DELTA_SIZE);
+        if (newBuffer == NULL)
+        {
+          free(buffer);
+          return FILE_DEFAULT_GROUP_ID;
+        }
+        buffer     =  newBuffer;
+        bufferSize += BUFFER_DELTA_SIZE;
+      }
+    }
+
+    // get group id
+    groupId = (result != NULL) ? result->gr_gid : FILE_DEFAULT_GROUP_ID;
+
+    // free resources
+    free(buffer);
+  #else /* not defined(HAVE_SYSCONF) && defined(HAVE_GETGRNAM_R) */
+    UNUSED_VARIABLE(name);
+
+    groupId = FILE_DEFAULT_GROUP_ID;
+  #endif /* defined(HAVE_SYSCONF) && defined(HAVE_GETGRNAM_R) */
+
+  return groupId;
+
+  #undef BUFFER_DELTA_SIZE
+  #undef MAX_BUFFER_SIZE
+}
+
+const char *Misc_groupIdToGroupName(char *name, uint nameSize, uint32 groupId)
+{
+  #define BUFFER_DELTA_SIZE 1024
+  #define MAX_BUFFER_SIZE   (64*1024)
+
+  #if defined(HAVE_SYSCONF) && defined(HAVE_GETPWUID_R)
+    long         bufferSize;
+    char         *buffer,*newBuffer;
+    struct group groupEntry;
+    struct group *result;
+  #endif /* defined(HAVE_SYSCONF) && defined(HAVE_GETGRGID_R) */
+
+  assert(name != NULL);
+  assert(nameSize > 0);
+
+  stringClear(name);
+
+  #if defined(HAVE_SYSCONF) && defined(HAVE_GETGRGID_R)
+    // allocate buffer
+    bufferSize = sysconf(_SC_GETGR_R_SIZE_MAX);
+    if (bufferSize == -1L)
+    {
+      return NULL;
+    }
+    buffer = (char*)malloc(bufferSize);
+    if (buffer == NULL)
+    {
+      return NULL;
+    }
+
+    // get user passwd entry
+    while (getgrgid_r((gid_t)groupId,&groupEntry,buffer,bufferSize,&result) != 0)
+    {
+      if ((errno != ERANGE) || ((bufferSize+BUFFER_DELTA_SIZE) >= MAX_BUFFER_SIZE))
+      {
+        free(buffer);
+        return NULL;
+      }
+      else
+      {
+        // Note: returned size may not be enough. Increase buffer size.
+        newBuffer = (char*)realloc(buffer,bufferSize+BUFFER_DELTA_SIZE);
+        if (newBuffer == NULL)
+        {
+          free(buffer);
+          return NULL;
+        }
+        buffer     =  newBuffer;
+        bufferSize += BUFFER_DELTA_SIZE;
+      }
+    }
+
+    // get group name
+    if (result != NULL)
+    {
+      strncpy(name,result->gr_name,nameSize);
+    }
+    else
+    {
+      strncpy(name,"NONE",nameSize);
+    }
+    name[nameSize-1] = NUL;
+
+    // free resources
+    free(buffer);
+  #else /* not defined(HAVE_SYSCONF) && defined(HAVE_GETGRGID_R) */
+    UNUSED_VARIABLE(groupId);
+
+    strncpy(name,"NONE",nameSize);
+    name[nameSize-1] = NUL;
+  #endif /* defined(HAVE_SYSCONF) && defined(HAVE_GETGRGID_R) */
+
+  return name;
+
+  #undef BUFFER_DELTA_SIZE
+  #undef MAX_BUFFER_SIZE
+}
 
 String Misc_getCurrentUserName(String string)
 {
@@ -1130,6 +1432,7 @@ String Misc_getCurrentUserName(String string)
       String_clear(string);
     }
   #else
+//TODO: not available on Windows?
     String_setCString(string,getlogin());
   #endif
 
@@ -1156,49 +1459,65 @@ String Misc_getUUID(String string)
 
 const char *Misc_getUUIDCString(char *buffer, uint bufferSize)
 {
-  #if HAVE_UUID_GENERATE
-    uuid_t uuid;
-    char   s[36+1];
-  #else /* not HAVE_UUID_GENERATE */
-    FILE *file;
-    char *s;
-  #endif /* HAVE_UUID_GENERATE */
+  #if   defined(PLATFORM_LINUX)
+    #if HAVE_UUID_GENERATE
+      uuid_t uuid;
+      char   s[36+1];
+    #else /* not HAVE_UUID_GENERATE */
+      FILE *file;
+      char *s;
+    #endif /* HAVE_UUID_GENERATE */
+  #elif defined(PLATFORM_WINDOWS)
+    UUID     uuid;
+    RPC_CSTR *rpcString;
+  #endif /* PLATFORM_... */
 
   assert(buffer != NULL);
   assert(bufferSize > 0);
 
-  buffer[0] = '\0';
+  stringClear(buffer);
 
-  #if HAVE_UUID_GENERATE
-    uuid_generate(uuid);
+  #if   defined(PLATFORM_LINUX)
+    #if HAVE_UUID_GENERATE
+      uuid_generate(uuid);
 
-    uuid_unparse_lower(uuid,s);
-    s[36] = '\0';
+      uuid_unparse_lower(uuid,s);
+      s[36] = '\0';
 
-    strncpy(buffer,s,bufferSize-1);
-    buffer[bufferSize-1] = '\0';
-  #else /* not HAVE_UUID_GENERATE */
-    file = fopen("/proc/sys/kernel/random/uuid","r");
-    if (file != NULL)
+      strncpy(buffer,s,bufferSize-1);
+      buffer[bufferSize-1] = '\0';
+    #else /* not HAVE_UUID_GENERATE */
+      file = fopen("/proc/sys/kernel/random/uuid","r");
+      if (file != NULL)
+      {
+        // read kernel uuid device
+        if (fgets(buffer,bufferSize,file) == NULL) { /* ignored */ };
+        fclose(file);
+
+        // remove trailing white spaces
+        s = buffer;
+        while ((*s) != '\0')
+        {
+          s++;
+        }
+        do
+        {
+          (*s) = '\0';
+          s--;
+        }
+        while ((s >= buffer) && isspace(*s));
+      }
+    #endif /* HAVE_UUID_GENERATE */
+  #elif defined(PLATFORM_WINDOWS)
+    if (UuidCreate(&uuid) == RPC_S_OK)
     {
-      // read kernel uuid device
-      if (fgets(buffer,bufferSize,file) == NULL) { /* ignored */ };
-      fclose(file);
-
-      // remove trailing white spaces
-      s = buffer;
-      while ((*s) != '\0')
+      if (UuidToString(&uuid,&rpcString) == RPC_S_OK)
       {
-        s++;
+        stringSet(buffer,bufferSize,rpcString);
+        RpcStringFree(&rpcString);
       }
-      do
-      {
-        (*s) = '\0';
-        s--;
-      }
-      while ((s >= buffer) && isspace(*s));
     }
-  #endif /* HAVE_UUID_GENERATE */
+  #endif /* PLATFORM_... */
 
   return buffer;
 }
@@ -1375,7 +1694,7 @@ String Misc_expandMacros(String           string,
                     stringSet(format,sizeof(format),"%d");
                     break;
                   case TEXT_MACRO_TYPE_INTEGER64:
-                    stringSet(format,sizeof(format),"%lld");
+                    stringSet(format,sizeof(format),"%"PRIi64);
                     break;
                   case TEXT_MACRO_TYPE_DOUBLE:
                     stringSet(format,sizeof(format),"%lf");
@@ -1549,11 +1868,12 @@ uint Misc_waitHandle(int        handle,
     pollTimeout.tv_nsec = (long)((timeout%MS_PER_SECOND)*NS_PER_MS);
     events = (ppoll(pollfds,1,&pollTimeout,signalMask) > 0) ? pollfds[0].revents : 0;
   #elif defined(PLATFORM_WINDOWS)
+    UNUSED_VARIABLE(signalMask);
     #ifdef HAVE_WSAPOLL
       pollfds[0].fd      = handle;
       pollfds[0].events  = events;
       pollfds[0].revents = 0;
-      events = (WSAPoll(waitHandle->pollfds,waitHandle->handleCount,timeout) > 0) ? pollfds[0].revents : 0;
+      events = (WSAPoll(pollfds,1,timeout) > 0) ? pollfds[0].revents : 0;
     #else /* not HAVE_WSAPOLL */
       FD_ZERO(&readfds);
       FD_ZERO(&writefds);
@@ -1566,6 +1886,8 @@ uint Misc_waitHandle(int        handle,
         selectTimeout.tv_nsec = (long)(timeout%MS_PER_SECOND)*NS_PER_MS;
         n = pselect(handle+1,&readfds,&writefds,&exceptionfds,&selectTimeout,signalMask);
       #else /* not HAVE_PSELECT */
+        UNUSED_VARIABLE(signalMask);
+
         selectTimeout.tv_sec  = (long)(timeout/MS_PER_SECOND);
         selectTimeout.tv_usec = (long)(timeout%MS_PER_SECOND)*US_PER_MS;
         n = select(handle+1,&readfds,&writefds,&exceptionfds,&selectTimeout);
@@ -1648,6 +1970,7 @@ void Misc_waitReset(WaitHandle *waitHandle)
 void Misc_waitAdd(WaitHandle *waitHandle, int handle, uint events)
 {
   assert(waitHandle != NULL);
+  assert(handle >= 0);
 
   #if   defined(PLATFORM_LINUX)
     assert(waitHandle->pollfds != NULL);
@@ -1668,11 +1991,11 @@ void Misc_waitAdd(WaitHandle *waitHandle, int handle, uint events)
       if (waitHandle->handleCount >= waitHandle->maxHandleCount)
       {
         waitHandle->maxHandleCount += 64;
-        waitHandle->pollfds = (struct pollfd*)realloc(waitHandle->pollfds,waitHandle->maxHandleCount*sizeof(struct WSAPOLLFD));
+        waitHandle->pollfds = (struct pollfd*)realloc(waitHandle->pollfds,waitHandle->maxHandleCount*sizeof(WSAPOLLFD));
         if (waitHandle->pollfds == NULL) HALT_INSUFFICIENT_MEMORY();
       }
       waitHandle->pollfds[waitHandle->handleCount].fd      = handle;
-      waitHandle->pollfds[waitHandle->handleCount].events  = events;
+      waitHandle->pollfds[waitHandle->handleCount].events  = (events & (HANDLE_EVENT_INPUT|HANDLE_EVENT_OUTPUT));
       waitHandle->pollfds[waitHandle->handleCount].revents = 0;
     #else /* not HAVE_WSAPOLL */
       assert(handle < FD_SETSIZE);
@@ -1680,7 +2003,7 @@ void Misc_waitAdd(WaitHandle *waitHandle, int handle, uint events)
       if ((events & HANDLE_EVENT_INPUT ) != 0) FD_SET(handle,&waitHandle->readfds);
       if ((events & HANDLE_EVENT_OUTPUT) != 0) FD_SET(handle,&waitHandle->writefds);
       if ((events & HANDLE_EVENT_ERROR ) != 0) FD_SET(handle,&waitHandle->exceptionfds);
-      waitHandle->handleCount = MAX(handle,waitHandle->handleCount);
+      waitHandle->handleCount = MAX((uint)handle,waitHandle->handleCount);
     #endif /* HAVE_WSAPOLL */
   #endif /* PLATFORM_... */
   waitHandle->handleCount++;
@@ -1713,6 +2036,7 @@ int Misc_waitHandles(WaitHandle *waitHandle,
     pollTimeout.tv_nsec = (long)((timeout%MS_PER_SECOND)*NS_PER_MS);
     return ppoll(waitHandle->pollfds,waitHandle->handleCount,&pollTimeout,signalMask);
   #elif defined(PLATFORM_WINDOWS)
+    UNUSED_VARIABLE(signalMask);
     #ifdef HAVE_WSAPOLL
       return WSAPoll(waitHandle->pollfds,waitHandle->handleCount,timeout);
     #else /* not HAVE_WSAPOLL */
@@ -1721,6 +2045,8 @@ int Misc_waitHandles(WaitHandle *waitHandle,
         selectTimeout.tv_nsec = (long)(timeout%MS_PER_SECOND)*NS_PER_MS;
         return pselect(waitHandle->handleCount+1,&waitHandle->readfds,&waitHandle->writefds,&waitHandle->exceptionfds,&selectTimeout,signalMask);
       #else /* not HAVE_PSELECT */
+        UNUSED_VARIABLE(signalMask);
+
         selectTimeout.tv_sec  = (long)(timeout/MS_PER_SECOND);
         selectTimeout.tv_usec = (long)(timeout%MS_PER_SECOND)*US_PER_MS;
         return select(waitHandle->handleCount+1,&waitHandle->readfds,&waitHandle->writefds,&waitHandle->exceptionfds,&selectTimeout);
@@ -1992,7 +2318,9 @@ void Misc_waitEnter(void)
     }
   #elif defined(PLATFORM_WINDOWS)
 // NYI ???
-#warning no console input on windows
+    #ifndef WERROR
+      #warning no console input on windows
+    #endif /* NDEBUG */
   #endif /* PLATFORM_... */
 }
 
