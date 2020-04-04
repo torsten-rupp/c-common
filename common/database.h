@@ -46,7 +46,7 @@ typedef enum
   DATABASE_OPENMODE_READWRITE,
 } DatabaseOpenModes;
 
-// additional database open flags
+// additional database open mode flags
 #define DATABASE_OPENMODE_MEMORY (1 << 16)
 #define DATABASE_OPENMODE_SHARED (1 << 17)
 
@@ -76,8 +76,8 @@ typedef enum
 } DatabaseTypes;
 
 // special database ids
-#define DATABASE_ID_NONE  0LL
-#define DATABASE_ID_ANY  -1LL
+#define DATABASE_ID_NONE  0x0000000000000000ULL
+#define DATABASE_ID_ANY   0xFFFFFFFFFFFFFFFFULL
 
 // ordering mode
 typedef enum
@@ -202,17 +202,17 @@ typedef struct DatabaseNode
   uint                        openCount;
 
   DatabaseLockTypes           type;
-volatile  uint                        pendingReadCount;
-volatile  uint                        readCount;
+  uint                        pendingReadCount;
+  uint                        readCount;
   pthread_cond_t              readTrigger;
 
-volatile  uint                        pendingReadWriteCount;
-volatile  uint                        readWriteCount;
+  uint                        pendingReadWriteCount;
+  uint                        readWriteCount;
   pthread_cond_t              readWriteTrigger;
   ThreadId                    readWriteLockedBy;
 
-volatile  uint                        pendingTransactionCount;
-volatile  uint                        transactionCount;
+  uint                        pendingTransactionCount;
+  uint                        transactionCount;
   pthread_cond_t              transactionTrigger;
 
   DatabaseBusyHandlerList     busyHandlerList;
@@ -392,23 +392,54 @@ typedef Errors(*DatabaseCopyTableFunction)(const DatabaseColumnList *fromColumnL
                                           );
 
 /***********************************************************************\
-* Name   : DatabasePauseCallbackFunction
-* Purpose: call back to check for pausing
+* Name   : DatabaseCopyPauseCallbackFunction
+* Purpose: call back to check for pausing table copy
 * Input  : userData - user data
 * Output : -
 * Return : TRUE iff pause
 * Notes  : -
 \***********************************************************************/
 
-typedef bool(*DatabasePauseCallbackFunction)(void *userData);
+typedef bool(*DatabaseCopyPauseCallbackFunction)(void *userData);
+
+/***********************************************************************\
+* Name   : DatabaseCopyProgressCallbackFunction
+* Purpose: call back to report progress of table copy
+* Input  : userData - user data
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+typedef void(*DatabaseCopyProgressCallbackFunction)(void *userData);
 
 /***************************** Variables *******************************/
 
 /****************************** Macros *********************************/
 
-#define DATABASE_TRANSFER_OPERATION_COPY(fromName,toName,type) DATABASE_TRANSFER_OPERATION_COPY,fromName,toName,type
-#define DATABASE_TRANSFER_OPERATION_SET(toName,type,value)     DATABASE_TRANSFER_OPERATION_SET, toName,  value, type
-#define DATABASE_TRANSFER_OPERATION_END()                      DATABASE_TRANSFER_OPERATION_NONE,NULL,    0,     0
+/***********************************************************************\
+* Name   : DATABASE_LOCKED_DO
+* Purpose: execute block with database locked
+* Input  : databaseHandle    - database handle
+*          semaphoreLockType - lock type; see SemaphoreLockTypes
+*          timeout           - timeout [ms] or NO_WAIT, WAIT_FOREVER
+* Output : -
+* Return : -
+* Notes  : usage:
+*            SEMAPHORE_LOCKED_DO(semaphore,semaphoreLockType,timeout)
+*            {
+*              ...
+*            }
+*
+*          semaphore must be unlocked manually if 'break'  or
+*          'return' is used!
+\***********************************************************************/
+
+#define DATABASE_LOCKED_DO(databaseHandle,lockType,timeout) \
+  for (bool __databaseLock ## __COUNTER__ = Database_lock(databaseHandle,lockType,timeout); \
+       __databaseLock ## __COUNTER__; \
+       Database_unlock(databaseHandle,lockType), __databaseLock ## __COUNTER__ = FALSE \
+      )
 
 #ifndef NDEBUG
   #define Database_open(...)                __Database_open               (__FILE__,__LINE__, ## __VA_ARGS__)
@@ -625,13 +656,14 @@ void Database_yield(DatabaseHandle *databaseHandle,
 
 /***********************************************************************\
 * Name   : Database_lock
-* Purpose: lock database exclusive for this handle
+* Purpose: lock database exclusive
 * Input  : databaseHandle - database handle
 *          lockType       - lock type; see DATABASE_LOCK_TYPE_...
 *          timeout        - timeout [ms[ or WAIT_FOREVER
 * Output : -
 * Return : TRUE iff locked
-* Notes  : -
+* Notes  : lock is aquired for all database handles sharing the same
+*          database file
 \***********************************************************************/
 
 #ifdef NDEBUG
@@ -751,6 +783,20 @@ Errors Database_setEnabledForeignKeys(DatabaseHandle *databaseHandle,
                                      );
 
 /***********************************************************************\
+* Name   : Database_setTmpDirectory
+* Purpose: set directory for temporary files
+* Input  : databaseHandle - database handle
+*          directoryName  - directory name
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+Errors Database_setTmpDirectory(DatabaseHandle *databaseHandle,
+                                const char     *directoryName
+                               );
+
+/***********************************************************************\
 * Name   : Database_compare
 * Purpose: compare database structure
 * Input  : databaseHandleReference - reference database handle
@@ -767,39 +813,45 @@ Errors Database_compare(DatabaseHandle *databaseHandleReference,
 /***********************************************************************\
 * Name   : Database_copyTable
 * Purpose: copy table content
-* Input  : fromDatabaseHandle    - from-database handle
-*          toDatabaseHandle      - fo-database handle
-*          fromTableName         - from-table name
-*          toTableName           - to-table name
-*          transactionFlag       - copy with transaction
-*          duration              - duration variable or NULL
-*          preCopyTableFunction  - pre-copy call-back function
-*          preCopyTableUserData  - user data for pre-copy call-back
-*          postCopyTableFunction - pre-copy call-back function
-*          postCopyTableUserData - user data for post-copy call-back
-*          pauseCallbackFunction - pause call-back
-*          pauseCallbackUserData - user data for pause call-back
-*          fromAdditional        - additional SQL condition
-*          ...                   - optional arguments for additional
-*                                  SQL condition
+* Input  : fromDatabaseHandle           - from-database handle
+*          toDatabaseHandle             - fo-database handle
+*          fromTableName                - from-table name
+*          toTableName                  - to-table name
+*          transactionFlag              - copy with transaction
+*          duration                     - duration variable or NULL
+*          preCopyTableFunction         - pre-copy call-back function
+*          preCopyTableUserData         - user data for pre-copy
+*                                         call-back
+*          postCopyTableFunction        - pre-copy call-back function
+*          postCopyTableUserData        - user data for post-copy
+*                                         call-back
+*          copyPauseCallbackFunction    - pause call-back
+*          copyPauseCallbackUserData    - user data for pause call-back
+*          copyProgressCallbackFunction - pause call-back
+*          copyProgressCallbackUserData - user data for pause call-back
+*          fromAdditional               - additional SQL condition
+*          ...                          - optional arguments for
+*                                         additional SQL condition
 * Output : duration - duration [ms]
 * Return : ERROR_NONE or error code
 * Notes  : -
 \***********************************************************************/
 
-Errors Database_copyTable(DatabaseHandle                *fromDatabaseHandle,
-                          DatabaseHandle                *toDatabaseHandle,
-                          const char                    *fromTableName,
-                          const char                    *toTableName,
-                          bool                          transactionFlag,
-                          uint64                        *duration,
-                          DatabaseCopyTableFunction     preCopyTableFunction,
-                          void                          *preCopyTableUserData,
-                          DatabaseCopyTableFunction     postCopyTableFunction,
-                          void                          *postCopyTableUserData,
-                          DatabasePauseCallbackFunction pauseCallbackFunction,
-                          void                          *pauseCallbackUserData,
-                          const char                    *fromAdditional,
+Errors Database_copyTable(DatabaseHandle                       *fromDatabaseHandle,
+                          DatabaseHandle                       *toDatabaseHandle,
+                          const char                           *fromTableName,
+                          const char                           *toTableName,
+                          bool                                 transactionFlag,
+                          uint64                               *duration,
+                          DatabaseCopyTableFunction            preCopyTableFunction,
+                          void                                 *preCopyTableUserData,
+                          DatabaseCopyTableFunction            postCopyTableFunction,
+                          void                                 *postCopyTableUserData,
+                          DatabaseCopyPauseCallbackFunction    copyPauseCallbackFunction,
+                          void                                 *copyPauseCallbackUserData,
+                          DatabaseCopyProgressCallbackFunction copyProgressCallbackFunction,
+                          void                                 *copyProgressCallbackUserData,
+                          const char                           *fromAdditional,
                           ...
                          );
 
@@ -814,6 +866,7 @@ Errors Database_copyTable(DatabaseHandle                *fromDatabaseHandle,
 * Notes  : -
 \***********************************************************************/
 
+DatabaseId Database_getTableColumnListId(const DatabaseColumnList *columnList, const char *columnName, DatabaseId defaultValue);
 int Database_getTableColumnListInt(const DatabaseColumnList *columnList, const char *columnName, int defaultValue);
 uint Database_getTableColumnListUInt(const DatabaseColumnList *columnList, const char *columnName, uint defaultValue);
 int64 Database_getTableColumnListInt64(const DatabaseColumnList *columnList, const char *columnName, int64 defaultValue);
@@ -835,6 +888,7 @@ void Database_getTableColumnListBlob(const DatabaseColumnList *columnList, const
 * Notes  : -
 \***********************************************************************/
 
+bool Database_setTableColumnListId(const DatabaseColumnList *columnList, const char *columnName, DatabaseId value);
 bool Database_setTableColumnListInt64(const DatabaseColumnList *columnList, const char *columnName, int64 value);
 bool Database_setTableColumnListDouble(const DatabaseColumnList *columnList, const char *columnName, double value);
 bool Database_setTableColumnListDateTime(const DatabaseColumnList *columnList, const char *columnName, uint64 value);
@@ -1118,7 +1172,7 @@ Errors Database_vgetId(DatabaseHandle *databaseHandle,
 *                             REGEXP(pattern,case-flag,text)
 * Output : values - database ids array
 * Return : ERROR_NONE or error code
-* Notes  : -
+* Notes  : values are added to array!
 \***********************************************************************/
 
 Errors Database_getIds(DatabaseHandle *databaseHandle,
