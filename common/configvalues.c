@@ -374,12 +374,12 @@ LOCAL bool getIntegerValue(int                   *value,
   assert(string != NULL);
 
   // split number, unit
-  i = strlen(string);
+  i = stringLength(string);
   if (i > 0)
   {
     while ((i > 1) && !isdigit(string[i-1])) { i--; }
-    j = MIN(i,               sizeof(number  )-1); strncpy(number,  &string[0],j); number  [j] = '\0';
-    j = MIN(strlen(string)-i,sizeof(unitName)-1); strncpy(unitName,&string[i],j); unitName[j] = '\0';
+    j = MIN(i,                     sizeof(number  )-1); strncpy(number,  &string[0],j); number  [j] = '\0';
+    j = MIN(stringLength(string)-i,sizeof(unitName)-1); strncpy(unitName,&string[i],j); unitName[j] = '\0';
   }
   else
   {
@@ -461,12 +461,12 @@ LOCAL bool getInteger64Value(int64                 *value,
   assert(string != NULL);
 
   // split number, unit
-  i = strlen(string);
+  i = stringLength(string);
   if (i > 0)
   {
     while ((i > 1) && !isdigit(string[i-1])) { i--; }
-    j = MIN(i,               sizeof(number  )-1); strncpy(number,  &string[0],j); number  [j] = '\0';
-    j = MIN(strlen(string)-i,sizeof(unitName)-1); strncpy(unitName,&string[i],j); unitName[j] = '\0';
+    j = MIN(i,                     sizeof(number  )-1); strncpy(number,  &string[0],j); number  [j] = '\0';
+    j = MIN(stringLength(string)-i,sizeof(unitName)-1); strncpy(unitName,&string[i],j); unitName[j] = '\0';
   }
   else
   {
@@ -560,13 +560,15 @@ LOCAL bool processValue(const ConfigValue    *configValue,
     String     *string;
     void       *special;
     const char *newName;
-  }    configVariable;
-  char buffer[256];
-  char errorMessage[256];
+  }          configVariable;
+  char       buffer[256];
+  char       errorMessage[256];
+  const char *message;
 
   assert(configValue != NULL);
   assert(name != NULL);
 
+  stringClear(errorMessage);
   switch (configValue->type)
   {
     case CONFIG_VALUE_TYPE_NONE:
@@ -694,12 +696,12 @@ LOCAL bool processValue(const ConfigValue    *configValue,
         double                data;
 
         // split number, unit
-        i = strlen(value);
+        i = stringLength(value);
         if (i > 0)
         {
           while ((i > 1) && !isdigit(value[i-1])) { i--; }
-          j = MIN(i,              sizeof(number  )-1); strncpy(number,  &value[0],j);number  [j] = '\0';
-          j = MIN(strlen(value)-i,sizeof(unitName)-1); strncpy(unitName,&value[i],j);unitName[j] = '\0';
+          j = MIN(i,                    sizeof(number  )-1); strncpy(number,  &value[0],j);number  [j] = '\0';
+          j = MIN(stringLength(value)-i,sizeof(unitName)-1); strncpy(unitName,&value[i],j);unitName[j] = '\0';
         }
         else
         {
@@ -1108,7 +1110,6 @@ LOCAL bool processValue(const ConfigValue    *configValue,
       {
         if (variable != NULL)
         {
-          stringClear(errorMessage);
           if (!configValue->specialValue.parse(configValue->specialValue.userData,
                                                (byte*)variable+configValue->offset,
                                                configValue->name,
@@ -1145,7 +1146,6 @@ LOCAL bool processValue(const ConfigValue    *configValue,
 
           if ((*configValue->variable.reference) != NULL)
           {
-            stringClear(errorMessage);
             if (!configValue->specialValue.parse(configValue->specialValue.userData,
                                                  (byte*)(*configValue->variable.reference)+configValue->offset,
                                                  configValue->name,
@@ -1182,7 +1182,6 @@ LOCAL bool processValue(const ConfigValue    *configValue,
       {
         assert(configValue->variable.special != NULL);
 
-        stringClear(errorMessage);
         if (!configValue->specialValue.parse(configValue->specialValue.userData,
                                              configValue->variable.special,
                                              configValue->name,
@@ -1215,7 +1214,51 @@ LOCAL bool processValue(const ConfigValue    *configValue,
       }
       break;
     case CONFIG_VALUE_TYPE_IGNORE:
-      // nothing to do
+      if (configValue->ignoreValue.warningFlag)
+      {
+        if (sectionName != NULL)
+        {
+          if (configValue->deprecatedValue.newName != NULL)
+          {
+            reportMessage(warningReportFunction,
+                          warningReportUserData,
+                          "Configuration value '%s' in section '%s' is ignored. Use '%s' instead",
+                          configValue->name,
+                          sectionName,
+                          configValue->deprecatedValue.newName
+                         );
+          }
+          else
+          {
+            reportMessage(warningReportFunction,
+                          warningReportUserData,
+                          "Configuration value '%s' in section '%s' is ignored",
+                          configValue->name,
+                          sectionName
+                         );
+          }
+        }
+        else
+        {
+          if (configValue->deprecatedValue.newName != NULL)
+          {
+            reportMessage(warningReportFunction,
+                          warningReportUserData,
+                          "Configuration value '%s' is ignored. Use '%s' instead",
+                          configValue->name,
+                          configValue->deprecatedValue.newName
+                         );
+          }
+          else
+          {
+            reportMessage(warningReportFunction,
+                          warningReportUserData,
+                          "Configuration value '%s' is ignored",
+                          configValue->name
+                         );
+          }
+        }
+      }
       break;
     case CONFIG_VALUE_TYPE_DEPRECATED:
       // store value
@@ -1223,44 +1266,10 @@ LOCAL bool processValue(const ConfigValue    *configValue,
       {
         if (variable != NULL)
         {
-          stringClear(errorMessage);
-          if (!configValue->deprecatedValue.parse(configValue->deprecatedValue.userData,
-                                                  (byte*)variable+configValue->offset,
-                                                  configValue->name,
-                                                  value,
-                                                  errorMessage,
-                                                  sizeof(errorMessage)
-                                                 )
-             )
+          if (configValue->deprecatedValue.parse != NULL)
           {
-            if (strlen(errorMessage) > 0)
-            {
-              reportMessage(errorReportFunction,
-                            errorReportUserData,
-                            "%s for config value '%s'",
-                            errorMessage,
-                            configValue->name
-                           );
-            }
-            else
-            {
-              reportMessage(errorReportFunction,
-                            errorReportUserData,
-                            "Invalid value '%s' for config value '%s'",
-                            value,
-                            configValue->name
-                           );
-            }
-            return FALSE;
-          }
-        }
-        else
-        {
-          if (configValue->variable.pointer != NULL)
-          {
-            stringClear(errorMessage);
             if (!configValue->deprecatedValue.parse(configValue->deprecatedValue.userData,
-                                                    (byte*)(configValue->variable.pointer)+configValue->offset,
+                                                    (byte*)variable+configValue->offset,
                                                     configValue->name,
                                                     value,
                                                     errorMessage,
@@ -1272,7 +1281,120 @@ LOCAL bool processValue(const ConfigValue    *configValue,
               {
                 reportMessage(errorReportFunction,
                               errorReportUserData,
-                              "%s for config value '%s'!",
+                              "%s for config value '%s'",
+                              errorMessage,
+                              configValue->name
+                             );
+              }
+              else
+              {
+                reportMessage(errorReportFunction,
+                              errorReportUserData,
+                              "Invalid value '%s' for config value '%s'",
+                              value,
+                              configValue->name
+                             );
+              }
+              return FALSE;
+            }
+          }
+        }
+        else
+        {
+          if (configValue->variable.reference != NULL)
+          {
+            if (configValue->deprecatedValue.parse != NULL)
+            {
+              if (!configValue->deprecatedValue.parse(configValue->deprecatedValue.userData,
+                                                      (byte*)(configValue->variable.reference)+configValue->offset,
+                                                      configValue->name,
+                                                      value,
+                                                      errorMessage,
+                                                      sizeof(errorMessage)
+                                                     )
+                 )
+              {
+                if (!stringIsEmpty(errorMessage))
+                {
+                  reportMessage(errorReportFunction,
+                                errorReportUserData,
+                                "%s for config value '%s'!",
+                                errorMessage,
+                                configValue->name
+                               );
+                }
+                else
+                {
+                  reportMessage(errorReportFunction,
+                                errorReportUserData,
+                                "Invalid value '%s' for config value '%s'",
+                                value,
+                                configValue->name
+                               );
+                }
+                return FALSE;
+              }
+            }
+          }
+        }
+      }
+      else
+      {
+        if (variable != NULL)
+        {
+          if (configValue->deprecatedValue.parse != NULL)
+          {
+            if (!configValue->deprecatedValue.parse(configValue->deprecatedValue.userData,
+                                                    variable,
+                                                    configValue->name,
+                                                    value,
+                                                    errorMessage,
+                                                    sizeof(errorMessage)
+                                                   )
+               )
+            {
+              if (!stringIsEmpty(errorMessage))
+              {
+                reportMessage(errorReportFunction,
+                              errorReportUserData,
+                              "%s for config value '%s'",
+                              errorMessage,
+                              configValue->name
+                             );
+              }
+              else
+              {
+                reportMessage(errorReportFunction,
+                              errorReportUserData,
+                              "Invalid value '%s' for config value '%s'",
+                              value,
+                              configValue->name
+                             );
+              }
+              return FALSE;
+            }
+          }
+        }
+        else
+        {
+          assert(configValue->variable.deprecated != NULL);
+
+          if (configValue->deprecatedValue.parse != NULL)
+          {
+            if (!configValue->deprecatedValue.parse(configValue->deprecatedValue.userData,
+                                                    configValue->variable.deprecated,
+                                                    configValue->name,
+                                                    value,
+                                                    errorMessage,
+                                                    sizeof(errorMessage)
+                                                   )
+               )
+            {
+              if (!stringIsEmpty(errorMessage))
+              {
+                reportMessage(errorReportFunction,
+                              errorReportUserData,
+                              "%s for config value '%s'",
                               errorMessage,
                               configValue->name
                              );
@@ -1291,51 +1413,18 @@ LOCAL bool processValue(const ConfigValue    *configValue,
           }
         }
       }
-      else
-      {
-        assert(configValue->variable.special != NULL);
-
-        stringClear(errorMessage);
-        if (!configValue->deprecatedValue.parse(configValue->deprecatedValue.userData,
-                                                configValue->variable.deprecated,
-                                                configValue->name,
-                                                value,
-                                                errorMessage,
-                                                sizeof(errorMessage)
-                                               )
-           )
-        {
-          if (!stringIsEmpty(errorMessage))
-          {
-            reportMessage(errorReportFunction,
-                          errorReportUserData,
-                          "%s for config value '%s'",
-                          errorMessage,
-                          configValue->name
-                         );
-          }
-          else
-          {
-            reportMessage(errorReportFunction,
-                          errorReportUserData,
-                          "Invalid value '%s' for config value '%s'",
-                          value,
-                          configValue->name
-                         );
-          }
-          return FALSE;
-        }
-      }
       if (configValue->deprecatedValue.warningFlag)
       {
         if (sectionName != NULL)
         {
           if (configValue->deprecatedValue.newName != NULL)
           {
+            message = (configValue->deprecatedValue.parse != NULL)
+                        ? "Configuration value '%s' in section '%s' is deprecated. Use '%s' instead"
+                        : "Configuration value '%s' in section '%s' is deprecated - skipped. Use '%s' instead";
             reportMessage(warningReportFunction,
                           warningReportUserData,
-                          "Configuration value '%s' in section '%s' is deprecated - skipped. Use '%s' instead",
-                          configValue->deprecatedValue.newName,
+                          message,
                           configValue->name,
                           sectionName,
                           configValue->deprecatedValue.newName
@@ -1343,10 +1432,12 @@ LOCAL bool processValue(const ConfigValue    *configValue,
           }
           else
           {
+            message = (configValue->deprecatedValue.parse != NULL)
+                        ? "Configuration value '%s' in section '%s' is deprecated"
+                        : "Configuration value '%s' in section '%s' is deprecated - skipped";
             reportMessage(warningReportFunction,
                           warningReportUserData,
-                          "Configuration value '%s' in section '%s' is deprecated - skipped",
-                          configValue->deprecatedValue.newName,
+                          message,
                           configValue->name,
                           sectionName
                          );
@@ -1356,20 +1447,24 @@ LOCAL bool processValue(const ConfigValue    *configValue,
         {
           if (configValue->deprecatedValue.newName != NULL)
           {
+            message = (configValue->deprecatedValue.parse != NULL)
+                        ? "Configuration value '%s' is deprecated. Use '%s' instead"
+                        : "Configuration value '%s' is deprecated - skipped. Use '%s' instead";
             reportMessage(warningReportFunction,
                           warningReportUserData,
-                          "Configuration value '%s' is deprecated - skipped. Use '%s' instead",
-                          configValue->deprecatedValue.newName,
+                          message,
                           configValue->name,
                           configValue->deprecatedValue.newName
                          );
           }
           else
           {
+            message = (configValue->deprecatedValue.parse != NULL)
+                        ? "Configuration value '%s' is deprecated"
+                        : "Configuration value '%s' is deprecated - skipped";
             reportMessage(warningReportFunction,
                           warningReportUserData,
-                          "Configuration value '%s' is deprecated - skipped",
-                          configValue->deprecatedValue.newName,
+                          message,
                           configValue->name
                          );
           }
@@ -1753,7 +1848,15 @@ bool ConfigValue_parse(const char           *name,
 
   // find config value
   i = ConfigValue_valueIndex(configValues,sectionName,name);
-  if (i < 0) return FALSE;
+  if (i < 0)
+  {
+    reportMessage(errorReportFunction,
+                  errorReportUserData,
+                  "Unknown value '%s'!",
+                  name
+                 );
+    return FALSE;
+  }
 
   // process value
   if (!processValue(&configValues[i],
@@ -1768,6 +1871,125 @@ bool ConfigValue_parse(const char           *name,
                    ))
   {
     return FALSE;
+  }
+
+  return TRUE;
+}
+
+bool ConfigValue_parseDeprecatedBoolean(void *userData, void *variable, const char *name, const char *value, char errorMessage[], uint errorMessageSize)
+{
+  assert(variable != NULL);
+  assert(value != NULL);
+
+  UNUSED_VARIABLE(userData);
+  UNUSED_VARIABLE(name);
+
+  if (value != NULL)
+  {
+    if      (   stringEqualsIgnoreCase(value,"1")
+             || stringEqualsIgnoreCase(value,"true")
+             || stringEqualsIgnoreCase(value,"on")
+             || stringEqualsIgnoreCase(value,"yes")
+            )
+    {
+      (*(bool*)variable) = TRUE;
+    }
+    else if (   stringEqualsIgnoreCase(value,"0")
+             || stringEqualsIgnoreCase(value,"false")
+             || stringEqualsIgnoreCase(value,"off")
+             || stringEqualsIgnoreCase(value,"no")
+            )
+    {
+      (*(bool*)variable) = FALSE;
+    }
+    else
+    {
+      stringFormat(errorMessage,errorMessageSize,"expected boolean value: yes|no");
+      return FALSE;
+    }
+  }
+  else
+  {
+    (*(bool*)variable) = FALSE;
+  }
+
+  return TRUE;
+}
+
+bool ConfigValue_parseDeprecatedInteger(void       *userData,
+                                        void       *variable,
+                                        const char *name,
+                                        const char *value,
+                                        char       errorMessage[],
+                                        uint       errorMessageSize
+                                       )
+{
+  assert(variable != NULL);
+  assert(value != NULL);
+
+  UNUSED_VARIABLE(userData);
+  UNUSED_VARIABLE(name);
+  UNUSED_VARIABLE(errorMessage);
+  UNUSED_VARIABLE(errorMessageSize);
+
+  (*(int*)variable) = strtol(value,NULL,0);
+
+  return TRUE;
+}
+
+bool ConfigValue_parseDeprecatedInteger64(void       *userData,
+                                          void       *variable,
+                                          const char *name,
+                                          const char *value,
+                                          char       errorMessage[],
+                                          uint       errorMessageSize
+                                         )
+{
+  assert(variable != NULL);
+  assert(value != NULL);
+
+  UNUSED_VARIABLE(userData);
+  UNUSED_VARIABLE(name);
+  UNUSED_VARIABLE(errorMessage);
+  UNUSED_VARIABLE(errorMessageSize);
+
+  (*(int64*)variable) = strtoll(value,NULL,0);
+
+  return TRUE;
+}
+
+bool ConfigValue_parseDeprecatedString(void *userData, void *variable, const char *name, const char *value, char errorMessage[], uint errorMessageSize)
+{
+  String string;
+
+  assert(variable != NULL);
+  assert(value != NULL);
+
+  UNUSED_VARIABLE(userData);
+  UNUSED_VARIABLE(name);
+  UNUSED_VARIABLE(errorMessage);
+  UNUSED_VARIABLE(errorMessageSize);
+
+  if (value != NULL)
+  {
+    // unquote/unescape
+    string = String_newCString(value);
+    String_unquote(string,STRING_QUOTES);
+    String_unescape(string,
+                    STRING_ESCAPE_CHARACTER,
+                    STRING_ESCAPE_CHARACTERS_MAP_TO,
+                    STRING_ESCAPE_CHARACTERS_MAP_FROM,
+                    STRING_ESCAPE_CHARACTER_MAP_LENGTH
+                  );
+
+    String_set(*((String*)variable),string);
+
+    // free resources
+    String_delete(string);
+  }
+  else
+  {
+    String_clear(*((String*)variable));
   }
 
   return TRUE;

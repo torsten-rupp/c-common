@@ -216,6 +216,11 @@ typedef struct
   } deprecatedValue;
   struct
   {
+    const char *newName;                          // new name
+    bool       warningFlag;                       // TRUE to print warning
+  } ignoreValue;
+  struct
+  {
     const char *text;
   } comment;
 } ConfigValue;
@@ -394,6 +399,7 @@ typedef struct
     {},\
     {NULL,NULL,NULL,NULL,NULL},\
     {NULL,NULL,NULL,FALSE},\
+    {NULL,FALSE},\
     {NULL}\
   } \
 }; \
@@ -426,6 +432,7 @@ typedef struct
     {},\
     {NULL,NULL,NULL,NULL,NULL},\
     {NULL,NULL,NULL,FALSE},\
+    {NULL,FALSE},\
     {NULL}\
   }, \
   __VA_ARGS__ \
@@ -445,6 +452,7 @@ typedef struct
     {},\
     {NULL,NULL,NULL,NULL,NULL},\
     {NULL,NULL,NULL,FALSE},\
+    {NULL,FALSE},\
     {NULL}\
   }
 
@@ -480,6 +488,7 @@ typedef struct
     {},\
     {NULL,NULL,NULL,NULL,NULL},\
     {NULL,NULL,NULL,FALSE},\
+    {NULL,FALSE},\
     {NULL}\
   }
 #define CONFIG_STRUCT_VALUE_INTEGER(name,type,member,min,max,units) \
@@ -517,6 +526,7 @@ typedef struct
     {},\
     {NULL,NULL,NULL,NULL,NULL},\
     {NULL,NULL,NULL,FALSE},\
+    {NULL,FALSE},\
     {NULL}\
   }
 #define CONFIG_STRUCT_VALUE_INTEGER64(name,type,member,min,max,units) \
@@ -554,6 +564,7 @@ typedef struct
     {},\
     {NULL,NULL,NULL,NULL,NULL},\
     {NULL,NULL,NULL,FALSE},\
+    {NULL,FALSE},\
     {NULL}\
   }
 #define CONFIG_STRUCT_VALUE_DOUBLE(name,type,member,min,max,units) \
@@ -589,6 +600,7 @@ typedef struct
     {},\
     {NULL,NULL,NULL,NULL,NULL},\
     {NULL,NULL,NULL,FALSE},\
+    {NULL,FALSE},\
     {NULL}\
   }
 #define CONFIG_STRUCT_VALUE_BOOLEAN(name,type,member) \
@@ -624,6 +636,7 @@ typedef struct
     {},\
     {NULL,NULL,NULL,NULL,NULL},\
     {NULL,NULL,NULL,FALSE},\
+    {NULL,FALSE},\
     {NULL}\
   }
 #define CONFIG_STRUCT_VALUE_BOOLEAN_YESNO(name,variablePointer,offset) \
@@ -660,6 +673,7 @@ typedef struct
     {},\
     {NULL,NULL,NULL,NULL,NULL},\
     {NULL,NULL,NULL,FALSE},\
+    {NULL,FALSE},\
     {NULL}\
   }
 #define CONFIG_STRUCT_VALUE_ENUM(name,type,member,value) \
@@ -696,6 +710,7 @@ typedef struct
     {},\
     {NULL,NULL,NULL,NULL,NULL},\
     {NULL,NULL,NULL,FALSE},\
+    {NULL,FALSE},\
     {NULL}\
   }
 #define CONFIG_STRUCT_VALUE_SELECT(name,type,member,selects) \
@@ -732,6 +747,7 @@ typedef struct
     {},\
     {NULL,NULL,NULL,NULL,NULL},\
     {NULL,NULL,NULL,FALSE},\
+    {NULL,FALSE},\
     {NULL}\
   }
 #define CONFIG_STRUCT_VALUE_SET(name,type,member,set) \
@@ -767,6 +783,7 @@ typedef struct
     {},\
     {NULL,NULL,NULL,NULL,NULL},\
     {NULL,NULL,NULL,FALSE},\
+    {NULL,FALSE},\
     {NULL}\
   }
 #define CONFIG_STRUCT_VALUE_CSTRING(name,type,member) \
@@ -802,6 +819,7 @@ typedef struct
     {},\
     {NULL,NULL,NULL,NULL,NULL},\
     {NULL,NULL,NULL,FALSE},\
+    {NULL,FALSE},\
     {NULL}\
   }
 #define CONFIG_STRUCT_VALUE_STRING(name,type,member) \
@@ -842,6 +860,7 @@ typedef struct
     {},\
     {parse,formatInit,formatDone,format,userData},\
     {NULL,NULL,NULL,FALSE},\
+    {NULL,FALSE},\
     {NULL}\
   }
 #define CONFIG_STRUCT_VALUE_SPECIAL(name,type,member,parse,formatInit,formatDone,format,userData) \
@@ -856,7 +875,7 @@ typedef struct
 * Notes  : -
 \***********************************************************************/
 
-#define CONFIG_VALUE_IGNORE(name) \
+#define CONFIG_VALUE_IGNORE(name,newName,warningFlag) \
   { \
     CONFIG_VALUE_TYPE_IGNORE,\
     name,\
@@ -873,10 +892,11 @@ typedef struct
     {},\
     {NULL,NULL,NULL,NULL,NULL},\
     {NULL,NULL,NULL,FALSE},\
+    {newName,warningFlag},\
     {NULL}\
   }
-#define CONFIG_STRUCT_VALUE_IGNORE(name) \
-  CONFIG_VALUE_IGNORE(name)
+#define CONFIG_STRUCT_VALUE_IGNORE(name,newName,warningFlag) \
+  CONFIG_VALUE_IGNORE(name,newName,warningFlag)
 
 /***********************************************************************\
 * Name   : CONFIG_VALUE_DEPRECATED, CONFIG_STRUCT_VALUE_DEPRECATED
@@ -894,12 +914,12 @@ typedef struct
 * Notes  : -
 \***********************************************************************/
 
-#define CONFIG_VALUE_DEPRECATED(name,variablePointer,parse,userData,newName,warningFlag) \
+#define CONFIG_VALUE_DEPRECATED(name,variablePointer,offset,parse,userData,newName,warningFlag) \
   { \
     CONFIG_VALUE_TYPE_DEPRECATED,\
     name,\
     {variablePointer},\
-    0,\
+    offset,\
     {0,0,NULL},\
     {0LL,0LL,NULL},\
     {0.0,0.0,NULL},\
@@ -911,10 +931,11 @@ typedef struct
     {},\
     {NULL,NULL,NULL,NULL,NULL},\
     {parse,userData,newName,warningFlag},\
+    {NULL,FALSE},\
     {NULL}\
   }
-#define CONFIG_STRUCT_VALUE_DEPRECATED(name,parse,userData,newName,warningFlag) \
-  CONFIG_VALUE_DEPRECATED(name,NULL,parse,userData,newName,warningFlag)
+#define CONFIG_STRUCT_VALUE_DEPRECATED(name,type,member,parse,userData,newName,warningFlag) \
+  CONFIG_VALUE_DEPRECATED(name,NULL,offsetof(type,member),parse,userData,newName,warningFlag)
 
 /***********************************************************************\
 * Name   : CONFIG_VALUE_BEGIN_SECTION, CONFIG_VALUE_END_SECTION
@@ -943,6 +964,7 @@ typedef struct
     {},\
     {NULL,NULL,NULL,NULL,NULL},\
     {NULL,NULL,NULL,FALSE},\
+    {NULL,FALSE},\
     {NULL}\
   }
 
@@ -963,6 +985,7 @@ typedef struct
     {},\
     {NULL,NULL,NULL,NULL,NULL},\
     {NULL,NULL,NULL,FALSE},\
+    {NULL,FALSE},\
     {NULL}\
   }
 
@@ -992,6 +1015,7 @@ typedef struct
     {},\
     {NULL,NULL,NULL,NULL,NULL},\
     {NULL,NULL,NULL,FALSE},\
+    {NULL,FALSE},\
     {text}\
   }
 
@@ -1233,6 +1257,95 @@ bool ConfigValue_parse(const char           *name,
                        void                 *warningReportUserData,
                        void                 *variable
                       );
+
+/***********************************************************************\
+* Name   : ConfigValue_parseDeprecatedBoolean
+* Purpose: config value option call back for deprecated boolean value
+* Input  : userData              - user data
+*          variable              - config variable
+*          name                  - config name
+*          value                 - config value
+*          maxErrorMessageLength - max. length of error message text
+* Output : errorMessage - error message text
+* Return : TRUE if config value parsed and stored in variable, FALSE
+*          otherwise
+* Notes  : -
+\***********************************************************************/
+
+bool ConfigValue_parseDeprecatedBoolean(void       *userData,
+                                        void       *variable,
+                                        const char *name,
+                                        const char *value,
+                                        char       errorMessage[],
+                                        uint       errorMessageSize
+                                       );
+
+/***********************************************************************\
+* Name   : ConfigValue_parseDeprecatedInteger
+* Purpose: config value option call back for deprecated integer value
+* Input  : userData              - user data
+*          variable              - config variable
+*          name                  - config name
+*          value                 - config value
+*          maxErrorMessageLength - max. length of error message text
+* Output : errorMessage - error message text
+* Return : TRUE if config value parsed and stored in variable, FALSE
+*          otherwise
+* Notes  : -
+\***********************************************************************/
+
+bool ConfigValue_parseDeprecatedInteger(void       *userData,
+                                        void       *variable,
+                                        const char *name,
+                                        const char *value,
+                                        char       errorMessage[],
+                                        uint       errorMessageSize
+                                       );
+
+/***********************************************************************\
+* Name   : ConfigValue_parseDeprecatedInteger64
+* Purpose: config value option call back for deprecated integer 64bit
+*          value
+* Input  : userData              - user data
+*          variable              - config variable
+*          name                  - config name
+*          value                 - config value
+*          maxErrorMessageLength - max. length of error message text
+* Output : errorMessage - error message text
+* Return : TRUE if config value parsed and stored in variable, FALSE
+*          otherwise
+* Notes  : -
+\***********************************************************************/
+
+bool ConfigValue_parseDeprecatedInteger64(void       *userData,
+                                          void       *variable,
+                                          const char *name,
+                                          const char *value,
+                                          char       errorMessage[],
+                                          uint       errorMessageSize
+                                         );
+
+/***********************************************************************\
+* Name   : ConfigValue_parseDeprecatedString
+* Purpose: config value option call back for deprecated string value
+* Input  : userData              - user data
+*          variable              - config variable
+*          name                  - config name
+*          value                 - config value
+*          maxErrorMessageLength - max. length of error message text
+* Output : errorMessage - error message text
+* Return : TRUE if config value parsed and stored in variable, FALSE
+*          otherwise
+* Notes  : -
+\***********************************************************************/
+
+bool ConfigValue_parseDeprecatedString(void       *userData,
+                                       void       *variable,
+                                       const char *name,
+                                       const char *value,
+                                       char       errorMessage[],
+                                       uint       errorMessageSize
+                                      );
 
 /***********************************************************************\
 * Name   : ConfigValue_getIntegerValue
