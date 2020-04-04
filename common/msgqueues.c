@@ -155,7 +155,7 @@ LOCAL void initTimespec(struct timespec *timespec, long timeout)
 LOCAL bool waitModified(MsgQueue *msgQueue, const struct timespec *timeout)
 {
   uint lockCount;
-  uint z;
+  uint i;
   int  result;
 
   assert(msgQueue != NULL);
@@ -163,7 +163,10 @@ LOCAL bool waitModified(MsgQueue *msgQueue, const struct timespec *timeout)
 
   lockCount = msgQueue->lockCount;
 
-  for (z = 1; z < lockCount; z++) pthread_mutex_unlock(&msgQueue->lock);
+  for (i = 1; i < lockCount; i++)
+  {
+    pthread_mutex_unlock(&msgQueue->lock);
+  }
   msgQueue->lockCount  = 0;
   if (timeout != NULL)
   {
@@ -174,7 +177,10 @@ LOCAL bool waitModified(MsgQueue *msgQueue, const struct timespec *timeout)
     result = pthread_cond_wait(&msgQueue->modified,&msgQueue->lock);
   }
   msgQueue->lockCount  = lockCount;
-  for (z = 1; z < lockCount; z++) pthread_mutex_lock(&msgQueue->lock);
+  for (i = 1; i < lockCount; i++)
+  {
+    pthread_mutex_lock(&msgQueue->lock);
+  }
 
   return result == 0;
 }
@@ -186,12 +192,22 @@ bool MsgQueue_init(MsgQueue *msgQueue, ulong maxMsgs)
   assert(msgQueue != NULL);
 
   msgQueue->maxMsgs = maxMsgs;
-  pthread_mutexattr_init(&msgQueue->lockAttributes);
-  pthread_mutexattr_settype(&msgQueue->lockAttributes,PTHREAD_MUTEX_RECURSIVE_NP);
-  if (pthread_mutex_init(&msgQueue->lock,&msgQueue->lockAttributes) != 0)
-  {
-    return FALSE;
-  }
+//  #if   defined(PLATFORM_LINUX)
+#if 1
+    pthread_mutexattr_init(&msgQueue->lockAttributes);
+    pthread_mutexattr_settype(&msgQueue->lockAttributes,PTHREAD_MUTEX_RECURSIVE_NP);
+    if (pthread_mutex_init(&msgQueue->lock,&msgQueue->lockAttributes) != 0)
+    {
+      return FALSE;
+    }
+  #elif defined(PLATFORM_WINDOWS)
+xxx
+    msgQueue->lock = CreateMutex(NULL,FALSE,NULL);
+    if (msgQueue->lock == NULL)
+    {
+      return FALSE;
+    }
+  #endif /* PLATFORM_... */
   if (pthread_cond_init(&msgQueue->modified,NULL) != 0)
   {
     pthread_mutex_destroy(&msgQueue->lock);
@@ -228,8 +244,13 @@ void MsgQueue_done(MsgQueue *msgQueue, MsgQueueMsgFreeFunction msgQueueMsgFreeFu
 
   // free resources
   pthread_cond_destroy(&msgQueue->modified);
-  pthread_mutex_destroy(&msgQueue->lock);
-  pthread_mutexattr_destroy(&msgQueue->lockAttributes);
+//  #if   defined(PLATFORM_LINUX)
+#if 1
+    pthread_mutex_destroy(&msgQueue->lock);
+    pthread_mutexattr_destroy(&msgQueue->lockAttributes);
+  #elif defined(PLATFORM_WINDOWS)
+xxx
+  #endif /* PLATFORM_... */
 }
 
 MsgQueue *MsgQueue_new(ulong maxMsgs)
