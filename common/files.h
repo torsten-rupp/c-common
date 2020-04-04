@@ -43,13 +43,10 @@
 // temporary directory
 #define FILE_TMP_DIRECTORY File_getSystemTmpDirectory()
 
-#if defined(FILE_SEPARATOR_CHAR) && defined(FILE_SEPARATOR_STRING)
-  #define FILES_PATHNAME_SEPARATOR_CHAR  FILE_SEPARATOR_CHAR
-  #define FILES_PATHNAME_SEPARATOR_CHARS FILE_SEPARATOR_STRING
-#else
-  #define FILES_PATHNAME_SEPARATOR_CHAR  '/'
-  #define FILES_PATHNAME_SEPARATOR_CHARS "/"
-#endif
+// Note: always use '/' and never brain dead '\'
+#define FILE_PATHNAME_SEPARATOR_CHAR   '/'
+#define FILE_PATHNAME_SEPARATOR_CHARS  "/"
+#define FILE_PATHNAME_SEPARATOR_STRING "/"
 
 #define FILE_CAST_SIZE (sizeof(time_t)+sizeof(time_t))
 
@@ -253,19 +250,24 @@ typedef struct
 // root list handle
 typedef struct
 {
-  StringList fileSystemNames;
-  FILE       *mounts;
-  char       line[1024];
-  bool       parseFlag;
-  char       name[256];
+  #if   defined(PLATFORM_LINUX)
+    StringList fileSystemNames;
+    FILE       *mounts;
+    char       line[FILE_MAX_PATH_MAX_LENGTH+256];
+    bool       parseFlag;
+    char       name[FILE_MAX_PATH_MAX_LENGTH];
+  #elif defined(PLATFORM_WINDOWS)
+    DWORD  logicalDrives;
+    uint   i;
+  #endif /* PLATFORM_... */
 } RootListHandle;
 
 // directory list handle
 typedef struct
 {
-  String        name;
-  DIR           *dir;
-  struct dirent *entry;
+  String              basePath;
+  DIR                 *dir;
+  const struct dirent *entry;
   #if defined(HAVE_FDOPENDIR) && defined(HAVE_O_DIRECTORY)
     #ifndef HAVE_O_NOATIME
       int             handle;
@@ -329,6 +331,8 @@ typedef struct
   ulong  blockSize;                   // size of block [bytes]
   uint64 freeBytes;
   uint64 totalBytes;
+  ulong  freeFiles;
+  ulong  totalFiles;
   uint   maxFileNameLength;
 } FileSystemInfo;
 
@@ -379,6 +383,7 @@ typedef bool(*FileDumpInfoFunction)(const FileHandle *fileHandle,
   extern "C" {
 #endif
 
+//TODO: remove!
 /***********************************************************************\
 * Name   : File_newFileName
 * Purpose: create new file name variable
@@ -390,6 +395,7 @@ typedef bool(*FileDumpInfoFunction)(const FileHandle *fileHandle,
 
 String File_newFileName(void);
 
+//TODO: remove!
 /***********************************************************************\
 * Name   : File_duplicateFileName
 * Purpose: duplicate file name
@@ -401,6 +407,7 @@ String File_newFileName(void);
 
 String File_duplicateFileName(ConstString fromFileName);
 
+//TODO: remove!
 /***********************************************************************\
 * Name   : File_deleteFileName
 * Purpose: delete file name variable
@@ -412,6 +419,7 @@ String File_duplicateFileName(ConstString fromFileName);
 
 void File_deleteFileName(String fileName);
 
+//TODO: remove!
 /***********************************************************************\
 * Name   : File_clearFileName
 * Purpose: clear file name variable
@@ -473,7 +481,7 @@ String File_getDirectoryNameCString(String path, const char *fileName);
 * Input  : baseName - basename variable
 *          fileName - file name
 * Output : -
-* Return : basename variable
+* Return : base name variable
 * Notes  : -
 \***********************************************************************/
 
@@ -483,15 +491,43 @@ String File_getBaseNameCString(String baseName, const char *fileName);
 /***********************************************************************\
 * Name   : File_getRootName, File_getRootNameCString
 * Purpose: get root of file
-* Input  : rootName - rootname variable
+* Input  : rootName - root name variable
 *          fileName - file name
 * Output : -
-* Return : rootName variable
-* Notes  : -
+* Return : root name variable
+* Notes  : if file name is absolute then
+*            on Unix: /
+*            on Windows: <drive>:
 \***********************************************************************/
 
 String File_getRootName(String rootName, ConstString fileName);
 String File_getRootNameCString(String rootName, const char *fileName);
+
+/***********************************************************************\
+* Name   : File_getDeviceName, File_getDeviceNameCString
+* Purpose: get device name where file is located
+* Input  : deviceName - device name variable
+*          fileName   - file name
+* Output : -
+* Return : device name variable
+* Notes  : on Unix: <mount point name>
+*          on Windows: <drive>:
+\***********************************************************************/
+
+String File_getDeviceName(String deviceName, ConstString fileName);
+String File_getDeviceNameCString(String deviceName, const char *fileName);
+
+/***********************************************************************\
+* Name   : File_isAbsoluteFileName, File_isAbsoluteFileNameCString
+* Purpose: check if file name is absolute
+* Input  : fileName - file name
+* Output : -
+* Return : TRUE if file name is absolute, FALSE otherwise
+* Notes  : -
+\***********************************************************************/
+
+bool File_isAbsoluteFileName(ConstString fileName);
+bool File_isAbsoluteFileNameCString(const char *fileName);
 
 /***********************************************************************\
 * Name   : File_getAbsoluteFileName, File_getAbsoluteFileNameCString
@@ -541,18 +577,6 @@ void File_doneSplitFileName(StringTokenizer *stringTokenizer);
 \***********************************************************************/
 
 bool File_getNextSplitFileName(StringTokenizer *stringTokenizer, ConstString *name);
-
-/***********************************************************************\
-* Name   : File_isAbsoluteFileName, File_isAbsoluteFileNameCString
-* Purpose: check if file name is absolute
-* Input  : fileName - file name
-* Output : -
-* Return : TRUE if file name is absolute, FALSE otherwise
-* Notes  : -
-\***********************************************************************/
-
-bool File_isAbsoluteFileName(ConstString fileName);
-bool File_isAbsoluteFileNameCString(const char *fileName);
 
 /*---------------------------------------------------------------------*/
 
@@ -1018,12 +1042,13 @@ Errors File_touch(ConstString fileName);
 * Name   : File_openRootList
 * Purpose: open root list for reading
 * Input  : rootListHandle - root list handle
+*          allMountsFlag  - TRUE to list all mounts, too
 * Output : -
 * Return : ERROR_NONE or error code
 * Notes  : -
 \***********************************************************************/
 
-Errors File_openRootList(RootListHandle *rootListHandle);
+Errors File_openRootList(RootListHandle *rootListHandle, bool allMountsFlag);
 
 /***********************************************************************\
 * Name   : File_closeRootList
@@ -1051,14 +1076,14 @@ bool File_endOfRootList(RootListHandle *rootListHandle);
 * Name   : File_readRootList
 * Purpose: read next directory list entry
 * Input  : rootListHandle - root list handle
-*          name           - name variable
-* Output : name - next name
+*          rootName       - root name variable
+* Output : rootName - next root name
 * Return : ERROR_NONE or error code
 * Notes  : -
 \***********************************************************************/
 
 Errors File_readRootList(RootListHandle *rootListHandle,
-                         String              name
+                         String         rootName
                         );
 
 /***********************************************************************\
@@ -1115,54 +1140,6 @@ Errors File_readDirectoryList(DirectoryListHandle *directoryListHandle,
                              );
 
 /*---------------------------------------------------------------------*/
-
-/***********************************************************************\
-* Name   : File_userNameToUserId
-* Purpose: convert user name to user id
-* Input  : name - user name
-* Output : -
-* Return : user id or FILE_DEFAULT_USER_ID if user not found
-* Notes  : -
-\***********************************************************************/
-
-uint32 File_userNameToUserId(const char *name);
-
-/***********************************************************************\
-* Name   : File_userNameToUserId
-* Purpose: convert user name to user id
-* Input  : name     - name variable
-*          nameSize - max. size of name
-*          userId   - user id
-* Output : name - user name
-* Return : user name or "NONE" if user not found
-* Notes  : -
-\***********************************************************************/
-
-const char *File_userIdToUserName(char *name, uint nameSize, uint32 userId);
-
-/***********************************************************************\
-* Name   : File_groupNameToGroupId
-* Purpose: convert group name to group id
-* Input  : name - group name
-* Output : -
-* Return : user id or FILE_DEFAULT_GROUP_ID if group not found
-* Notes  : -
-\***********************************************************************/
-
-uint32 File_groupNameToGroupId(const char *name);
-
-/***********************************************************************\
-* Name   : File_groupNameToGroupId
-* Purpose: convert group name to group id
-* Input  : name     - name variable
-*          nameSize - max. size of name
-*          groupId  - group id
-* Output : name - group name
-* Return : group name or "NONE" if user not found
-* Notes  : -
-\***********************************************************************/
-
-const char *File_groupIdToGroupName(char *name, uint nameSize, uint32 groupId);
 
 /***********************************************************************\
 * Name   : File_stringToPermission
@@ -1669,14 +1646,16 @@ String File_getCurrentDirectory(String pathName);
 /***********************************************************************\
 * Name   : File_readLink
 * Purpose: read link
-* Input  : linkName - link name
+* Input  : linkName         - link name
+*          absolutePathFlag - TRUE to get absolute path
 * Output : fileName - file name link references
 * Return : ERROR_NONE or error code
 * Notes  : -
 \***********************************************************************/
 
 Errors File_readLink(String      fileName,
-                     ConstString linkName
+                     ConstString linkName,
+                     bool        absolutePathFlag
                     );
 
 /***********************************************************************\
