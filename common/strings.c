@@ -445,7 +445,6 @@ LOCAL void printErrorConstString(const struct __String *string)
   #else /* NDEBUG */
     fprintf(stderr,"FATAL ERROR: cannot modify constant string '%s'\n",string->data);
   #endif /* not NDEBUG */
-  HALT_INTERNAL_ERROR("modify const string");
 }
 
 /***********************************************************************\
@@ -677,12 +676,12 @@ LOCAL_INLINE void ensureStringLength(struct __String *string, ulong newLength)
     case STRING_TYPE_STATIC:
       if ((newLength + 1) > string->maxLength)
       {
-        fprintf(stderr,"FATAL ERROR: exceeded static string (required length %lu, max. length %lu) - program halted\n",newLength,(ulong)string->maxLength-1);
-        abort();
+        HALT_INTERNAL_ERROR("exceeded static string (required length %lu, max. length %lu) - program halted\n",newLength,(ulong)string->maxLength);
       }
       break;
     case STRING_TYPE_CONST:
       printErrorConstString(string);
+      HALT_INTERNAL_ERROR("modify const string");
       break; // not reached
     default:
       HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
@@ -759,6 +758,10 @@ LOCAL const char *parseNextFormatToken(const char *format, FormatToken *formatTo
     nextFormat++;
   }
 
+  #if   defined(PLATFORM_LINUX)
+  #elif defined(PLATFORM_WINDOWS)
+  #endif /* PLATFORM_... */
+
   // width, precision
   while (   ((*nextFormat) != NUL)
          && isdigit((int)(*nextFormat))
@@ -791,7 +794,7 @@ LOCAL const char *parseNextFormatToken(const char *format, FormatToken *formatTo
       && !isalpha(*nextFormat)
       && ((*nextFormat) != '%')
       && (   (*(nextFormat+1) == 's')
-          || (*((nextFormat+1)) == 'S')
+          || (*(nextFormat+1) == 'S')
          )
      )
   {
@@ -860,6 +863,18 @@ LOCAL const char *parseNextFormatToken(const char *format, FormatToken *formatTo
       formatToken->lengthType = FORMAT_LENGTH_TYPE_INTEGER;
       nextFormat++;
     }
+    #if   defined(PLATFORM_LINUX)
+    #elif defined(PLATFORM_WINDOWS)
+      if (stringStartsWith(nextFormat,"I64"))
+      {
+        ADD_CHAR(formatToken,(*(nextFormat+0)));
+        ADD_CHAR(formatToken,(*(nextFormat+1)));
+        ADD_CHAR(formatToken,(*(nextFormat+2)));
+
+        formatToken->lengthType = FORMAT_LENGTH_TYPE_LONGLONG;
+        nextFormat += 3;
+      }
+    #endif /* PLATFORM_... */
   }
 
   // conversion character
@@ -937,7 +952,7 @@ LOCAL void formatString(struct __String *string,
     struct __String    *string;
   } data;
   char          buffer[64];
-  uint          length;
+  int           length;
   const char    *s;
   ulong         i;
   char          ch;
@@ -961,7 +976,8 @@ LOCAL void formatString(struct __String *string,
         case 'c':
           data.i = va_arg(arguments,int);
           length = snprintf(buffer,sizeof(buffer),formatToken.token,data.i);
-          if (length < sizeof(buffer))
+          assert(length >= 0);
+          if ((uint)length < sizeof(buffer))
           {
             String_appendCString(string,buffer);
           }
@@ -981,7 +997,8 @@ LOCAL void formatString(struct __String *string,
               {
                 data.i = va_arg(arguments,int);
                 length = snprintf(buffer,sizeof(buffer),formatToken.token,data.i);
-                if (length < sizeof(buffer))
+                assert(length >= 0);
+                if ((uint)length < sizeof(buffer))
                 {
                   String_appendCString(string,buffer);
                 }
@@ -998,7 +1015,8 @@ LOCAL void formatString(struct __String *string,
               {
                 data.l = va_arg(arguments,long);
                 length = snprintf(buffer,sizeof(buffer),formatToken.token,data.l);
-                if (length < sizeof(buffer))
+                assert(length >= 0);
+                if ((uint)length < sizeof(buffer))
                 {
                   String_appendCString(string,buffer);
                 }
@@ -1016,7 +1034,8 @@ LOCAL void formatString(struct __String *string,
                 #if defined(_LONG_LONG) || defined(HAVE_LONG_LONG)
                   data.ll = va_arg(arguments,long long);
                   length = snprintf(buffer,sizeof(buffer),formatToken.token,data.ll);
-                  if (length < sizeof(buffer))
+                  assert(length >= 0);
+                  if ((uint)length < sizeof(buffer))
                   {
                     String_appendCString(string,buffer);
                   }
@@ -1049,7 +1068,8 @@ LOCAL void formatString(struct __String *string,
               {
                 data.ui = va_arg(arguments,unsigned int);
                 length = snprintf(buffer,sizeof(buffer),formatToken.token,data.ui);
-                if (length < sizeof(buffer))
+                assert(length >= 0);
+                if ((uint)length < sizeof(buffer))
                 {
                   String_appendCString(string,buffer);
                 }
@@ -1066,7 +1086,8 @@ LOCAL void formatString(struct __String *string,
               {
                 data.ul = va_arg(arguments,unsigned long);
                 length = snprintf(buffer,sizeof(buffer),formatToken.token,data.ul);
-                if (length < sizeof(buffer))
+                assert(length >= 0);
+                if ((uint)length < sizeof(buffer))
                 {
                   String_appendCString(string,buffer);
                 }
@@ -1084,7 +1105,8 @@ LOCAL void formatString(struct __String *string,
                 #if defined(_LONG_LONG) || defined(HAVE_LONG_LONG)
                   data.ull = va_arg(arguments,unsigned long long);
                   length = snprintf(buffer,sizeof(buffer),formatToken.token,data.ull);
-                  if (length < sizeof(buffer))
+                  assert(length >= 0);
+                  if ((uint)length < sizeof(buffer))
                   {
                     String_appendCString(string,buffer);
                   }
@@ -1122,7 +1144,8 @@ LOCAL void formatString(struct __String *string,
               {
                 data.d = va_arg(arguments,double);
                 length = snprintf(buffer,sizeof(buffer),formatToken.token,data.d);
-                if (length < sizeof(buffer))
+                assert(length >= 0);
+                if ((uint)length < sizeof(buffer))
                 {
                   String_appendCString(string,buffer);
                 }
@@ -1204,7 +1227,8 @@ LOCAL void formatString(struct __String *string,
             if (data.s != NULL)
             {
               length = snprintf(buffer,sizeof(buffer),formatToken.token,data.s);
-              if (length < sizeof(buffer))
+              assert(length >= 0);
+              if ((uint)length < sizeof(buffer))
               {
                 String_appendCString(string,buffer);
               }
@@ -1225,7 +1249,8 @@ LOCAL void formatString(struct __String *string,
           if (data.p != NULL)
           {
             length = snprintf(buffer,sizeof(buffer),formatToken.token,data.p);
-            if (length < sizeof(buffer))
+            assert(length >= 0);
+            if ((uint)length < sizeof(buffer))
             {
               String_appendCString(string,buffer);
             }
@@ -1294,7 +1319,8 @@ LOCAL void formatString(struct __String *string,
           {
             // non quoted stringformat
             length = snprintf(buffer,sizeof(buffer),formatToken.token,String_cString(data.string));
-            if (length < sizeof(buffer))
+            assert(length >= 0);
+            if ((uint)length < sizeof(buffer))
             {
               String_appendCString(string,buffer);
             }
@@ -1377,7 +1403,8 @@ LOCAL void formatString(struct __String *string,
           HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASEX("format '%s': conversion '%c'",format,formatToken.conversionChar);
 #if 0
           length = snprintf(buffer,sizeof(buffer),formatToken.token);
-          if (length < sizeof(buffer))
+          assert(length >= 0);
+          if ((uint)length < sizeof(buffer))
           {
             String_appendCString(string,buffer);
           }
@@ -3296,6 +3323,27 @@ String String_remove(String string, ulong index, ulong length)
   return string;
 }
 
+String String_truncate(String string, ulong index, ulong length)
+{
+  STRING_CHECK_VALID(string);
+  STRING_CHECK_ASSIGNABLE(string);
+
+  if (string != NULL)
+  {
+    assert(string->data != NULL);
+
+    if ((index+length) < string->length)
+    {
+      string->data[index+length] = NUL;
+      string->length             = index+length;
+    }
+
+    STRING_UPDATE_VALID(string);
+  }
+
+  return string;
+}
+
 String String_replace(String string, ulong index, ulong length, ConstString insertString)
 {
   STRING_CHECK_VALID(string);
@@ -3717,28 +3765,10 @@ int String_compare(ConstString           string1,
   return result;
 }
 
-bool String_equals(ConstString string1, ConstString string2)
-{
-  bool equalFlag;
-
-  if ((string1 != NULL) && (string2 != NULL))
-  {
-    STRING_CHECK_VALID(string1);
-    STRING_CHECK_VALID(string2);
-
-    equalFlag = String_equalsBuffer(string1,string2->data,string2->length);
-  }
-  else
-  {
-    equalFlag = ((string1 == NULL) && (string2 == NULL));
-  }
-
-  return equalFlag;
-}
-
 bool String_equalsCString(ConstString string, const char *s)
 {
-  bool equalFlag;
+  size_t n;
+  bool   equalFlag;
 
   STRING_CHECK_VALID(string);
 
@@ -3748,7 +3778,15 @@ bool String_equalsCString(ConstString string, const char *s)
 
     if (s != NULL)
     {
-      equalFlag = String_equalsBuffer(string,s,strlen(s));
+      n = strlen(s);
+      if (string->length == (ulong)n)
+      {
+        equalFlag = (memcmp(string->data,s,string->length) == 0);
+      }
+      else
+      {
+        equalFlag = FALSE;
+      }
     }
     else
     {
@@ -3785,8 +3823,7 @@ bool String_equalsChar(ConstString string, char ch)
 
 bool String_equalsBuffer(ConstString string, const char *buffer, ulong bufferLength)
 {
-  bool  equalFlag;
-  ulong i;
+  bool equalFlag;
 
   assert(string != NULL);
   assert(buffer != NULL);
@@ -3797,13 +3834,7 @@ bool String_equalsBuffer(ConstString string, const char *buffer, ulong bufferLen
 
     if (string->length == bufferLength)
     {
-      equalFlag = TRUE;
-      i         = 0L;
-      while (equalFlag && (i < string->length))
-      {
-        equalFlag = (string->data[i] == buffer[i]);
-        i++;
-      }
+      equalFlag = (memcmp(string->data,buffer,string->length) == 0);
     }
     else
     {
