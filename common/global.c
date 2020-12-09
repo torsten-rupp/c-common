@@ -17,18 +17,27 @@
 #include <inttypes.h>
 #include <unistd.h>
 #include <pthread.h>
+#ifdef HAVE_REGEX_H
+  #include <regex.h>
+#endif
 #ifdef HAVE_GCRYPT
   #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
   #include <gcrypt.h>
   #pragma GCC diagnostic warning "-Wdeprecated-declarations"
 #endif /* HAVE_GCRYPT */
-#ifdef HAVE_BACKTRACE
+#ifdef HAVE_EXECINFO_H
   #include <execinfo.h>
 #endif
 #ifdef HAVE_BFD_H
   #include "common/stacktraces.h"
 #endif
 #include <assert.h>
+
+#if   defined(PLATFORM_LINUX)
+  #include <unistd.h>
+  #include <sys/syscall.h>
+#elif defined(PLATFORM_WINDOWS)
+#endif /* PLATFORM_... */
 
 #ifndef NDEBUG
   #include "common/lists.h"
@@ -418,9 +427,24 @@ void __dprintf__(const char *__fileName__,
                  ...
                 )
 {
+  #if   defined(PLATFORM_LINUX)
+    pid_t threadLWPId;
+  #elif defined(PLATFORM_WINDOWS)
+    return THREAD_LPW_ID_NONE;
+  #endif /* PLATFORM_... */
   va_list arguments;
 
-  fprintf(stdout,"DEBUG %s, %lu: ",__fileName__,__lineNb__);
+  #if   defined(PLATFORM_LINUX)
+    #ifdef SYS_gettid
+      threadLWPId = syscall(SYS_gettid);
+    #else
+      threadLWPId = 0;
+    #endif
+  #elif defined(PLATFORM_WINDOWS)
+    threadLWPId = 0;
+  #endif /* PLATFORM_... */
+
+  fprintf(stdout,"DEBUG [%6u] %s, %lu: ",threadLWPId,__fileName__,__lineNb__);
   va_start(arguments,format);
   vfprintf(stdout,format,arguments);
   va_end(arguments);
