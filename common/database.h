@@ -32,6 +32,13 @@
 /****************** Conditional compilation switches *******************/
 #define _DATABASE_LOCK_PER_INSTANCE   // if defined use lock per database instance, otherwise a global lock for all database is used
 
+// switch on for debugging only!
+#define _DATABASE_DEBUG_LOCK
+#define _DATABASE_DEBUG_LOCK_PRINT
+#define _DATABASE_DEBUG_TIMEOUT
+#define _DATABASE_DEBUG_COPY_TABLE
+#define _DATABASE_DEBUG_LOG SQLITE_TRACE_STMT
+
 /***************************** Constants *******************************/
 
 // database open mask
@@ -49,6 +56,7 @@ typedef enum
 // additional database open mode flags
 #define DATABASE_OPENMODE_MEMORY (1 << 16)
 #define DATABASE_OPENMODE_SHARED (1 << 17)
+#define DATABASE_OPENMODE_AUX    (1 << 18)
 
 // database lock types
 typedef enum
@@ -76,8 +84,8 @@ typedef enum
 } DatabaseTypes;
 
 // special database ids
-#define DATABASE_ID_NONE  0x0000000000000000ULL
-#define DATABASE_ID_ANY   0xFFFFFFFFFFFFFFFFULL
+#define DATABASE_ID_NONE  0x0000000000000000LL
+#define DATABASE_ID_ANY   0xFFFFFFFFFFFFFFFFLL
 
 // ordering mode
 typedef enum
@@ -103,6 +111,22 @@ typedef enum
   DATABASE_HISTORY_TYPE_UNLOCK
 } DatabaseHistoryThreadInfoTypes;
 #endif /* NDEBUG */
+
+#define DATABASE_AUX "aux"
+
+// ids of tempory table in "aux"
+typedef enum
+{
+  DATABASE_TEMPORARY_TABLE1,
+  DATABASE_TEMPORARY_TABLE2,
+  DATABASE_TEMPORARY_TABLE3,
+  DATABASE_TEMPORARY_TABLE4,
+  DATABASE_TEMPORARY_TABLE5,
+  DATABASE_TEMPORARY_TABLE6,
+  DATABASE_TEMPORARY_TABLE7,
+  DATABASE_TEMPORARY_TABLE8,
+  DATABASE_TEMPORARY_TABLE9
+} DatabaseTemporaryTableIds;
 
 /***************************** Datatypes *******************************/
 
@@ -173,9 +197,7 @@ typedef struct
       uint       stackTraceSize;
     #endif /* HAVE_BACKTRACE */
   } DatabaseThreadInfo;
-#endif /* not NDEBUG */
 
-#ifndef NDEBUG
   typedef struct
   {
     ThreadId                       threadId;
@@ -209,7 +231,6 @@ typedef struct DatabaseNode
   uint                        pendingReadWriteCount;
   uint                        readWriteCount;
   pthread_cond_t              readWriteTrigger;
-  ThreadId                    readWriteLockedBy;
 
   uint                        pendingTransactionCount;
   uint                        transactionCount;
@@ -218,6 +239,14 @@ typedef struct DatabaseNode
   DatabaseBusyHandlerList     busyHandlerList;
   DatabaseProgressHandlerList progressHandlerList;
 
+  // simple locking information: LWP ids only
+  #ifdef DATABASE_DEBUG_LOCK
+    ThreadLWPId readLPWIds[32];
+    ThreadLWPId readWriteLPWIds[32];
+    ThreadLWPId transactionLPWId;
+  #endif /* DATABASE_DEBUG_LOCK */
+
+  // full locking information
   #ifndef NDEBUG
     struct
     {
@@ -228,6 +257,7 @@ typedef struct DatabaseNode
       // pending read/writes
       DatabaseThreadInfo pendingReadWrites[32];
       // read/write
+      ThreadId           readWriteLockedBy;
       DatabaseThreadInfo readWrites[32];
       struct
       {
@@ -426,20 +456,43 @@ typedef void(*DatabaseCopyProgressCallbackFunction)(void *userData);
 * Output : -
 * Return : -
 * Notes  : usage:
-*            SEMAPHORE_LOCKED_DO(semaphore,semaphoreLockType,timeout)
+*            DATABASE_LOCKED_DO(databaseHandle,SEMAPHORE_LOCK_TYPE_READ,1000)
 *            {
 *              ...
 *            }
-*
-*          semaphore must be unlocked manually if 'break'  or
-*          'return' is used!
 \***********************************************************************/
 
-#define DATABASE_LOCKED_DO(databaseHandle,lockType,timeout) \
-  for (bool __databaseLock ## __COUNTER__ = Database_lock(databaseHandle,lockType,timeout); \
+#define DATABASE_LOCKED_DO(databaseHandle,semaphoreLockType,timeout) \
+  for (bool __databaseLock ## __COUNTER__ = Database_lock(databaseHandle,semaphoreLockType,timeout); \
        __databaseLock ## __COUNTER__; \
-       Database_unlock(databaseHandle,lockType), __databaseLock ## __COUNTER__ = FALSE \
+       Database_unlock(databaseHandle,semaphoreLockType), __databaseLock ## __COUNTER__ = FALSE \
       )
+
+/***********************************************************************\
+* Name   : DATABASE_TRANSACTION_DO
+* Purpose: execute block with database transaction
+* Input  : databaseHandle          - database handle
+*          databaseTransactionType - transaction type; see
+*                                    DatabaseTransactionTypes
+*          timeout                 - timeout [ms] or NO_WAIT, WAIT_FOREVER
+* Output : -
+* Return : -
+* Notes  : usage:
+*            DATABASE_TRANSACTION_DO(databaseHandle,DATABASE_TRANSACTION_TYPE_EXCLUSIVE,1000)
+*            {
+*              ...
+*            }
+\***********************************************************************/
+
+#define DATABASE_TRANSACTION_DO(databaseHandle,databaseTransactionType,timeout) \
+  for (bool __databaseTransaction ## __COUNTER__ = (Database_beginTransaction(databaseHandle,databaseTransactionType,timeout) == ERROR_NONE); \
+       __databaseTransaction ## __COUNTER__; \
+       Database_endTransaction(databaseHandle), __databaseTransaction ## __COUNTER__ = FALSE \
+      )
+
+//TODO: rollback
+#define DATABASE_TRANSACTION_ABORT(databaseHandle) \
+  continue
 
 #ifndef NDEBUG
   #define Database_open(...)                __Database_open               (__FILE__,__LINE__, ## __VA_ARGS__)
@@ -797,12 +850,41 @@ Errors Database_setTmpDirectory(DatabaseHandle *databaseHandle,
                                );
 
 /***********************************************************************\
+* Name   : Database_createTemporaryTable
+* Purpose: create temporary database table
+* Input  : databaseHandle - database handle
+*          id             - table id
+*          definition     - table definition
+* Output : -
+* Return : ERROR_NONE or error code
+* Notes  : -
+\***********************************************************************/
+
+Errors Database_createTemporaryTable(DatabaseHandle            *databaseHandle,
+                                     DatabaseTemporaryTableIds id,
+                                     const char                *definition
+                                    );
+
+/***********************************************************************\
+* Name   : Database_dropTemporaryTable
+* Purpose: drop temporary database table
+* Input  : databaseHandle - database handle
+*          id             - table id
+* Return : ERROR_NONE or error code
+* Notes  : -
+\***********************************************************************/
+
+Errors Database_dropTemporaryTable(DatabaseHandle            *databaseHandle,
+                                   DatabaseTemporaryTableIds id
+                                  );
+
+/***********************************************************************\
 * Name   : Database_compare
 * Purpose: compare database structure
 * Input  : databaseHandleReference - reference database handle
-*          databaseHandle          - database handle 1
+*          databaseHandle          - database handle
 * Output : -
-* Return : ERROR_NONE or error code
+* Return : ERROR_NONE if databases equals or mismatch code
 * Notes  : -
 \***********************************************************************/
 
@@ -1182,7 +1264,6 @@ Errors Database_getIds(DatabaseHandle *databaseHandle,
                        const char     *additional,
                        ...
                       );
-
 Errors Database_vgetIds(DatabaseHandle *databaseHandle,
                         Array          *values,
                         const char     *tableName,
@@ -1190,6 +1271,35 @@ Errors Database_vgetIds(DatabaseHandle *databaseHandle,
                         const char     *additional,
                         va_list        arguments
                        );
+
+/***********************************************************************\
+* Name   : Database_getMaxId, Database_vgetMaxId
+* Purpose: get max. database id of value from database table
+* Input  : databaseHandle - database handle
+*          tableName      - table name
+*          columnName     - column name
+*          additional     - additional string (e. g. WHERE...)
+*                           special functions:
+*                             REGEXP(pattern,case-flag,text)
+* Output : value - max. database id or DATABASE_ID_NONE
+* Return : ERROR_NONE or error code
+* Notes  : -
+\***********************************************************************/
+
+Errors Database_getMaxId(DatabaseHandle *databaseHandle,
+                         DatabaseId     *value,
+                         const char     *tableName,
+                         const char     *columnName,
+                         const char     *additional,
+                         ...
+                        );
+Errors Database_vgetMaxId(DatabaseHandle *databaseHandle,
+                          DatabaseId     *value,
+                          const char     *tableName,
+                          const char     *columnName,
+                          const char     *additional,
+                          va_list        arguments
+                         );
 
 /***********************************************************************\
 * Name   : Database_getInteger64, Database_vgetInteger64
@@ -1379,6 +1489,19 @@ Errors Database_vsetString(DatabaseHandle *databaseHandle,
 
 DatabaseId Database_getLastRowId(DatabaseHandle *databaseHandle);
 
+#ifdef DATABASE_DEBUG_LOCK
+/***********************************************************************\
+* Name   : Database_debugPrintSimpleLockInfo
+* Purpose: print debug simple lock info
+* Input  : -
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+void Database_debugPrintSimpleLockInfo(void);
+#endif /* DATABASE_DEBUG_LOCK */
+
 #ifndef NDEBUG
 
 /***********************************************************************\
@@ -1430,15 +1553,17 @@ void __Database_debugPrintQueryInfo(const char *__fileName__, ulong __lineNb__, 
 #endif /* NDEBUG */
 
 /***********************************************************************\
-* Name   : Database_debugDump
-* Purpose: dump database schema
+* Name   : Database_debugDumpTable
+* Purpose: dump database table
 * Input  : databaseHandle - database handle
+*          tableName      - table name
+*          showHeaderFlag - TRUE to dump header
 * Output : -
 * Return : -
 * Notes  : For debugging only!
 \***********************************************************************/
 
-void Database_debugDump(DatabaseHandle *databaseHandle, const char *tableName);
+void Database_debugDumpTable(DatabaseHandle *databaseHandle, const char *tableName, bool showHeaderFlag);
 
 #endif /* not NDEBUG */
 
