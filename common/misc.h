@@ -16,6 +16,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <unistd.h>
 #include <assert.h>
 
 // file/socket handle events
@@ -1151,6 +1152,34 @@ Errors Misc_executeScript(const char       *script,
                          );
 
 /*---------------------------------------------------------------------*/
+
+/***********************************************************************\
+* Name   : Misc_isTerminal
+* Purpose: check if handle is a terminal
+* Input  : handle - handle
+* Output : -
+* Return : TRUE iff terminal
+* Notes  : -
+\***********************************************************************/
+
+bool Misc_isTerminal(int handle);
+
+/***********************************************************************\
+* Name   : Misc_isStdoutTerminal
+* Purpose: check if stdout is a terminal
+* Input  : -
+* Output : -
+* Return : TRUE iff stdout is terminal
+* Notes  : -
+\***********************************************************************/
+
+INLINE bool Misc_isStdoutTerminal(void);
+#if defined(NDEBUG) || defined(__MISC_IMPLEMENTATION__)
+INLINE bool Misc_isStdoutTerminal(void)
+{
+  return Misc_isTerminal(STDOUT_FILENO);
+}
+#endif /* NDEBUG || __MISC_IMPLEMENTATION__ */
 
 /***********************************************************************\
 * Name   : Misc_waitEnter
