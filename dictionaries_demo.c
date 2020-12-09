@@ -73,9 +73,9 @@ int main(int argc, char *argv[])
   fileName = argv[1];
 
   Dictionary_init(&dictionary,
-                  CALLBACK_NULL,
-                  CALLBACK_NULL,
-                  CALLBACK_NULL
+                  CALLBACK_(NULL,NULL),
+                  CALLBACK_(NULL,NULL),
+                  CALLBACK_(NULL,NULL)
                  );
 
   file = fopen(fileName,"r");
