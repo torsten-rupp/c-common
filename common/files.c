@@ -42,7 +42,7 @@
   #include <sys/vfs.h>
 #endif
 #include <errno.h>
-#ifdef HAVE_BACKTRACE
+#ifdef HAVE_EXECINFO_H
   #include <execinfo.h>
 #endif
 #include <assert.h>
@@ -56,9 +56,11 @@
 #endif /* PLATFORM_... */
 
 #include "common/global.h"
+#include "common/lists.h"
 #include "common/strings.h"
 #include "common/stringlists.h"
 #include "common/devices.h"
+#include "errors.h"
 
 #ifndef NDEBUG
   #include <pthread.h>
@@ -2274,8 +2276,6 @@ Errors File_write(FileHandle *fileHandle,
   }
   if (n != (ssize_t)bufferLength)
   {
-//TODO: add file name?    return ERRORX_(IO,errno,"%s: %E",String_cString(fileHandle->name),errno);
-fprintf(stderr,"%s, %d: FFFFFFFFFFFFFFFFFf %d %s\n",__FILE__,__LINE__,errno,strerror(errno));
     return getLastError(ERROR_CODE_IO,String_cString(fileHandle->name));;
   }
 
@@ -2446,7 +2446,6 @@ Errors File_transfer(FileHandle *fileHandle,
   {
     bufferLength = MIN(length,BUFFER_SIZE);
 
-fprintf(stderr,"%s, %d: \n",__FILE__,__LINE__);
     n = fread(buffer,1,bufferLength,fromFileHandle->file);
     if (n != (ssize_t)bufferLength)
     {
@@ -2510,7 +2509,7 @@ bool File_getLine(FileHandle *fileHandle,
   String_clear(line);
 
   readFlag = FALSE;
-  while (!readFlag)
+  do
   {
     if (StringList_isEmpty(&fileHandle->lineBufferList))
     {
@@ -2532,11 +2531,12 @@ bool File_getLine(FileHandle *fileHandle,
     String_trim(line,STRING_WHITE_SPACES);
 
     // check if non-empty and non-comment
-    if (!String_isEmpty(line))
-    {
-      readFlag = (commentChars == NULL) || (strchr(commentChars,(int)String_index(line,STRING_BEGIN)) == NULL);
-    }
+    readFlag =    (commentChars == NULL)
+               || (   !String_isEmpty(line)
+                   && (stringFindChar(commentChars,String_index(line,STRING_BEGIN)) == -1L)
+                  );
   }
+  while (!readFlag);
 
   return readFlag;
 }
@@ -4722,7 +4722,7 @@ String File_getCurrentDirectory(String pathName)
     currentDirectory = get_current_dir_name();
     if (currentDirectory != NULL)
     {
-      String_setBuffer(pathName,currentDirectory,strlen(currentDirectory));
+      String_setBuffer(pathName,currentDirectory,stringLength(currentDirectory));
       free(currentDirectory);
     }
     else
@@ -4732,7 +4732,7 @@ String File_getCurrentDirectory(String pathName)
   #else
     if (getcwd(currentDirectory,sizeof(currentDirectory)) != NULL)
     {
-      String_setBuffer(pathName,currentDirectory,strlen(currentDirectory));
+      String_setBuffer(pathName,currentDirectory,stringLength(currentDirectory));
     }
     else
     {
