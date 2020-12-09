@@ -227,7 +227,7 @@ int main(int argc, char *argv[])
   printf("escaped '=#%s#\n",String_cString(s));
   String_unescape(s,'\\',NULL,NULL,0);
   printf("ununescaped '=#%s#\n",String_cString(s));
-  String_quote(s,'\'');
+  String_quote(s,'\'',NULL);
   printf("quoted=#%s#\n",String_cString(s));
   String_unquote(s,"'");
   printf("unquoted=#%s#\n",String_cString(s));
@@ -277,7 +277,7 @@ int main(int argc, char *argv[])
   #endif /* 0 */
 
   #ifndef NDEBUG
-    String_debugPrintInfo(CALLBACK(NULL,NULL),DUMP_INFO_TYPE_ALLOCATED);
+    String_debugPrintInfo(CALLBACK_(NULL,NULL),DUMP_INFO_TYPE_ALLOCATED);
   #endif
 
   return 0;
