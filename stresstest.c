@@ -76,7 +76,6 @@ LOCAL void listThreadCode(void)
     List_append(&stressList,stressNode);
 
     List_done(&stressList,(ListNodeFreeFunction)freeStressNode,NULL);
-fprintf(stderr,"%s, %d: \n",__FILE__,__LINE__);
 
     Thread_yield();
   }
