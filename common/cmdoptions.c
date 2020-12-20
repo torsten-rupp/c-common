@@ -1604,7 +1604,6 @@ bool CmdOption_parse(const char              *argv[],
                 break;
               case CMD_OPTION_TYPE_BOOLEAN:
               case CMD_OPTION_TYPE_FLAG:
-                value = NULL;
                 break;
               case CMD_OPTION_TYPE_INCREMENT:
                 // check if '=' follow
@@ -1613,13 +1612,8 @@ bool CmdOption_parse(const char              *argv[],
                   value = &optionChars[2];
                   optionChars = NULL;
                 }
-                else
-                {
-                  value = NULL;
-                }
                 break;
               case CMD_OPTION_TYPE_ENUM:
-                value = NULL;
                 break;
               case CMD_OPTION_TYPE_SPECIAL:
                 assert(commandLineOptions[j].specialOption.argumentCount <= 1);
@@ -1641,11 +1635,6 @@ bool CmdOption_parse(const char              *argv[],
                   }
                   i++;
                   value = argv[i];
-                }
-                else
-                {
-                  // no value
-                  value = NULL;
                 }
                 break;
               case CMD_OPTION_TYPE_DEPRECATED:
@@ -1669,11 +1658,8 @@ bool CmdOption_parse(const char              *argv[],
                   i++;
                   value = argv[i];
                 }
-                else
-                {
-                  // no value
-                  value = NULL;
-                }
+                break;
+              case CMD_OPTION_TYPE_END:
                 break;
             }
 
