@@ -71,6 +71,10 @@
 
 /****************** Conditional compilation switches *******************/
 
+#ifndef NDEBUG
+  #define getLastError(...) __getLastError(__FILE__,__LINE__, ## __VA_ARGS__)
+#endif /* not NDEBUG */
+
 /***************************** Constants *******************************/
 
 // file types
@@ -136,16 +140,16 @@ LOCAL const struct
   #define FOPEN(fileName,mode) fopen(fileName,mode)
 #endif
 
-#ifdef HAVE__FSEEKI64
-  #define FSEEK(handle,offset,mode) _fseeki64(handle,offset,mode)
+#ifdef HAVE_FSEEKO64
+  #define FSEEK(handle,offset,mode) fseeko64(handle,offset,mode)
 #elif HAVE_FSEEKO
   #define FSEEK(handle,offset,mode) fseeko(handle,offset,mode)
 #else
   #define FSEEK(handle,offset,mode) fseek(handle,offset,mode)
 #endif
 
-#ifdef HAVE__FTELLI64
-  #define FTELL(handle) _ftelli64(handle)
+#ifdef HAVE_FTELLO64
+  #define FTELL(handle) ftello64(handle)
 #elif HAVE_FTELLO
   #define FTELL(handle) ftello(handle)
 #else
@@ -263,32 +267,46 @@ LOCAL void debugFileInit(void)
 * Notes  : -
 \***********************************************************************/
 
-LOCAL Errors getLastError(ErrorCodes errorCode, const char *name)
+#ifdef NDEBUG
+LOCAL Errors getLastError(ErrorCodes errorCode,
+                          const char *name
+                         )
+#else /* not NDEBUG */
+LOCAL Errors __getLastError(const char *__fileName__,
+                            ulong      __lineNb__,
+                            ErrorCodes errorCode,
+                            const char *name
+                           )
+#endif /* NDEBUG */
 {
-  int    lastErrno;
   Errors error;
-  String s;
 
-  // save last errno
-  lastErrno = errno;
-
-  // init variables
-  s = String_new();
-
-  // get error
   switch (errno)
   {
     case ENOSPC:
-      File_getDeviceNameCString(s,name);
-      error = ERRORX_(IO,lastErrno,"no space left on device '%s'",String_cString(s));
+      {
+        String s;
+
+        s = String_new();
+
+        File_getDeviceNameCString(s,name);
+        #ifdef NDEBUG
+          error = Errorx_(ERROR_CODE_IO,ENOSPC,"no space left on device '%s'",String_cString(s));
+        #else /* not NDEBUG */
+          error = Errorx_(__fileName__,__lineNb__,ERROR_CODE_IO,ENOSPC,"no space left on device '%s'",String_cString(s));
+        #endif /* NDEBUG */
+
+        String_delete(s);
+      }
       break;
     default:
-      error = Errorx_(errorCode,errno,"%E",errno);
+      #ifdef NDEBUG
+        error = Errorx_(errorCode,errno,"%E",errno);
+      #else /* not NDEBUG */
+        error = Errorx_(__fileName__,__lineNb__,errorCode,errno,"%E",errno);
+      #endif /* NDEBUG */
       break;
   }
-
-  // free resources
-  String_delete(s);
 
   return error;
 }
@@ -1128,6 +1146,7 @@ String File_getDeviceNameCString(String deviceName, const char *fileName)
     char name[FILE_MAX_PATH_MAX_LENGTH];
     uint n0,n1;
   #elif defined(PLATFORM_WINDOWS)
+    uint n;
   #endif /* PLATFORM_... */
 
   assert(deviceName != NULL);
@@ -1158,23 +1177,24 @@ String File_getDeviceNameCString(String deviceName, const char *fileName)
         fclose(handle);
       }
     #elif defined(PLATFORM_WINDOWS)
+      n = stringLength(fileName);
       if      (   (n >= 2)
                && (toupper(fileName[0]) >= 'A') && (toupper(fileName[0]) <= 'Z')
                && (fileName[1] == ':')
               )
       {
-        String_setChar(rootName,toupper(fileName[0]));
-        String_appendChar(rootName,':');
+        String_setChar(deviceName,toupper(fileName[0]));
+        String_appendChar(deviceName,':');
       }
       else if (   (n >= 2)
                && (stringEqualsPrefix(fileName,"\\\\",2) == 0)
               )
       {
-        String_clear(rootName);
+        String_clear(deviceName);
       }
       if ((n >= 3) && (fileName[2] == FILE_PATHNAME_SEPARATOR_CHAR))
       {
-        String_appendChar(rootName,FILE_PATHNAME_SEPARATOR_CHAR);
+        String_appendChar(deviceName,FILE_PATHNAME_SEPARATOR_CHAR);
       }
     #endif /* PLATFORM_... */
   }
@@ -1674,7 +1694,7 @@ Errors File_getTmpDirectoryNameCString(String     directoryName,
     // Note: there is a race-condition when mktemp() and mkdir() is used!
     if (stringIsEmpty(mktemp(s)))
     {
-      error = getLastError(ERROR_CODE_IO,String_cString(fileHandle->name));
+      error = getLastError(ERROR_CODE_IO,s);
       free(s);
       return error;
     }
@@ -1683,7 +1703,7 @@ Errors File_getTmpDirectoryNameCString(String     directoryName,
       // create directory
       if (mkdir(s) != 0)
       {
-        error = getLastError(ERROR_CODE_IO,String_cString(fileHandle->name));
+        error = getLastError(ERROR_CODE_IO,s);
         free(s);
         return error;
       }
@@ -1695,7 +1715,7 @@ Errors File_getTmpDirectoryNameCString(String     directoryName,
       // create directory
       if (mkdir(s,0777 & ~currentCreationMask) != 0)
       {
-        error = getLastError(ERROR_CODE_IO,String_cString(fileHandle->name));
+        error = getLastError(ERROR_CODE_IO,s);
         free(s);
         return error;
       }
@@ -1825,9 +1845,12 @@ Errors __File_openCString(const char *__fileName__,
   int    fileDescriptor;
   Errors error;
   String directoryName;
-  #ifndef HAVE_O_NOATIME
-    struct stat fileStat;
-  #endif /* not HAVE_O_NOATIME */
+  #if   defined(PLATFORM_LINUX)
+    #ifndef HAVE_O_NOATIME
+      struct stat fileStat;
+    #endif /* not HAVE_O_NOATIME */
+  #elif defined(PLATFORM_WINDOWS)
+  #endif /* PLATFORM_... */
 
   assert(fileHandle != NULL);
   assert(fileName != NULL);
@@ -1916,7 +1939,7 @@ Errors __File_openCString(const char *__fileName__,
         fileDescriptor = open(fileName,FLAGS,0);
         if (fileDescriptor == -1)
         {
-          return getLastError(ERROR_CODE_OPEN_FILE,String_cString(fileHandle->name));
+          return getLastError(ERROR_CODE_OPEN_FILE,fileName);
         }
 
         #if   defined(PLATFORM_LINUX)
@@ -4402,7 +4425,7 @@ Errors File_makeDirectory(ConstString    pathName,
   assert(pathName != NULL);
 
   // initialize variables
-  directoryName = File_newFileName();
+  directoryName       = File_newFileName();
   parentDirectoryName = File_newFileName();
 
   // get current umask (get and restore current value)
@@ -4428,7 +4451,7 @@ Errors File_makeDirectory(ConstString    pathName,
     #if   (MKDIR_ARGUMENTS_COUNT == 1)
       if (mkdir(String_cString(directoryName)) != 0)
       {
-        error = getLastError(ERROR_CODE_IO,String_cString(fileHandle->name));
+        error = getLastError(ERROR_CODE_IO,String_cString(directoryName));
         File_doneSplitFileName(&pathNameTokenizer);
         File_deleteFileName(parentDirectoryName);
         File_deleteFileName(directoryName);
@@ -4535,7 +4558,7 @@ Errors File_makeDirectory(ConstString    pathName,
         #if   (MKDIR_ARGUMENTS_COUNT == 1)
           if (mkdir(String_cString(directoryName)) != 0)
           {
-            error = getLastError(ERROR_CODE_IO,String_cString(fileHandle->name));
+            error = getLastError(ERROR_CODE_IO,String_cString(directoryName));
             File_doneSplitFileName(&pathNameTokenizer);
             File_deleteFileName(parentDirectoryName);
             File_deleteFileName(directoryName);
@@ -4694,10 +4717,11 @@ Errors File_readLink(String      fileName,
 
     return ERROR_NONE;
   #else /* not HAVE_READLINK */
-    UNUSED_VARIABLE(fileName);
-    UNUSED_VARIABLE(linkName);
+    UNUSED_VARIABLE(absolutePathFlag);
 
-    return ERROR_FUNCTION_NOT_SUPPORTED;
+    String_set(fileName,linkName);
+
+    return ERROR_NONE;
   #endif /* HAVE_READLINK */
 }
 
