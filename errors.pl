@@ -40,24 +40,25 @@ use Getopt::Long;
 #    errno   text index  code
 #
 
-my $ERROR_CODE_MASK            = "0x000003FF";
-my $ERROR_CODE_SHIFT           = 0;
-my $ERROR_DATA_INDEX_MASK      = "0x0000FC00";
-my $ERROR_DATA_INDEX_SHIFT     = 10;
-my $ERROR_ERRNO_MASK           = "0xFFFF0000";
-my $ERROR_ERRNO_SHIFT          = 16;
+my $ERROR_CODE_MASK             = "0x000003FF";
+my $ERROR_CODE_SHIFT            = 0;
+my $ERROR_DATA_INDEX_MASK       = "0x0000FC00";
+my $ERROR_DATA_INDEX_SHIFT      = 10;
+my $ERROR_ERRNO_MASK            = "0xFFFF0000";
+my $ERROR_ERRNO_SHIFT           = 16;
 
-my $ERROR_MAX_TEXT_LENGTH      = 2048;
-my $ERROR_DATA_INDEX_MAX_COUNT = 63;
+my $ERROR_MAX_TEXT_LENGTH       = 2048;
+my $ERROR_MAX_TEXT_LENGTH_DEBUG = 4096;
+my $ERROR_DATA_INDEX_MAX_COUNT  = 63;
 
-my $PREFIX                     = "ERROR_CODE_";
+my $PREFIX                      = "ERROR_CODE_";
 
 my $cFileName,$hFileName,$javaFileName;
-my $javaClassName              = "Error";
-my $trName                     = "tr";
-my $help                       = 0;
+my $javaClassName               = "Error";
+my $trName                      = "tr";
+my $help                        = 0;
 
-my $errorNumber                = 0;
+my $errorNumber                 = 0;
 
 my @errorNames;
 my @cHeader;
@@ -269,6 +270,8 @@ sub writeH()
 #ifndef __ERRORS__
 #define __ERRORS__
 
+#include <stdint.h>
+
 /***********************************************************************\
 * Name   : ERROR_
 * Purpose: create error
@@ -293,7 +296,11 @@ sub writeH()
 * Notes  : -
 \***********************************************************************/
 
-#define ERRORX_(code,errno,format,...) Errorx_((".$PREFIX." ## code),errno,format, ## __VA_ARGS__)
+#ifndef NDEBUG
+  #define ERRORX_(code,errno,format,...) Errorx_(__FILE__,__LINE__,(".$PREFIX." ## code),errno,format, ## __VA_ARGS__)
+#else
+  #define ERRORX_(code,errno,format,...) Errorx_((".$PREFIX." ## code),errno,format, ## __VA_ARGS__)
+#endif
 
 /***********************************************************************\
 * Name   : ERRORF_
@@ -345,21 +352,23 @@ sub writeH()
 /***********************************************************************\
 * Name   : Errorx_
 * Purpose: create extended error
-* Input  : code   - error code; see ERROR_...
-*          errno  - errno or 0
-*          format - format string (like printf)
-*          ...    - optional arguments for format string
+* Input  : fileName - file name
+*          lineNb   - line number
+*          code     - error code; see ERROR_...
+*          errno    - errno or 0
+*          format   - format string (like printf)
+*          ...      - optional arguments for format string
 * Output : -
 * Return : error
 * Notes  : -
 \***********************************************************************/
 
 #ifndef NDEBUG
-  #define Errorx_(code,errno,format,...) ((Errors)(intptr_t)(  (((errno) << $ERROR_ERRNO_SHIFT) & $ERROR_ERRNO_MASK) \\
-                                                             | ((_Error_dataToIndex(__FILE__,__LINE__,format, ## __VA_ARGS__) << $ERROR_DATA_INDEX_SHIFT) & $ERROR_DATA_INDEX_MASK) \\
-                                                             | (((code) << $ERROR_CODE_SHIFT) & $ERROR_CODE_MASK) \\
-                                                            ) \\
-                                         )
+  #define Errorx_(fileName,lineNb,code,errno,format,...) ((Errors)(intptr_t)(  (((errno) << $ERROR_ERRNO_SHIFT) & $ERROR_ERRNO_MASK) \\
+                                                                             | ((_Error_dataToIndex(fileName,lineNb,format, ## __VA_ARGS__) << $ERROR_DATA_INDEX_SHIFT) & $ERROR_DATA_INDEX_MASK) \\
+                                                                             | (((code) << $ERROR_CODE_SHIFT) & $ERROR_CODE_MASK) \\
+                                                                            ) \\
+                                                         )
 #else
   #define Errorx_(code,errno,format,...) ((Errors)(intptr_t)(  (((errno) << $ERROR_ERRNO_SHIFT) & $ERROR_ERRNO_MASK) \\
                                                              | ((_Error_dataToIndex(format, ## __VA_ARGS__) << $ERROR_DATA_INDEX_SHIFT) & $ERROR_DATA_INDEX_MASK) \\
@@ -419,7 +428,7 @@ typedef intptr_t* Errors;
 \***********************************************************************/
 
 #ifndef NDEBUG
-int _Error_dataToIndex(const char *fileName, ulong lineNb, const char *format, ...);
+int _Error_dataToIndex(const char *fileName, unsigned long lineNb, const char *format, ...);
 #else
 int _Error_dataToIndex(const char *format, ...);
 #endif
@@ -558,28 +567,36 @@ sub writeC()
 #include <limits.h>
 #include <ctype.h>
 #include <stdarg.h>
+#include <pthread.h>
 #include <errno.h>
 
 #include \"common/global.h\"
 
 #include \"errors.h\"
 
-// use NONE to avoid warning in strn*-functions which do not accept NULL (this case must be checked before calling strn*
+#ifdef NDEBUG
+  #define ERROR_MAX_TEXT_LENGTH $ERROR_MAX_TEXT_LENGTH
+#else
+  #define ERROR_MAX_TEXT_LENGTH $ERROR_MAX_TEXT_LENGTH_DEBUG
+#endif
+
+// use NONE to avoid warning in strn*-functions which do not accept NULL (this case must be checked before calling strn*)
 static const char *NONE = NULL;
 
 typedef struct
 {
   int  id;
-  char text[$ERROR_MAX_TEXT_LENGTH];
+  char text[ERROR_MAX_TEXT_LENGTH];
   #ifndef NDEBUG
     const char   *fileName;
     unsigned int lineNb;
   #endif /* not NDEBUG */
 } ErrorData;
 
-static ErrorData errorData[$ERROR_DATA_INDEX_MAX_COUNT];   // last error data
-static uint      errorDataCount = 0;                       // last error data count (=max. when all data entries are used; recycle oldest entry if required)
-static uint      errorDataId    = 0;                       // total number of error data
+static pthread_mutex_t errorTextLock  = PTHREAD_MUTEX_INITIALIZER;
+static ErrorData       errorData[$ERROR_DATA_INDEX_MAX_COUNT];   // last error data
+static uint            errorDataCount = 0;                       // last error data count (=max. when all data entries are used; recycle oldest entry if required)
+static uint            errorDataId    = 0;                       // total number of error data
 
 LOCAL void vformatErrorText(char *string, ulong n, const char *format, va_list arguments)
 {
@@ -810,7 +827,7 @@ int _Error_dataToIndex(const char *format, ...)
 #endif
 {
   va_list arguments;
-  char    text[$ERROR_MAX_TEXT_LENGTH];
+  char    text[ERROR_MAX_TEXT_LENGTH];
   int     index;
   int     minId;
   uint    z,i;
@@ -827,58 +844,62 @@ int _Error_dataToIndex(const char *format, ...)
     stringClear(text);
   }
 
-  // get new error data id
-  errorDataId++;
+  pthread_mutex_lock(&errorTextLock);
+  {
+    // get new error data id
+    errorDataId++;
 
-  // get error data index
-  index = -1;
-  z = 0;
-  while ((z < errorDataCount) && (index == -1))
-  {
-    if (stringEquals(errorData[z].text,text))
+    // get error data index
+    index = -1;
+    z = 0;
+    while ((z < errorDataCount) && (index == -1))
     {
-      index = z;
-    }
-    z++;
-  }
-  if (index == -1)
-  {
-    if (errorDataCount < $ERROR_DATA_INDEX_MAX_COUNT)
-    {
-      // use next entry
-      index = errorDataCount;
-      errorDataCount++;
-    }
-    else
-    {
-      // recycle oldest entry (entry with smallest id)
-      index = 0;
-      minId = INT_MAX;
-      for (z = 0; z < $ERROR_DATA_INDEX_MAX_COUNT; z++)
+      if (stringEquals(errorData[z].text,text))
       {
-        if (errorData[z].id < minId)
+        index = z;
+      }
+      z++;
+    }
+    if (index == -1)
+    {
+      if (errorDataCount < $ERROR_DATA_INDEX_MAX_COUNT)
+      {
+        // use next entry
+        index = errorDataCount;
+        errorDataCount++;
+      }
+      else
+      {
+        // recycle oldest entry (entry with smallest id)
+        index = 0;
+        minId = INT_MAX;
+        for (z = 0; z < $ERROR_DATA_INDEX_MAX_COUNT; z++)
         {
-          index = z;
-          minId = errorData[z].id;
+          if (errorData[z].id < minId)
+          {
+            index = z;
+            minId = errorData[z].id;
+          }
         }
       }
     }
-  }
 
-  // init error data
-  errorData[index].id = errorDataId;
-  z = 0;
-  i = 0;
-  while ((z < strlen(text)) && (i < $ERROR_MAX_TEXT_LENGTH-1))
-  {
-    if (!iscntrl(text[z])) { errorData[index].text[i] = text[z]; i++; }
-    z++;
+    // init error data
+    errorData[index].id = errorDataId;
+    z = 0;
+    i = 0;
+    while ((z < stringLength(text)) && (i < ERROR_MAX_TEXT_LENGTH-1))
+    {
+      if (!iscntrl(text[z])) { errorData[index].text[i] = text[z]; i++; }
+      z++;
+    }
+    errorData[index].text[i] = '\\0';
+    #ifndef NDEBUG
+      errorData[index].fileName = fileName;
+      errorData[index].lineNb   = lineNb;
+    #endif /* not NDEBUG */
   }
-  errorData[index].text[i] = '\\0';
-  #ifndef NDEBUG
-    errorData[index].fileName = fileName;
-    errorData[index].lineNb   = lineNb;
-  #endif /* not NDEBUG */
+  pthread_mutex_unlock(&errorTextLock);
 
   return index+1;
 }
@@ -982,7 +1003,7 @@ const char *Error_getErrnoText(Errors error)
 
 const char *Error_getText(Errors error)
 {
-  static char errorText[$ERROR_MAX_TEXT_LENGTH];
+  static char errorText[ERROR_MAX_TEXT_LENGTH];
 
   stringClear(errorText);
   switch (ERROR_GET_CODE(error))
@@ -1337,11 +1358,11 @@ while ($line=<STDIN>)
     my $name=$1;
     my $text=$2;
     $errorNumber++;
-#    writeHFile("#line $lineNb \"errors.def\"");
+    writeHFile("#line $lineNb \"errors.def\"");
     writeHFile("  $PREFIX$name = $errorNumber,");
 
     writeCFile("    case $PREFIX$name:");
-#    writeCFile("#line $lineNb \"errors.def\"");
+    writeCFile("#line $lineNb \"errors.def\"");
     writeCFile("      stringSet(errorText,sizeof(errorText),\"$text\");");
     writeCFile("      break;");
 
@@ -1359,12 +1380,12 @@ while ($line=<STDIN>)
     my $name    =$1;
     my $function=$2;
     $errorNumber++;
-#    writeHFile("#line $lineNb \"errors.def\"");
+    writeHFile("#line $lineNb \"errors.def\"");
     writeHFile("  $PREFIX$name = $errorNumber,");
 
 
     writeCFile("    case $PREFIX$name:");
-#    writeCFile("#line $lineNb \"errors.def\"");
+    writeCFile("#line $lineNb \"errors.def\"");
     writeCFile("      stringSet(errorText,sizeof(errorText),$function);");
     writeCFile("      break;");
 
@@ -1381,7 +1402,7 @@ while ($line=<STDIN>)
     # error <name>
     my $name=$1;
     $errorNumber++;
-#    writeHFile("#line $lineNb \"errors.def\"");
+    writeHFile("#line $lineNb \"errors.def\"");
     writeHFile("  $PREFIX$name = $errorNumber,");
     writeJava1("  public final static int $name = $errorNumber;");
     push(@names,$name);
@@ -1392,14 +1413,14 @@ while ($line=<STDIN>)
   {
     # include "file"
     my $file=$1;
-#    writeCFileHeader("#line $lineNb \"errors.def\"");
+    writeCFileHeader("#line $lineNb \"errors.def\"");
     writeCFileHeader("#include \"$file\"");
   }
   elsif ($line =~ /^INCLUDE\s+<(.*)>\s*$/)
   {
     # include <file>
     my $file=$1;
-#    writeCFileHeader("#line $lineNb \"errors.def\"");
+    writeCFileHeader("#line $lineNb \"errors.def\"");
     writeCFileHeader("#include <$file>");
   }
   elsif ($line =~ /^IMPORT\s+(.*)\s*$/)
@@ -1412,7 +1433,7 @@ while ($line=<STDIN>)
   {
     # none <text>
     my $text=$1;
-#    writeCFile("#line $lineNb \"errors.def\"");
+    writeCFile("#line $lineNb \"errors.def\"");
     writeCFile("    case ".$PREFIX."NONE: stringSet(errorText,sizeof(errorText),\"$text\"); break;");
   }
   elsif ($line =~ /^DEFAULT\s+"(.*)"\s*$/)
@@ -1422,7 +1443,7 @@ while ($line=<STDIN>)
   elsif ($line =~ /^\s*#/)
   {
     # C preprocessor
-#    writeCFileHeader("#line $lineNb \"errors.def\"");
+    writeCFileHeader("#line $lineNb \"errors.def\"");
     writeCFileHeader("$line");
   }
   else
@@ -1436,7 +1457,7 @@ while ($line=<STDIN>)
 
     foreach my $s (@names)
     {
-#      writeCFile("#line $lineNb \"errors.def\"");
+      writeCFile("#line $lineNb \"errors.def\"");
       writeCFile("    case $PREFIX$s:");
       writeJava2("      case $s:");
     }
