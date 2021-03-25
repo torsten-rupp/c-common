@@ -136,7 +136,6 @@
         bool __locked; \
         \
         assert(semaphore != NULL); \
-        assert(debugSemaphoreInitFlag); \
         \
         if (debugFlag) fprintf(stderr,"%s, %4d: '%s' (%s) wait lock %s\n",__FILE__,__LINE__,Thread_getCurrentName(),Thread_getCurrentIdString(),text); \
         pthread_mutex_lock(&debugSemaphoreLock); \
@@ -157,7 +156,6 @@
         \
         assert(semaphore != NULL); \
         assert(timeout != WAIT_FOREVER); \
-        assert(debugSemaphoreInitFlag); \
         \
         if (debugFlag) fprintf(stderr,"%s, %4d: '%s' (%s) wait lock %s (timeout %ldms)\n",__FILE__,__LINE__,Thread_getCurrentName(),Thread_getCurrentIdString(),text,timeout); \
         pthread_mutex_lock(&debugSemaphoreLock); \
@@ -238,14 +236,18 @@
     #define __SEMAPHORE_SIGNAL(semaphore,debugFlag,text,condition,type) \
       do \
       { \
+        int __result; \
+        \
         assert(semaphore != NULL); \
         \
         if (debugFlag) fprintf(stderr,"%s, %4d: '%s' (%s) signal %s\n",__FILE__,__LINE__,Thread_getCurrentName(),Thread_getCurrentIdString(),text); \
         switch (type) \
         { \
-          case SEMAPHORE_SIGNAL_MODIFY_SINGLE: pthread_cond_signal(condition);    break; \
-          case SEMAPHORE_SIGNAL_MODIFY_ALL:    pthread_cond_broadcast(condition); break; \
+          case SEMAPHORE_SIGNAL_MODIFY_SINGLE: __result = pthread_cond_signal(condition);    break; \
+          case SEMAPHORE_SIGNAL_MODIFY_ALL:    __result = pthread_cond_broadcast(condition); break; \
         } \
+        assert(__result == 0); \
+        UNUSED_VARIABLE(__result); \
       } \
       while (0)
   #elif defined(PLATFORM_WINDOWS)
@@ -339,6 +341,8 @@
     #define __SEMAPHORE_SIGNAL(semaphore,debugFlag,text,condition,type) \
       do \
       { \
+        int __result; \
+        \
         assert(semaphore != NULL); \
         \
         UNUSED_VARIABLE(type); \
@@ -346,9 +350,11 @@
         if (debugFlag) fprintf(stderr,"%s, %4d: '%s' (%s) signal %s\n",__FILE__,__LINE__,Thread_getCurrentName(),Thread_getCurrentIdString(),text); \
         switch (type) \
         { \
-          case SEMAPHORE_SIGNAL_MODIFY_SINGLE: pthread_cond_signal(condition);    break; \
-          case SEMAPHORE_SIGNAL_MODIFY_ALL:    pthread_cond_broadcast(condition); break; \
+          case SEMAPHORE_SIGNAL_MODIFY_SINGLE: __result = pthread_cond_signal(condition);    break; \
+          case SEMAPHORE_SIGNAL_MODIFY_ALL:    __result = pthread_cond_broadcast(condition); break; \
         } \
+        assert(__result == 0);
+        UNUSED_VARIABLE(__result); \
       } \
       while (0)
   #endif /* PLATFORM_... */
@@ -431,11 +437,18 @@
     #define __SEMAPHORE_SIGNAL(semaphore,debugFlag,text,condition,type) \
       do \
       { \
+        int __result; \
+        \
         UNUSED_VARIABLE(semaphore); \
         UNUSED_VARIABLE(text); \
-        UNUSED_VARIABLE(type); \
         \
-        pthread_cond_broadcast(condition); \
+        switch (type) \
+        { \
+          case SEMAPHORE_SIGNAL_MODIFY_SINGLE: __result = pthread_cond_signal(condition);    break; \
+          case SEMAPHORE_SIGNAL_MODIFY_ALL:    __result = pthread_cond_broadcast(condition); break; \
+        } \
+        assert(__result == 0); \
+        UNUSED_VARIABLE(__result); \
       } \
       while (0)
   #elif defined(PLATFORM_WINDOWS)
@@ -507,11 +520,18 @@
     #define __SEMAPHORE_SIGNAL(semaphore,debugFlag,text,condition,type) \
       do \
       { \
+        int __result; \
+        \
         UNUSED_VARIABLE(semaphore); \
         UNUSED_VARIABLE(text); \
-        UNUSED_VARIABLE(type); \
         \
-        pthread_cond_broadcast(condition); \
+        switch (type) \
+        { \
+          case SEMAPHORE_SIGNAL_MODIFY_SINGLE: __result = pthread_cond_signal(condition);    break; \
+          case SEMAPHORE_SIGNAL_MODIFY_ALL:    __result = pthread_cond_broadcast(condition); break; \
+        } \
+        assert(__result == 0); \
+        UNUSED_VARIABLE(__result); \
       } \
       while (0)
   #endif /* PLATFORM_... */
@@ -609,7 +629,6 @@ LOCAL bool debugSemaphoreIsOwned(const Semaphore *semaphore)
   uint     i;
 
   assert(semaphore != NULL);
-  assert(debugSemaphoreInitFlag);
 
   isOwned = FALSE;
 
@@ -699,7 +718,6 @@ LOCAL_INLINE void debugAddLockedThreadInfo(Semaphore          *semaphore,
                                           )
 {
   assert(semaphore != NULL);
-  assert(debugSemaphoreInitFlag);
 
   pthread_mutex_lock(&debugSemaphoreLock);
   {
@@ -728,7 +746,6 @@ LOCAL_INLINE void debugAddPendingThreadInfo(Semaphore          *semaphore,
                                            )
 {
   assert(semaphore != NULL);
-  assert(debugSemaphoreInitFlag);
 
   pthread_mutex_lock(&debugSemaphoreLock);
   {
@@ -819,7 +836,6 @@ LOCAL_INLINE void debugRemoveLockedThreadInfo(Semaphore  *semaphore,
                                              )
 {
   assert(semaphore != NULL);
-  assert(debugSemaphoreInitFlag);
 
   pthread_mutex_lock(&debugSemaphoreLock);
   {
@@ -846,7 +862,6 @@ LOCAL_INLINE void debugRemovePendingThreadInfo(Semaphore  *semaphore,
                                               )
 {
   assert(semaphore != NULL);
-  assert(debugSemaphoreInitFlag);
 
   pthread_mutex_lock(&debugSemaphoreLock);
   {
@@ -1206,7 +1221,6 @@ LOCAL void debugCheckForDeadLock(Semaphore          *semaphore,
   const Semaphore             *checkSemaphore;
 
   assert(semaphore != NULL);
-  assert(debugSemaphoreInitFlag);
 
   UNUSED_VARIABLE(lockType);
 
@@ -1308,7 +1322,6 @@ LOCAL bool lock(const char         *__fileName__,
 
   assert(semaphore != NULL);
   assert((semaphoreLockType == SEMAPHORE_LOCK_TYPE_READ) || (semaphoreLockType == SEMAPHORE_LOCK_TYPE_READ_WRITE));
-  assert(debugSemaphoreInitFlag); \
 
   lockedFlag = TRUE;
 
@@ -2097,8 +2110,8 @@ void __Semaphore_done(const char *__fileName__,
 //TODO: useful to lock before destroy?
 //  pthread_mutex_trylock(&semaphore->lock);
 
-  // check if still locked
   #ifndef NDEBUG
+    // check if still locked
     pthread_once(&debugSemaphoreInitFlag,debugSemaphoreInit);
 
     pthread_mutex_lock(&debugSemaphoreLock);
