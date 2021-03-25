@@ -8,6 +8,8 @@
 *
 ***********************************************************************/
 
+#define __CMDOPTION_IMPLEMENTATION__
+
 /****************************** Includes ******************************/
 #include <stdlib.h>
 #include <stdio.h>
@@ -16,6 +18,7 @@
 #include <assert.h>
 
 #include "common/global.h"
+#include "common/arrays.h"
 
 #include "cmdoptions.h"
 
@@ -26,6 +29,7 @@
 /***************************** Datatypes ******************************/
 
 /***************************** Variables ******************************/
+Array setOptions;
 
 /******************************* Macros *******************************/
 #define ITERATE_UNITS(unit,units) \
@@ -550,7 +554,6 @@ LOCAL bool getInteger64Option(int64                 *value,
 LOCAL bool processOption(const CommandLineOption *commandLineOption,
                          const char              *option,
                          const char              *value,
-                         ValueSet                optionSet,
                          FILE                    *outputHandle,
                          const char              *errorPrefix,
                          const char              *warningPrefix
@@ -1039,7 +1042,11 @@ LOCAL bool processOption(const CommandLineOption *commandLineOption,
     case CMD_OPTION_TYPE_END:
       break;
   }
-  if (optionSet != NULL) VALUESET_SET(optionSet,commandLineOption->setValue);
+
+  if (!Array_contains(&setOptions,&commandLineOption->variable.pointer,NULL,NULL))
+  {
+    Array_append(&setOptions,&commandLineOption->variable.pointer);
+  }
 
   return TRUE;
 }
@@ -1127,20 +1134,20 @@ LOCAL void printSpaces(FILE *outputHandle, uint n)
     {
       case CMD_OPTION_TYPE_INTEGER:
         assertx(commandLineOptions[i].variable.i != NULL,"%s",commandLineOptions[i].name);
-        assertx((*commandLineOptions[i].variable.i) >= commandLineOptions[i].integerOption.min,"%s",commandLineOptions[i].name);
-        assertx((*commandLineOptions[i].variable.i) <= commandLineOptions[i].integerOption.max,"%s",commandLineOptions[i].name);
+        assertx((*commandLineOptions[i].variable.i) >= commandLineOptions[i].integerOption.min,"%s %d >= %d",commandLineOptions[i].name,*commandLineOptions[i].variable.i,commandLineOptions[i].integerOption.min);
+        assertx((*commandLineOptions[i].variable.i) <= commandLineOptions[i].integerOption.max,"%s %d <= %d",commandLineOptions[i].name,*commandLineOptions[i].variable.i,commandLineOptions[i].integerOption.max);
         commandLineOptions[i].defaultValue.i = (*commandLineOptions[i].variable.i);
         break;
       case CMD_OPTION_TYPE_INTEGER64:
         assertx(commandLineOptions[i].variable.l != NULL,"%s",commandLineOptions[i].name);
-        assertx((*commandLineOptions[i].variable.l) >= commandLineOptions[i].integer64Option.min,"%s",commandLineOptions[i].name);
-        assertx((*commandLineOptions[i].variable.l) <= commandLineOptions[i].integer64Option.max,"%s",commandLineOptions[i].name);
+        assertx((*commandLineOptions[i].variable.l) >= commandLineOptions[i].integer64Option.min,"%s %"PRIi64" >= %"PRIi64,commandLineOptions[i].name,*commandLineOptions[i].variable.l,commandLineOptions[i].integer64Option.min);
+        assertx((*commandLineOptions[i].variable.l) <= commandLineOptions[i].integer64Option.max,"%s %"PRIi64" <= %"PRIi64,commandLineOptions[i].name,*commandLineOptions[i].variable.l,commandLineOptions[i].integer64Option.max);
         commandLineOptions[i].defaultValue.l = (*commandLineOptions[i].variable.l);
         break;
       case CMD_OPTION_TYPE_DOUBLE:
         assertx(commandLineOptions[i].variable.d != NULL,"%s",commandLineOptions[i].name);
-        assertx((*commandLineOptions[i].variable.d) >= commandLineOptions[i].doubleOption.min,"%s",commandLineOptions[i].name);
-        assertx((*commandLineOptions[i].variable.d) <= commandLineOptions[i].doubleOption.max,"%s",commandLineOptions[i].name);
+        assertx((*commandLineOptions[i].variable.d)+EPSILON_DOUBLE >= commandLineOptions[i].doubleOption.min,"%s %lf >= %lf",commandLineOptions[i].name,*commandLineOptions[i].variable.d,commandLineOptions[i].doubleOption.min);
+        assertx((*commandLineOptions[i].variable.d)-EPSILON_DOUBLE <= commandLineOptions[i].doubleOption.max,"%s %lf <= %lf",commandLineOptions[i].name,*commandLineOptions[i].variable.d,commandLineOptions[i].doubleOption.max);
         commandLineOptions[i].defaultValue.d = (*commandLineOptions[i].variable.d);
         break;
       case CMD_OPTION_TYPE_BOOLEAN:
@@ -1201,6 +1208,8 @@ LOCAL void printSpaces(FILE *outputHandle, uint n)
       case CMD_OPTION_TYPE_DEPRECATED:
         commandLineOptions[i].defaultValue.deprecated = commandLineOptions[i].variable.deprecated;
         break;
+      case CMD_OPTION_TYPE_END:
+        break;
       #ifndef NDEBUG
         default:
           HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
@@ -1208,6 +1217,8 @@ LOCAL void printSpaces(FILE *outputHandle, uint n)
       #endif /* NDEBUG */
     }
   }
+
+  Array_init(&setOptions,sizeof(void*),64,CALLBACK_(NULL,NULL),CALLBACK_(NULL,NULL));
 
   #ifdef NDEBUG
     DEBUG_ADD_RESOURCE_TRACE(commandLineOptions,CommandLineOptions);
@@ -1230,13 +1241,15 @@ LOCAL void printSpaces(FILE *outputHandle, uint n)
 {
   uint i;
 
+  assert(commandLineOptions != NULL);
+
   #ifdef NDEBUG
     DEBUG_REMOVE_RESOURCE_TRACE(commandLineOptions,CommandLineOptions);
   #else /* not NDEBUG */
     DEBUG_REMOVE_RESOURCE_TRACEX(__fileName__,__lineNb__,commandLineOptions,CommandLineOptions);
   #endif /* NDEBUG */
 
-  assert(commandLineOptions != NULL);
+  Array_done(&setOptions);
 
   // free values and restore from default values
   for (i = 0; commandLineOptions[i].type != CMD_OPTION_TYPE_END; i++)
@@ -1281,6 +1294,8 @@ LOCAL void printSpaces(FILE *outputHandle, uint n)
         break;
       case CMD_OPTION_TYPE_DEPRECATED:
         break;
+      case CMD_OPTION_TYPE_END:
+        break;
       #ifndef NDEBUG
         default:
           HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
@@ -1295,7 +1310,6 @@ bool CmdOption_parse(const char              *argv[],
                      const CommandLineOption commandLineOptions[],
                      uint                    minPriority,
                      uint                    maxPriority,
-                     ValueSet                optionSet,
                      FILE                    *outputHandle,
                      const char              *errorPrefix,
                      const char              *warningPrefix
@@ -1526,6 +1540,8 @@ bool CmdOption_parse(const char              *argv[],
                 value = NULL;
               }
               break;
+            case CMD_OPTION_TYPE_END:
+              break;
             #ifndef NDEBUG
               default:
                 HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
@@ -1533,12 +1549,11 @@ bool CmdOption_parse(const char              *argv[],
             #endif /* NDEBUG */
           }
 
-
           if (commandLineOptions[j].priority == priority)
           {
             // process option
             stringFormat(option,sizeof(option),"--%s",name);
-            if (!processOption(&commandLineOptions[j],option,value,optionSet,outputHandle,errorPrefix,warningPrefix))
+            if (!processOption(&commandLineOptions[j],option,value,outputHandle,errorPrefix,warningPrefix))
             {
               return FALSE;
             }
@@ -1604,6 +1619,7 @@ bool CmdOption_parse(const char              *argv[],
                 break;
               case CMD_OPTION_TYPE_BOOLEAN:
               case CMD_OPTION_TYPE_FLAG:
+                value = NULL;
                 break;
               case CMD_OPTION_TYPE_INCREMENT:
                 // check if '=' follow
@@ -1612,8 +1628,13 @@ bool CmdOption_parse(const char              *argv[],
                   value = &optionChars[2];
                   optionChars = NULL;
                 }
+                else
+                {
+                  value = NULL;
+                }
                 break;
               case CMD_OPTION_TYPE_ENUM:
+                value = NULL;
                 break;
               case CMD_OPTION_TYPE_SPECIAL:
                 assert(commandLineOptions[j].specialOption.argumentCount <= 1);
@@ -1635,6 +1656,11 @@ bool CmdOption_parse(const char              *argv[],
                   }
                   i++;
                   value = argv[i];
+                }
+                else
+                {
+                  // no value
+                  value = NULL;
                 }
                 break;
               case CMD_OPTION_TYPE_DEPRECATED:
@@ -1658,6 +1684,11 @@ bool CmdOption_parse(const char              *argv[],
                   i++;
                   value = argv[i];
                 }
+                else
+                {
+                  // no value
+                  value = NULL;
+                }
                 break;
               case CMD_OPTION_TYPE_END:
                 break;
@@ -1667,7 +1698,7 @@ bool CmdOption_parse(const char              *argv[],
             {
               // process option
               stringFormat(option,sizeof(option),"-%s",name);
-              if (!processOption(&commandLineOptions[j],option,value,optionSet,outputHandle,errorPrefix,warningPrefix))
+              if (!processOption(&commandLineOptions[j],option,value,outputHandle,errorPrefix,warningPrefix))
               {
                 return FALSE;
               }
@@ -1782,8 +1813,7 @@ bool CmdOption_parseString(const CommandLineOption *commandLineOption,
 {
   assert(commandLineOption != NULL);
 
-
-  return processOption(commandLineOption,commandLineOption->name,value,NULL,NULL,NULL,NULL);
+  return processOption(commandLineOption,commandLineOption->name,value,NULL,NULL,NULL);
 }
 
 bool CmdOption_getIntegerOption(int                   *value,
@@ -1962,6 +1992,8 @@ void CmdOption_printHelp(FILE                    *outputHandle,
             n += 2+3+1; // =<...>
           }
           break;
+        case CMD_OPTION_TYPE_END:
+          break;
         #ifndef NDEBUG
           default:
             HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
@@ -2090,6 +2122,8 @@ void CmdOption_printHelp(FILE                    *outputHandle,
           {
             stringAppend(name,sizeof(name),"=<...>");
           }
+          break;
+        case CMD_OPTION_TYPE_END:
           break;
         #ifndef NDEBUG
           default:
@@ -2314,6 +2348,8 @@ void CmdOption_printHelp(FILE                    *outputHandle,
           break;
         case CMD_OPTION_TYPE_DEPRECATED:
           break;
+        case CMD_OPTION_TYPE_END:
+          break;
         #ifndef NDEBUG
           default:
             HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
@@ -2385,6 +2421,8 @@ void CmdOption_printHelp(FILE                    *outputHandle,
         case CMD_OPTION_TYPE_SPECIAL:
           break;
         case CMD_OPTION_TYPE_DEPRECATED:
+          break;
+        case CMD_OPTION_TYPE_END:
           break;
         #ifndef NDEBUG
           default:
