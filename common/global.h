@@ -33,8 +33,6 @@
 #ifdef HAVE_LIBINTL_H
   #include <libintl.h>
 #endif
-//TODO: remove, not used?
-#if 0
 #if defined(HAVE_PCRE)
   #include <pcreposix.h>
 #elif defined(HAVE_REGEX_H)
@@ -42,8 +40,7 @@
 #else
   #warning No regular expression library available!
 #endif /* HAVE_PCRE || HAVE_REGEX_H */
-#endif
-#ifdef HAVE_BACKTRACE
+#ifdef HAVE_EXECINFO_H
   #include <execinfo.h>
 #endif
 #include <errno.h>
@@ -401,8 +398,8 @@ typedef void(*DebugDumpStackTraceOutputFunction)(const char *text, void *userDat
 #define MASKSHIFT(n,maskShift) (((n) & maskShift.mask) >> maskShift.shift)
 
 // stringify
-#define STRINGIFY(s) __STRINGIFY(s)
-#define __STRINGIFY(s) #s
+#define STRINGIFY(s) __STRINGIFY__(s)
+#define __STRINGIFY__(s) #s
 
 /***********************************************************************\
 * Name   : EXECUTE_ONCE
@@ -647,8 +644,8 @@ typedef void(*DebugDumpStackTraceOutputFunction)(const char *text, void *userDat
 * Input  : n         - value
 *          alignment - alignment
 * Output : -
-* Return : n >= n with n module alignment = 0
-* Notes  : -
+* Return : n >= n with n modulo alignment = 0
+* Notes  : alignment must be 2^n!
 \***********************************************************************/
 
 #define ALIGN(n,alignment) (((alignment)>0) ? (((n)+(alignment)-1) & ~((alignment)-1)) : (n))
@@ -3366,7 +3363,35 @@ static inline bool stringToDouble(const char *string, double *d)
 }
 
 /***********************************************************************\
-* Name   : stringMatch
+* Name   : stringVScan, stringScan
+* Purpose: scan string
+* Input  : string    - string
+*          format    - format
+*          arguments - arguments
+*          ...       - optional variables, last value have to be NULL!
+* Output : -
+* Return : TRUE iff string scanned with format
+* Notes  :
+\***********************************************************************/
+
+bool stringVScan(const char *string, const char *format, va_list arguments);
+static inline int stringScan(const char *string, const char *format, ...)
+{
+  va_list arguments;
+  bool    result;
+
+  assert(string != NULL);
+  assert(format != NULL);
+
+  va_start(arguments,format);
+  result = stringVScan(string,format,arguments);
+  va_end(arguments);
+
+  return result;
+}
+
+/***********************************************************************\
+* Name   : stringVMatch, stringMatch
 * Purpose: match string
 * Input  : string            - string
 *          pattern           - pattern
@@ -3374,6 +3399,7 @@ static inline bool stringToDouble(const char *string, double *d)
 *                              be NULL)
 *          matchedStringSize - size of string matching regular
 *                              expression
+*          arguments         - arguments
 *          ...               - optional matching strings of sub-patterns
 *                              (char*,ulong), last value have to be
 *                              NULL!
@@ -3382,7 +3408,21 @@ static inline bool stringToDouble(const char *string, double *d)
 * Notes  :
 \***********************************************************************/
 
-bool stringMatch(const char *string, const char *pattern, char *matchedString, ulong matchedStringSize, ...);
+bool stringVMatch(const char *string, const char *pattern, char *matchedString, ulong matchedStringSize, va_list arguments);
+static inline bool stringMatch(const char *string, const char *pattern, char *matchedString, ulong matchedStringSize, ...)
+{
+  va_list arguments;
+  bool    result;
+
+  assert(string != NULL);
+  assert(pattern != NULL);
+
+  va_start(arguments,matchedStringSize);
+  result = stringVMatch(string,pattern,matchedString,matchedStringSize,arguments);
+  va_end(arguments);
+
+  return result;
+}
 
 /*---------------------------------------------------------------------*/
 

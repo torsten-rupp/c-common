@@ -17,9 +17,13 @@
 #include <inttypes.h>
 #include <unistd.h>
 #include <pthread.h>
-#ifdef HAVE_REGEX_H
+#if defined(HAVE_PCRE)
+  #include <pcreposix.h>
+#elif defined(HAVE_REGEX_H)
   #include <regex.h>
-#endif
+#else
+  #warning No regular expression library available!
+#endif /* HAVE_PCRE || HAVE_REGEX_H */
 #ifdef HAVE_GCRYPT
   #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
   #include <gcrypt.h>
@@ -169,12 +173,50 @@ LOCAL void debugResourceInit(void)
 #endif /* not NDEBUG */
 
 /***********************************************************************\
+* Name   : vscanString
+* Purpose: scan string with arguments
+* Input  : string    - string to patch
+*          format    - format string; like for scanf()
+*          variables - variables
+* Output : -
+* Return : TRUE if string scanned, FALSE otherwise
+* Notes  : -
+\***********************************************************************/
+
+LOCAL bool vscanString(const char *string,
+                       const char *format,
+                       va_list    variables
+                      )
+{
+  uint       variableCount;
+  va_list    arguments;
+  const void *variable;
+
+  assert(string != NULL);
+  assert(format != NULL);
+
+  // count variables
+  va_copy(arguments,variables);
+  variableCount = 0;
+  do
+  {
+    variable = va_arg(arguments,void*);
+    if (variable != NULL) variableCount++;
+  }
+  while (variable != NULL);
+  va_end(arguments);
+
+  // scan
+  return vsscanf(string,format,variables) == variableCount;
+}
+
+/***********************************************************************\
 * Name   : vmatchString
 * Purpose: match string with arguments
 * Input  : string            - string to patch
 *          pattern           - regualar expression pattern
 *          matchedString     - matched string variable (can be NULL)
-*          matchedString     - size of matched string
+*          matchedStringSize - size of matched string
 *          matchedSubStrings - matched sub-string variables (char*,ulong)
 * Output : nextIndex         - index of next not matched character
 *          matchedString     - matched string
@@ -183,11 +225,11 @@ LOCAL void debugResourceInit(void)
 * Notes  : -
 \***********************************************************************/
 
-LOCAL bool vmatchString(const char   *string,
-                        const char   *pattern,
-                        char         *matchedString,
-                        ulong        matchedStringSize,
-                        va_list      matchedSubStrings
+LOCAL bool vmatchString(const char *string,
+                        const char *pattern,
+                        char       *matchedString,
+                        ulong      matchedStringSize,
+                        va_list    matchedSubStrings
                        )
 {
   bool       matchFlag;
@@ -430,7 +472,7 @@ void __dprintf__(const char *__fileName__,
   #if   defined(PLATFORM_LINUX)
     pid_t threadLWPId;
   #elif defined(PLATFORM_WINDOWS)
-    return THREAD_LPW_ID_NONE;
+    pid_t threadLWPId;
   #endif /* PLATFORM_... */
   va_list arguments;
 
@@ -452,10 +494,25 @@ void __dprintf__(const char *__fileName__,
 }
 #endif /* NDEBUG */
 
-bool stringMatch(const char *string, const char *pattern, char *matchedString, ulong matchedStringSize, ...)
+bool stringVScan(const char *string, const char *format, va_list arguments)
 {
-  bool    matchFlag;
-  va_list arguments;
+  bool scannedFlag;
+
+  assert(format != NULL);
+
+  scannedFlag = FALSE;
+
+  if (string != NULL)
+  {
+    scannedFlag = vscanString(string,format,arguments);
+  }
+
+  return scannedFlag;
+}
+
+bool stringVMatch(const char *string, const char *pattern, char *matchedString, ulong matchedStringSize, va_list arguments)
+{
+  bool matchFlag;
 
   assert(pattern != NULL);
 
@@ -463,9 +520,7 @@ bool stringMatch(const char *string, const char *pattern, char *matchedString, u
 
   if (string != NULL)
   {
-    va_start(arguments,matchedStringSize);
     matchFlag = vmatchString(string,pattern,matchedString,matchedStringSize,arguments);
-    va_end(arguments);
   }
 
   return matchFlag;
