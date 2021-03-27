@@ -1746,7 +1746,7 @@ Errors Network_accept(SocketHandle             *socketHandle,
                        );
         if (error != ERROR_NONE)
         {
-          disconnectDescriptor(serverSocketHandle->handle);
+          disconnectDescriptor(socketHandle->handle);
           return error;
         }
 
