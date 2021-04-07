@@ -17,6 +17,9 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
+#ifdef HAVE_SYSTEMD_SD_ID128_H
+  #include <systemd/sd-id128.h>
+#endif
 #include <assert.h>
 
 // file/socket handle events
@@ -68,6 +71,9 @@ typedef enum
 // length of UUID string (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
 #define MISC_UUID_STRING_LENGTH 36
 
+// length of machine id
+#define MISC_MACHINE_ID_LENGTH (128/8)
+
 // text macro patterns
 #define TEXT_MACRO_PATTERN_INTEGER   "[+-]{0,1}\\d+"
 #define TEXT_MACRO_PATTERN_INTEGER64 "[+-]{0,1}\\d+"
@@ -94,7 +100,7 @@ typedef enum
     #define HANDLE_EVENT_INVALID (1 << 3)
   #endif /* HAVE_WSAPOLL */
 #endif /* PLATFORM_... */
-#define HANDLE_EVENT_ALL (  HANDLE_EVENT_INPUT \
+#define HANDLE_EVENT_ANY (  HANDLE_EVENT_INPUT \
                           | HANDLE_EVENT_OUTPUT \
                           | HANDLE_EVENT_ERROR \
                           | HANDLE_EVENT_INPUT \
@@ -124,6 +130,9 @@ typedef struct
   long   timeout;
   uint64 endTimestamp;
 } TimeoutInfo;
+
+// machine/application id
+typedef const byte* MachineId;
 
 // text macros
 typedef enum
@@ -902,6 +911,30 @@ uint Misc_getId(void);
 String Misc_getUUID(String string);
 const char *Misc_getUUIDCString(char *buffer, uint bufferSize);
 
+/***********************************************************************\
+* Name   : Misc_setApplicationId, Misc_setApplicationIdCString
+* Purpose: set application id
+* Input  : data   - application id
+*          length - length of application id data
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+void Misc_setApplicationId(const byte data[], uint length);
+void Misc_setApplicationIdCString(const char *data);
+
+/***********************************************************************\
+* Name   : Misc_getMachineId
+* Purpose: get unique machine id
+* Input  : -
+* Output : -
+* Return : machine id
+* Notes  : -
+\***********************************************************************/
+
+MachineId Misc_getMachineId(void);
+
 /*---------------------------------------------------------------------*/
 
 /***********************************************************************\
@@ -1074,6 +1107,23 @@ INLINE uint Misc_handleIterate(const WaitHandle *waitHandle, uint i, int *handle
   #endif /* PLATFORM_... */
 
   return i;
+}
+#endif /* NDEBUG || __MISC_IMPLEMENTATION__ */
+
+/***********************************************************************\
+* Name   : Misc_isAnyEvent
+* Purpose: check if any event occured
+* Input  : events - events
+* Output : -
+* Return : TRUE iff event occured
+* Notes  : -
+\***********************************************************************/
+
+INLINE bool Misc_isAnyEvent(uint events);
+#if defined(NDEBUG) || defined(__MISC_IMPLEMENTATION__)
+INLINE bool Misc_isAnyEvent(uint events)
+{
+  return events != 0;
 }
 #endif /* NDEBUG || __MISC_IMPLEMENTATION__ */
 
@@ -1360,7 +1410,17 @@ void *Misc_base64EncodeBuffer(void *buffer, uint bufferLength, const void *data,
 * Notes  : -
 \***********************************************************************/
 
-uint Misc_base64EncodeLength(const void *data, uint dataLength);
+INLINE uint Misc_base64EncodeLength(const void *data, uint dataLength);
+#if defined(NDEBUG) || defined(__MISC_IMPLEMENTATION__)
+INLINE uint Misc_base64EncodeLength(const void *data, uint dataLength)
+{
+  assert(data != NULL);
+
+  UNUSED_VARIABLE(data);
+
+  return ((dataLength+3-1)/3)*4;
+}
+#endif /* NDEBUG || __MISC_IMPLEMENTATION__ */
 
 /***********************************************************************\
 * Name   : Misc_base64Decode, Misc_base64DecodeCString
@@ -1436,6 +1496,21 @@ bool Misc_hexDecodeCString(void *data, uint *dataLength, const char *s, uint max
 
 uint Misc_hexDecodeLength(ConstString string, ulong index);
 uint Misc_hexDecodeLengthCString(const char *s);
+
+#if   defined(PLATFORM_LINUX)
+#elif defined(PLATFORM_WINDOWS)
+/***********************************************************************\
+* Name   : Misc_getRegistryString
+* Purpose: get string from Windows registry
+* Input  : string - string varibale
+*          name   - registry value name
+* Output : -
+* Return : TRUE iff read
+* Notes  : -
+\***********************************************************************/
+
+bool Misc_getRegistryString(String string, HKEY parentKey, const char *subKey, const char *name);
+#endif /* PLATFORM_... */
 
 #ifdef __cplusplus
   }
