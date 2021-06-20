@@ -49,7 +49,7 @@ typedef struct
   sem_t          lock;
   ThreadPool     *threadPool;
   ThreadPoolNode *threadPoolNode;
-  const char     *name;
+  const char     name[64];
   int            niceLevel;
   sem_t          started;
 //  void       (*entryFunction)(void*);
@@ -112,15 +112,11 @@ LOCAL void *threadPoolStartCode(void *userData)
   {
     // try to set thread name
     #ifdef HAVE_PTHREAD_SETNAME_NP
-      if (startInfo->name != NULL)
+      if (!stringIsEmpty(startInfo->name))
       {
         (void)pthread_setname_np(pthread_self(),startInfo->name);
       }
     #endif /* HAVE_PTHREAD_SETNAME_NP */
-
-    #ifndef NDEBUG
-//      debugThreadStackTraceSetThreadName(pthread_self(),startInfo->name);
-    #endif /* NDEBUG */
 
     #if   defined(PLATFORM_LINUX)
       if (nice(startInfo->niceLevel) == -1)
@@ -263,7 +259,7 @@ void ThreadPool_doneAll(void)
 }
 
 bool ThreadPool_init(ThreadPool *threadPool,
-                     const char *name,
+                     const char *namePrefix,
                      int        niceLevel,
                      uint       size
                     )
@@ -301,14 +297,14 @@ bool ThreadPool_init(ThreadPool *threadPool,
 
     // init start info
     startInfo.threadPoolNode = threadPoolNode;
-    startInfo.name           = name;
+    stringFormat(startInfo.name,sizeof(startInfo.name),"%s%d",namePrefix,i);
 
     // init thread attributes
     pthread_attr_init(&threadAttributes);
     #ifdef HAVE_PTHREAD_ATTR_SETNAME
       if (name != NULL)
       {
-        pthread_attr_setname(&threadAttributes,(char*)name);
+        pthread_attr_setname(&threadAttributes,startInfo.name);
       }
     #endif /* HAVE_PTHREAD_ATTR_SETNAME */
 
