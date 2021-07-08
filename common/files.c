@@ -1257,6 +1257,8 @@ String File_getAbsoluteFileNameCString(String absoluteFileName, const char *file
   #elif defined(PLATFORM_WINDOWS)
     buffer = _fullpath(NULL,fileName,0);
     String_setCString(absoluteFileName,buffer);
+    // replace brain dead '\'
+    String_replaceAllChar(absoluteFileName,STRING_BEGIN,'\\',FILE_PATHNAME_SEPARATOR_CHAR);
     free(buffer);
   #endif /* PLATFORM_... */
 
