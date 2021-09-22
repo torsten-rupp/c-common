@@ -941,53 +941,23 @@ uint64 Misc_getTimestamp(void)
 
 uint64 Misc_getCurrentDateTime(void)
 {
-  uint64 dateTime;
-  struct timeval tv;
-
-  if (gettimeofday(&tv,NULL) == 0)
-  {
-    dateTime = (uint64)tv.tv_sec;
-  }
-  else
-  {
-    dateTime = 0LL;
-  }
-
-  return dateTime;
+  return (uint64)time(NULL);
 }
 
 uint64 Misc_getCurrentDate(void)
 {
-  uint64 date;
-  struct timeval tv;
+  time_t currentDateTime;
 
-  if (gettimeofday(&tv,NULL) == 0)
-  {
-    date = (uint64)(tv.tv_sec-tv.tv_sec%S_PER_DAY);
-  }
-  else
-  {
-    date = 0LL;
-  }
-
-  return date;
+  currentDateTime = time(NULL);
+  return (uint64)(currentDateTime - (currentDateTime % S_PER_DAY));
 }
 
 uint32 Misc_getCurrentTime(void)
 {
-  uint64 time;
-  struct timeval tv;
+  time_t currentDateTime;
 
-  if (gettimeofday(&tv,NULL) == 0)
-  {
-    time = (uint64)(tv.tv_sec%S_PER_DAY);
-  }
-  else
-  {
-    time = 0LL;
-  }
-
-  return time;
+  currentDateTime = time(NULL);
+  return (uint64)(currentDateTime % S_PER_DAY);
 }
 
 void Misc_splitDateTime(uint64   dateTime,
@@ -1238,6 +1208,12 @@ uint64 Misc_makeDateTime(uint year,
 
 void Misc_udelay(uint64 time)
 {
+// TODO: use select?
+/*
+        struct timeval wait = { 1, 0 };
+      result = select(0, NULL, NULL, NULL, &wait);
+*/
+
   #if   defined(PLATFORM_LINUX)
     #if   defined(HAVE_USLEEP)
     #elif defined(HAVE_NANOSLEEP)
