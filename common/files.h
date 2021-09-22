@@ -44,13 +44,14 @@
 #define FILE_TMP_DIRECTORY File_getSystemTmpDirectory()
 
 // Note: always use '/' and never brain dead '\'
-#define FILE_PATHNAME_SEPARATOR_CHAR   '/'
-#define FILE_PATHNAME_SEPARATOR_CHARS  "/"
-#define FILE_PATHNAME_SEPARATOR_STRING "/"
+#define FILE_PATH_SEPARATOR_CHAR   '/'
+#define FILE_PATH_SEPARATOR_CHARS  "/"
+#define FILE_PATH_SEPARATOR_STRING "/"
 
 // system directories
 typedef enum
 {
+  FILE_SYSTEM_PATH_ROOT,
   FILE_SYSTEM_PATH_TMP,
   FILE_SYSTEM_PATH_CONFIGURATION,
   FILE_SYSTEM_PATH_RUNTIME,

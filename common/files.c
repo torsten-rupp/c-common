@@ -927,11 +927,11 @@ String File_appendFileName(String fileName, ConstString name)
 
   if (!String_isEmpty(fileName))
   {
-    if (   !String_endsWithChar(fileName,FILE_PATHNAME_SEPARATOR_CHAR)
-        && !String_startsWithChar(name,FILE_PATHNAME_SEPARATOR_CHAR)
+    if (   !String_endsWithChar(fileName,FILE_PATH_SEPARATOR_CHAR)
+        && !String_startsWithChar(name,FILE_PATH_SEPARATOR_CHAR)
        )
     {
-      String_appendChar(fileName,FILE_PATHNAME_SEPARATOR_CHAR);
+      String_appendChar(fileName,FILE_PATH_SEPARATOR_CHAR);
     }
   }
   String_append(fileName,name);
@@ -946,11 +946,11 @@ String File_appendFileNameCString(String fileName, const char *name)
 
   if (!String_isEmpty(fileName))
   {
-    if (   !String_endsWithChar(fileName,FILE_PATHNAME_SEPARATOR_CHAR)
-        && (name[0] != FILE_PATHNAME_SEPARATOR_CHAR)
+    if (   !String_endsWithChar(fileName,FILE_PATH_SEPARATOR_CHAR)
+        && (name[0] != FILE_PATH_SEPARATOR_CHAR)
        )
     {
-      String_appendChar(fileName,FILE_PATHNAME_SEPARATOR_CHAR);
+      String_appendChar(fileName,FILE_PATH_SEPARATOR_CHAR);
     }
   }
   String_appendCString(fileName,name);
@@ -964,11 +964,11 @@ String File_appendFileNameChar(String fileName, char ch)
 
   if (!String_isEmpty(fileName))
   {
-    if (   !String_endsWithChar(fileName,FILE_PATHNAME_SEPARATOR_CHAR)
-        && (ch != FILE_PATHNAME_SEPARATOR_CHAR)
+    if (   !String_endsWithChar(fileName,FILE_PATH_SEPARATOR_CHAR)
+        && (ch != FILE_PATH_SEPARATOR_CHAR)
        )
     {
-      String_appendChar(fileName,FILE_PATHNAME_SEPARATOR_CHAR);
+      String_appendChar(fileName,FILE_PATH_SEPARATOR_CHAR);
     }
   }
   String_appendChar(fileName,ch);
@@ -982,11 +982,11 @@ String File_appendFileNameBuffer(String fileName, const char *buffer, ulong buff
 
   if (!String_isEmpty(fileName))
   {
-    if (   !String_endsWithChar(fileName,FILE_PATHNAME_SEPARATOR_CHAR)
-        && ((bufferLength == 0) || (buffer[0] != FILE_PATHNAME_SEPARATOR_CHAR))
+    if (   !String_endsWithChar(fileName,FILE_PATH_SEPARATOR_CHAR)
+        && ((bufferLength == 0) || (buffer[0] != FILE_PATH_SEPARATOR_CHAR))
        )
     {
-      String_appendChar(fileName,FILE_PATHNAME_SEPARATOR_CHAR);
+      String_appendChar(fileName,FILE_PATH_SEPARATOR_CHAR);
     }
   }
   String_appendBuffer(fileName,buffer,bufferLength);
@@ -1004,7 +1004,7 @@ String File_getDirectoryName(String pathName, ConstString fileName)
 
   if (fileName != NULL)
   {
-    n = String_findLastChar(fileName,STRING_END,FILE_PATHNAME_SEPARATOR_CHAR);
+    n = String_findLastChar(fileName,STRING_END,FILE_PATH_SEPARATOR_CHAR);
     if (n >= 0)
     {
       String_sub(pathName,fileName,STRING_BEGIN,n);
@@ -1031,7 +1031,7 @@ String File_getDirectoryNameCString(String pathName, const char *fileName)
   if (fileName != NULL)
   {
     // find last path separator
-    lastPathSeparator = strrchr(fileName,FILE_PATHNAME_SEPARATOR_CHAR);
+    lastPathSeparator = strrchr(fileName,FILE_PATH_SEPARATOR_CHAR);
 
     // get path
     if (lastPathSeparator != NULL)
@@ -1067,7 +1067,7 @@ String File_getBaseNameCString(String baseName, const char *fileName)
   if (fileName != NULL)
   {
     // find last path separator
-    lastPathSeparator = strrchr(fileName,FILE_PATHNAME_SEPARATOR_CHAR);
+    lastPathSeparator = strrchr(fileName,FILE_PATH_SEPARATOR_CHAR);
 
     // get path
     if (lastPathSeparator != NULL)
@@ -1105,9 +1105,9 @@ String File_getRootNameCString(String rootName, const char *fileName)
   {
     n = stringLength(fileName);
     #if   defined(PLATFORM_LINUX)
-      if ((n >= 1) && (fileName[0] == FILE_PATHNAME_SEPARATOR_CHAR))
+      if ((n >= 1) && (fileName[0] == FILE_PATH_SEPARATOR_CHAR))
       {
-        String_setChar(rootName,FILE_PATHNAME_SEPARATOR_CHAR);
+        String_setChar(rootName,FILE_PATH_SEPARATOR_CHAR);
       }
     #elif defined(PLATFORM_WINDOWS)
       if      (   (n >= 2)
@@ -1124,9 +1124,9 @@ String File_getRootNameCString(String rootName, const char *fileName)
       {
         String_clear(rootName);
       }
-      if ((n >= 3) && (fileName[2] == FILE_PATHNAME_SEPARATOR_CHAR))
+      if ((n >= 3) && (fileName[2] == FILE_PATH_SEPARATOR_CHAR))
       {
-        String_appendChar(rootName,FILE_PATHNAME_SEPARATOR_CHAR);
+        String_appendChar(rootName,FILE_PATH_SEPARATOR_CHAR);
       }
     #endif /* PLATFORM_... */
   }
@@ -1173,7 +1173,7 @@ String File_getDeviceNameCString(String deviceName, const char *fileName)
             n1 = stringLength(name);
             if (   (n0 > n1)
                 && stringEqualsPrefix(fileName,name,n1)
-                && (fileName[n1] == FILE_PATHNAME_SEPARATOR_CHAR)
+                && (fileName[n1] == FILE_PATH_SEPARATOR_CHAR)
                )
             {
               String_setCString(deviceName,name);
@@ -1199,9 +1199,9 @@ String File_getDeviceNameCString(String deviceName, const char *fileName)
       {
         String_clear(deviceName);
       }
-      if ((n >= 3) && (fileName[2] == FILE_PATHNAME_SEPARATOR_CHAR))
+      if ((n >= 3) && (fileName[2] == FILE_PATH_SEPARATOR_CHAR))
       {
-        String_appendChar(deviceName,FILE_PATHNAME_SEPARATOR_CHAR);
+        String_appendChar(deviceName,FILE_PATH_SEPARATOR_CHAR);
       }
     #endif /* PLATFORM_... */
   }
@@ -1224,7 +1224,7 @@ bool File_isAbsoluteFileNameCString(const char *fileName)
 
   n = stringLength(fileName);
   #if   defined(PLATFORM_LINUX)
-    return ((n >= 1) && (fileName[0] == FILE_PATHNAME_SEPARATOR_CHAR));
+    return ((n >= 1) && (fileName[0] == FILE_PATH_SEPARATOR_CHAR));
   #elif defined(PLATFORM_WINDOWS)
     return    ((n >= 2) && ((toupper(fileName[0]) >= 'A') && (toupper(fileName[0]) <= 'Z') && (fileName[1] == ':')))
            || ((n >= 2) && (stringEqualsPrefix(fileName,"\\\\",2) == 0));
@@ -1258,7 +1258,7 @@ String File_getAbsoluteFileNameCString(String absoluteFileName, const char *file
     buffer = _fullpath(NULL,fileName,0);
     String_setCString(absoluteFileName,buffer);
     // replace brain dead '\'
-    String_replaceAllChar(absoluteFileName,STRING_BEGIN,'\\',FILE_PATHNAME_SEPARATOR_CHAR);
+    String_replaceAllChar(absoluteFileName,STRING_BEGIN,'\\',FILE_PATH_SEPARATOR_CHAR);
     free(buffer);
   #endif /* PLATFORM_... */
 
@@ -1280,7 +1280,7 @@ void File_initSplitFileName(StringTokenizer *stringTokenizer, ConstString fileNa
   assert(stringTokenizer != NULL);
   assert(fileName != NULL);
 
-  String_initTokenizer(stringTokenizer,fileName,STRING_BEGIN,FILE_PATHNAME_SEPARATOR_CHARS,NULL,FALSE);
+  String_initTokenizer(stringTokenizer,fileName,STRING_BEGIN,FILE_PATH_SEPARATOR_CHARS,NULL,FALSE);
 }
 
 void File_doneSplitFileName(StringTokenizer *stringTokenizer)
@@ -1319,6 +1319,9 @@ String File_getSystemDirectoryCString(String path, FileSystemPathTypes fileSyste
   #if   defined(PLATFORM_LINUX)
     switch (fileSystemPathType)
     {
+      case FILE_SYSTEM_PATH_ROOT:
+        String_setCString(path,"/");
+        break;
       case FILE_SYSTEM_PATH_TMP:
         String_setCString(path,getenv("TMPDIR"));
         if (String_isEmpty(path)) String_setCString(path,getenv("TMP"));
@@ -1342,6 +1345,10 @@ String File_getSystemDirectoryCString(String path, FileSystemPathTypes fileSyste
   #elif defined(PLATFORM_WINDOWS)
     switch (fileSystemPathType)
     {
+      case FILE_SYSTEM_PATH_ROOT:
+// TODO: current drive?
+        String_setCString(path,"C:/");
+        break;
       case FILE_SYSTEM_PATH_TMP:
         bufferLength = GetTempPath(sizeof(buffer),buffer);
         if (bufferLength == 0)
@@ -1434,14 +1441,14 @@ Errors __File_getTmpFileCString(const char *__fileName__,
   if (!stringIsEmpty(directory))
   {
     name = String_newCString(directory);
-    String_appendCString(name,FILE_PATHNAME_SEPARATOR_STRING);
+    String_appendCString(name,FILE_PATH_SEPARATOR_STRING);
   }
   else
   {
     name = File_getSystemDirectory(String_new(),FILE_SYSTEM_PATH_TMP,NULL);
     if (!String_isEmpty(name))
     {
-      String_appendCString(name,FILE_PATHNAME_SEPARATOR_STRING);
+      String_appendCString(name,FILE_PATH_SEPARATOR_STRING);
     }
   }
   String_appendCString(name,prefix);
@@ -1608,14 +1615,14 @@ Errors File_getTmpFileNameCString(String     fileName,
   if (stringIsEmpty(directory)) directory = "/tmp";
 
   // get template
-  n = stringLength(directory)+stringLength(FILE_PATHNAME_SEPARATOR_STRING)+stringLength(prefix)+7+1;
+  n = stringLength(directory)+stringLength(FILE_PATH_SEPARATOR_STRING)+stringLength(prefix)+7+1;
   s = (char*)malloc(n);
   if (s == NULL)
   {
     HALT_INSUFFICIENT_MEMORY();
   }
   stringSet(s,n,directory);
-  stringAppend(s,n,FILE_PATHNAME_SEPARATOR_STRING);
+  stringAppend(s,n,FILE_PATH_SEPARATOR_STRING);
   stringAppend(s,n,prefix);
   stringAppend(s,n,"-XXXXXX");
 
@@ -1698,7 +1705,7 @@ Errors File_getTmpDirectoryNameCString(String     directoryName,
     {
       templateName = File_getSystemDirectory(String_new(),FILE_SYSTEM_PATH_TMP,NULL);
     }
-    String_appendCString(templateName,FILE_PATHNAME_SEPARATOR_STRING);
+    String_appendCString(templateName,FILE_PATH_SEPARATOR_STRING);
     String_appendCString(templateName,prefix);
     String_appendCString(templateName,"-XXXXXX");
 
@@ -2919,7 +2926,7 @@ Errors File_readRootList(RootListHandle *rootListHandle,
 
     if (((1UL << rootListHandle->i) & rootListHandle->logicalDrives) != 0)
     {
-      String_format(rootName,"%c:/",'A'+rootListHandle->i);
+      String_format(rootName,"%c:",'A'+rootListHandle->i);
 
       rootListHandle->i++;
     }
@@ -3009,7 +3016,7 @@ Errors File_openDirectoryListCString(DirectoryListHandle *directoryListHandle,
   #elif defined(PLATFORM_WINDOWS)
     // Note: on Windows <drive>: and <drive>:/ are different, but <path> and <path>/ are the same...
     s = String_newCString(directoryName);
-    if (!String_endsWithChar(s,FILE_PATHNAME_SEPARATOR_CHAR)) String_appendChar(s,FILE_PATHNAME_SEPARATOR_CHAR);
+    if (!String_endsWithChar(s,FILE_PATH_SEPARATOR_CHAR)) String_appendChar(s,FILE_PATH_SEPARATOR_CHAR);
     directoryListHandle->dir = opendir(String_cString(s));
     String_delete(s);
   #endif /* PLATFORM_... */
@@ -4549,7 +4556,7 @@ Errors File_makeDirectory(ConstString    pathName,
     }
     else
     {
-      File_setFileNameChar(directoryName,FILE_PATHNAME_SEPARATOR_CHAR);
+      File_getSystemDirectory(directoryName,FILE_SYSTEM_PATH_ROOT,NULL);
     }
   }
   if      (!File_exists(directoryName))
