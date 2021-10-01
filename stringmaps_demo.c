@@ -10,6 +10,7 @@
 
 /****************************** Includes *******************************/
 #include <stdlib.h>
+#include <inttypes.h>
 #include <assert.h>
 
 #include "common/global.h"
@@ -105,7 +106,7 @@ int main(int argc, char *argv[])
 
   STRINGMAP_ITERATE(stringMap,z,name,type,value)
   {
-    printf("%s: %s/%p\n",name,String_cString(value.text),value.data.p);
+    printf("%d %s: %s/%p\n",type,name,String_cString(value.text),value.data.p);
   }
 
   printf("a=%d\n",StringMap_get(stringMap,"a").data.i);
@@ -137,7 +138,7 @@ int main(int argc, char *argv[])
   if (StringMap_parse(stringMap,s,STRINGMAP_ASSIGN,"'\"",NULL,0,NULL))
   {
     StringMap_getInt(stringMap,"a",&i,0); printf("a=%d\n",i);
-    StringMap_getInt64(stringMap,"b",&l,0); printf("b=%lld\n",l);
+    StringMap_getInt64(stringMap,"b",&l,0); printf("b=%"PRIi64"\n",l);
     StringMap_getDouble(stringMap,"c",&d,0.0); printf("c=%lf\n",d);
     StringMap_getBool(stringMap,"d",&b,FALSE); printf("d=%d\n",b);
     StringMap_getEnum(stringMap,"e",&e,(StringMapParseEnumFunction)parseEnum,UNKNOWN); printf("e=%d\n",e);
