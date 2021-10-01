@@ -57,6 +57,9 @@ LOCAL bool quitFlag;
 
 LOCAL void freeStressNode(StressNode *stressNode, void *userData)
 {
+  UNUSED_VARIABLE(userData);
+
+  LIST_DELETE_NODE(stressNode);
 }
 
 LOCAL void listThreadCode(void)
