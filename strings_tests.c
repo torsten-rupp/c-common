@@ -9,7 +9,7 @@ CTEST(strings,new_delete)
 {
   String s;
   char   buffer[4+1];
-  
+
   s = String_new();
   ASSERT_STR("",String_cString(s));
   String_delete(s);
@@ -91,7 +91,7 @@ CTEST(strings,set)
   String s;
   String t;
   char   buffer[4+1];
-  
+
   s = String_new();
   ASSERT_STR("",String_cString(s));
 
@@ -134,7 +134,7 @@ LOCAL void vformatAppend(String s, char *format, ...)
 CTEST(strings,format)
 {
   String  s;
-  
+
   s = String_new();
   ASSERT_STR("",String_cString(s));
 
@@ -158,7 +158,7 @@ CTEST(strings,append)
   String s;
   String t;
   char   buffer[4+1];
-  
+
   s = String_new();
   ASSERT_STR("",String_cString(s));
 
@@ -193,7 +193,7 @@ CTEST(strings,insert)
   String s;
   String t;
   char   buffer[4+1];
-  
+
   s = String_new();
 
   String_setCString(s,"test");
@@ -225,7 +225,7 @@ CTEST(strings,insert)
 CTEST(strings,remove)
 {
   String s;
-  
+
   s = String_new();
 
   String_setCString(s,"test");
@@ -249,7 +249,7 @@ CTEST(strings,remove)
 CTEST(strings,truncate)
 {
   String s;
-  
+
   s = String_new();
 
   String_setCString(s,"test");
@@ -266,7 +266,7 @@ CTEST(strings,replace)
   String s;
   String t;
   char   buffer[4+1];
-  
+
   s = String_new();
 
   String_setCString(s,"test");
@@ -294,7 +294,7 @@ CTEST(strings,replaceAll)
 {
   String s;
   String t0,t1;
-  
+
   s = String_new();
 
   String_setCString(s,"testtest");
@@ -320,7 +320,7 @@ CTEST(strings,map)
 {
   String s;
   String t0[2],t1[2];
-  
+
   s = String_new();
 
   String_setCString(s,"testtest");
@@ -352,7 +352,7 @@ CTEST(strings,sub)
   String t;
   char   cString[4+1];
   char   buffer[4+1];
-  
+
   s = String_new();
 
   String_setCString(s,"test");
@@ -378,7 +378,7 @@ CTEST(strings,join)
   String s;
   String t;
   char   buffer[4+1];
-  
+
   s = String_new();
 
   String_setCString(s,"test");
@@ -405,7 +405,7 @@ CTEST(strings,join)
 CTEST(strings,length)
 {
   String s;
-  
+
   s = String_new();
 
   String_setCString(s,"test");
@@ -419,7 +419,7 @@ CTEST(strings,length)
 CTEST(strings,isSet)
 {
   String s;
-  
+
   s = String_new();
 
   ASSERT_TRUE(String_isSet(s));
@@ -430,7 +430,7 @@ CTEST(strings,isSet)
 CTEST(strings,isEmpty)
 {
   String s;
-  
+
   s = String_new();
 
   String_setCString(s,"test");
@@ -444,7 +444,7 @@ CTEST(strings,isEmpty)
 CTEST(strings,index)
 {
   String s;
-  
+
   s = String_new();
 
   String_setCString(s,"test");
@@ -459,7 +459,7 @@ CTEST(strings,index)
 CTEST(strings,cString)
 {
   String s;
-  
+
   s = String_new();
 
   String_setCString(s,"test");
@@ -471,7 +471,7 @@ CTEST(strings,cString)
 CTEST(strings,compare)
 {
   String s,t;
-  
+
   s = String_new();
   t = String_new();
 
@@ -503,7 +503,7 @@ CTEST(strings,equals)
   String s;
   String t;
   char   buffer[4+1];
-  
+
   s = String_new();
 
   String_setCString(s,"test");
@@ -543,7 +543,7 @@ CTEST(strings,subEquals)
   String s;
   String t;
   char   buffer[4+1];
-  
+
   s = String_new();
 
   String_setCString(s,"test");
@@ -579,7 +579,7 @@ CTEST(strings,startsWith)
   String s;
   String t;
   char   buffer[4+1];
-  
+
   s = String_new();
 
   String_setCString(s,"test");
@@ -604,7 +604,7 @@ CTEST(strings,endsWith)
   String s;
   String t;
   char   buffer[4+1];
-  
+
   s = String_new();
 
   String_setCString(s,"test");
@@ -628,7 +628,7 @@ CTEST(strings,find)
 {
   String s;
   String t;
-  
+
   s = String_new();
 
   String_setCString(s,"test");
@@ -670,7 +670,7 @@ CTEST(strings,interate)
   uint           i;
   char           ch;
   Codepoint      codepoint;
-  
+
   s = String_new();
 
   String_setCString(s,"test");
@@ -727,7 +727,7 @@ CTEST(strings,interate)
 CTEST(strings,lowerUpper)
 {
   String s;
-  
+
   s = String_new();
 
   String_setCString(s,"test");
@@ -745,7 +745,7 @@ CTEST(strings,lowerUpper)
 CTEST(strings,trim)
 {
   String s;
-  
+
   s = String_new();
 
   String_setCString(s,"test");
@@ -766,7 +766,7 @@ CTEST(strings,trim)
 CTEST(strings,escape)
 {
   String s;
-  
+
   s = String_new();
 
   String_setCString(s,"test");
@@ -817,7 +817,7 @@ CTEST(strings,escape)
 CTEST(strings,quote)
 {
   String s;
-  
+
   s = String_new();
 
   String_setCString(s,"test");
@@ -871,7 +871,7 @@ CTEST(strings,quote)
 CTEST(strings,pad)
 {
   String s;
-  
+
   s = String_new();
 
   String_setCString(s,"test");
@@ -900,7 +900,7 @@ CTEST(strings,pad)
 CTEST(strings,fill)
 {
   String s;
-  
+
   s = String_new();
 
   ASSERT_STR("tttt",
@@ -918,9 +918,9 @@ CTEST(strings,tokenizer)
 {
   String          s;
   StringTokenizer stringTokenizer;
-  ConstString     *token;
+  ConstString     token;
   long            tokenIndex;
-  
+
   s = String_new();
 
   String_setCString(s,"test 'abcd ' '' \t1234");
@@ -1014,7 +1014,7 @@ CTEST(strings,scan)
   float  f;
   double d;
   char   s[4+1];
-  
+
   string = String_new();
 
   String_setCString(string,"1234");
@@ -1069,7 +1069,7 @@ CTEST(strings,scan)
   ASSERT_EQUAL(1234.5678,d);
 
   ASSERT_TRUE(String_scanCString("test","%5s",s));
-  ASSERT_STR("test",s);   
+  ASSERT_STR("test",s);
 }
 
 CTEST(strings,parse)
@@ -1084,7 +1084,7 @@ CTEST(strings,parse)
   char   s[4+1];
   long   nextIndex;
   String t;
-  
+
   string = String_new();
 
   String_setCString(string,"1234");
@@ -1243,8 +1243,7 @@ CTEST(strings,match)
   String string;
   String t;
   long   nextIndex;
-  char   s[4+1];
-  
+
   string = String_new();
 
   t = String_newCString("^t(es)t$");
