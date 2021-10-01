@@ -418,8 +418,9 @@ static int suite_filter(struct ctest* t) {
 
 static uint64_t getCurrentTime(void) {
     struct timeval now;
+    uint64_t now64;
     gettimeofday(&now, NULL);
-    uint64_t now64 = (uint64_t) now.tv_sec;
+    now64 = (uint64_t) now.tv_sec;
     now64 *= 1000000;
     now64 += ((uint64_t) now.tv_usec);
     return now64;
@@ -459,6 +460,11 @@ __attribute__((no_sanitize_address)) int ctest_main(int argc, const char *argv[]
     static int num_skip = 0;
     static int idx = 1;
     static ctest_filter_func filter = suite_all;
+    uint64_t t1,t2;
+    struct ctest *ctest_begin, *ctest_end;
+    static struct ctest* test;
+    const char* color;
+    char results[80];
 
 #ifdef CTEST_SEGFAULT
     signal(SIGSEGV, sighandler);
@@ -473,10 +479,10 @@ __attribute__((no_sanitize_address)) int ctest_main(int argc, const char *argv[]
 #else
     color_output = isatty(1);
 #endif
-    uint64_t t1 = getCurrentTime();
+    t1 = getCurrentTime();
 
-    struct ctest* ctest_begin = &CTEST_IMPL_TNAME(suite, test);
-    struct ctest* ctest_end = &CTEST_IMPL_TNAME(suite, test);
+    ctest_begin = &CTEST_IMPL_TNAME(suite, test);
+    ctest_end = &CTEST_IMPL_TNAME(suite, test);
     // find begin and end of section by comparing magics
     while (1) {
         struct ctest* t = ctest_begin-1;
@@ -490,7 +496,6 @@ __attribute__((no_sanitize_address)) int ctest_main(int argc, const char *argv[]
     }
     ctest_end++;    // end after last one
 
-    static struct ctest* test;
     for (test = ctest_begin; test != ctest_end; test++) {
         if (test == &CTEST_IMPL_TNAME(suite, test)) continue;
         if (filter(test)) total++;
@@ -532,10 +537,9 @@ __attribute__((no_sanitize_address)) int ctest_main(int argc, const char *argv[]
             idx++;
         }
     }
-    uint64_t t2 = getCurrentTime();
+    t2 = getCurrentTime();
 
-    const char* color = (num_fail) ? ANSI_BRED : ANSI_GREEN;
-    char results[80];
+    color = (num_fail) ? ANSI_BRED : ANSI_GREEN;
     snprintf(results, sizeof(results), "RESULTS: %d tests (%d ok, %d failed, %d skipped) ran in %" PRIu64 " ms", total, num_ok, num_fail, num_skip, (t2 - t1)/1000);
     color_print(color, results);
     return num_fail;
@@ -544,4 +548,3 @@ __attribute__((no_sanitize_address)) int ctest_main(int argc, const char *argv[]
 #endif
 
 #endif
-
