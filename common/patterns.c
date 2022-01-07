@@ -525,7 +525,7 @@ bool Pattern_match(const Pattern     *pattern,
   {
     if (matchIndex != NULL)
     {
-      (*matchIndex) = matches[0].rm_so;
+      (*matchIndex) = index+matches[0].rm_so;
     }
     if (matchLength != NULL)
     {
