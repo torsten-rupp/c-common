@@ -7,28 +7,258 @@
 #include <limits.h>
 #include <ctype.h>
 #include <stdarg.h>
+#include <pthread.h>
 #include <errno.h>
 
 #include "common/global.h"
 
 #include "errors.h"
 
-// use NONE to avoid warning in strn*-functions which do not accept NULL (this case must be checked before calling strn*
+#ifdef NDEBUG
+  #define ERROR_MAX_TEXT_LENGTH 2048
+#else
+  #define ERROR_MAX_TEXT_LENGTH 4096
+#endif
+
+// use NONE to avoid warning in strn*-functions which do not accept NULL (this case must be checked before calling strn*)
 static const char *NONE = NULL;
 
 typedef struct
 {
   int  id;
-  char text[2048];
+  char text[ERROR_MAX_TEXT_LENGTH];
   #ifndef NDEBUG
     const char   *fileName;
     unsigned int lineNb;
   #endif /* not NDEBUG */
 } ErrorData;
 
-static ErrorData errorData[63];   // last error data
-static uint      errorDataCount = 0;                       // last error data count (=max. when all data entries are used; recycle oldest entry if required)
-static uint      errorDataId    = 0;                       // total number of error data
+static pthread_mutex_t errorTextLock  = PTHREAD_MUTEX_INITIALIZER;
+static ErrorData       errorData[63];   // last error data
+static uint            errorDataCount = 0;                       // last error data count (=max. when all data entries are used; recycle oldest entry if required)
+static uint            errorDataId    = 0;                       // total number of error data
+
+LOCAL void vformatErrorText(char *string, ulong n, const char *format, va_list arguments)
+{
+  bool       longFlag,longLongFlag;
+  char       quoteFlag;
+  union
+  {
+    bool       b;
+    int        i;
+    uint       ui;
+    long       l;
+    ulong      ul;
+    int64      ll;
+    uint64     ull;
+    float      f;
+    double     d;
+    char       ch;
+    const char *s;
+    void       *p;
+  } value;
+  const char *t;
+  char       buffer[256];
+
+  stringClear(string);
+  while (!stringIsEmpty(format))
+  {
+    switch (stringAt(format,0))
+    {
+      case '\\':
+        // escaped character
+        stringAppendChar(string,n,'\\');
+        format++;
+        if (!stringIsEmpty(format))
+        {
+          stringAppendChar(string,n,stringAt(format,0));
+          format++;
+        }
+        break;
+      case '%':
+        // format character
+        format++;
+
+        // check for longlong/long flag
+        longLongFlag = FALSE;
+        longFlag     = FALSE;
+        if (stringAt(format,0) == 'l')
+        {
+          format++;
+          if (stringAt(format,0) == 'l')
+          {
+            format++;
+            longLongFlag = TRUE;
+          }
+          else
+          {
+            longFlag = TRUE;
+          }
+        }
+
+        // quoting flag (ignore quote char)
+        if (   !stringIsEmpty(format)
+            && !isalpha(stringAt(format,0))
+            && (stringAt(format,0) != '%')
+            && (   (stringAt(format,1) == 's')
+                || (stringAt(format,1) == 'E')
+               )
+           )
+        {
+          quoteFlag = TRUE;
+          format++;
+        }
+        else
+        {
+          quoteFlag = FALSE;
+        }
+
+        if (!stringIsEmpty(format))
+        {
+          // handle format type
+          switch (stringAt(format,0))
+          {
+            case 'b':
+              // boolean
+              format++;
+
+              value.i = va_arg(arguments,int);
+              stringAppend(string,n,(value.i != 0) ? "true" : "false");
+              break;
+            case 'd':
+              // integer
+              format++;
+
+              if      (longLongFlag)
+              {
+                value.ll = va_arg(arguments,int64);
+                stringFormatAppend(string,n,"%lld",value.ll);
+              }
+              else if (longFlag)
+              {
+                value.l = va_arg(arguments,int64);
+                stringFormatAppend(string,n,"%ld",value.l);
+              }
+              else
+              {
+                value.i = va_arg(arguments,int);
+                stringFormatAppend(string,n,"%d",value.i);
+              }
+              break;
+            case 'u':
+              // unsigned integer
+              format++;
+
+              if      (longLongFlag)
+              {
+                value.ull = va_arg(arguments,uint64);
+                stringFormatAppend(string,n,"%llu",value.ull);
+              }
+              else if (longFlag)
+              {
+                value.ul = va_arg(arguments,ulong);
+                stringFormatAppend(string,n,"%lu",value.ul);
+              }
+              else
+              {
+                value.ui = va_arg(arguments,uint);
+                stringFormatAppend(string,n,"%u",value.ui);
+              }
+              break;
+            case 'f':
+              // float/double
+              format++;
+
+              if (longFlag)
+              {
+                value.d = va_arg(arguments,double);
+                stringFormatAppend(string,n,"%lf",value.d);
+              }
+              else
+              {
+                value.f = (float)va_arg(arguments,double);
+                stringFormatAppend(string,n,"%lf",value.f);
+              }
+              break;
+            case 'c':
+              // character
+              format++;
+
+              value.ch = (char)va_arg(arguments,int);
+              stringAppendChar(string,n,value.ch);
+              break;
+            case 's':
+              // string
+              format++;
+
+              value.s = va_arg(arguments,const char*);
+
+              if (quoteFlag) stringAppendChar(string,n,'\'');
+              if (value.s != NULL)
+              {
+                t = value.s;
+                while (!stringIsEmpty(t))
+                {
+                  switch (stringAt(t,0))
+                  {
+                    case '\'':
+                      if (quoteFlag)
+                      {
+                        stringAppend(string,n,"''");
+                      }
+                      else
+                      {
+                        stringAppendChar(string,n,'\'');
+                      }
+                      break;
+                    default:
+                      stringAppendChar(string,n,stringAt(t,0));
+                      break;
+                  }
+                  t++;
+                }
+              }
+              if (quoteFlag) stringAppendChar(string,n,'\'');
+              break;
+            case 'p':
+              // pointer
+              format++;
+
+              value.p = va_arg(arguments,void*);
+              stringFormatAppend(string,n,"%p",value.p);
+              break;
+            case 'E':
+              // errno text
+              format++;
+
+              value.i = va_arg(arguments,int);
+
+              // start with lower case
+              stringSet(buffer,sizeof(buffer),strerror(value.i));
+              if (!stringIsEmpty(buffer)) buffer[0] = tolower(buffer[0]);
+
+              stringAppend(string,n,buffer);
+              break;
+            case '%':
+              // %%
+              format++;
+
+              stringAppendChar(string,n,'%');
+              break;
+            default:
+              stringAppendChar(string,n,'%');
+              stringAppendChar(string,n,stringAt(format,0));
+              break;
+          }
+        }
+        break;
+      default:
+        stringAppendChar(string,n,stringAt(format,0));
+        format++;
+        break;
+    }
+  }
+}
 
 #ifndef NDEBUG
 int _Error_dataToIndex(const char *fileName, ulong lineNb, const char *format, ...)
@@ -37,7 +267,7 @@ int _Error_dataToIndex(const char *format, ...)
 #endif
 {
   va_list arguments;
-  char    text[2048];
+  char    text[ERROR_MAX_TEXT_LENGTH];
   int     index;
   int     minId;
   uint    z,i;
@@ -46,7 +276,7 @@ int _Error_dataToIndex(const char *format, ...)
   {
     // format error text
     va_start(arguments,format);
-    vsnprintf(text,sizeof(text),format,arguments);
+    vformatErrorText(text,sizeof(text),format,arguments);
     va_end(arguments);
   }
   else
@@ -54,58 +284,62 @@ int _Error_dataToIndex(const char *format, ...)
     stringClear(text);
   }
 
-  // get new error data id
-  errorDataId++;
+  pthread_mutex_lock(&errorTextLock);
+  {
+    // get new error data id
+    errorDataId++;
 
-  // get error data index
-  index = -1;
-  z = 0;
-  while ((z < errorDataCount) && (index == -1))
-  {
-    if (stringEquals(errorData[z].text,text))
+    // get error data index
+    index = -1;
+    z = 0;
+    while ((z < errorDataCount) && (index == -1))
     {
-      index = z;
-    }
-    z++;
-  }
-  if (index == -1)
-  {
-    if (errorDataCount < 63)
-    {
-      // use next entry
-      index = errorDataCount;
-      errorDataCount++;
-    }
-    else
-    {
-      // recycle oldest entry (entry with smallest id)
-      index = 0;
-      minId = INT_MAX;
-      for (z = 0; z < 63; z++)
+      if (stringEquals(errorData[z].text,text))
       {
-        if (errorData[z].id < minId)
+        index = z;
+      }
+      z++;
+    }
+    if (index == -1)
+    {
+      if (errorDataCount < 63)
+      {
+        // use next entry
+        index = errorDataCount;
+        errorDataCount++;
+      }
+      else
+      {
+        // recycle oldest entry (entry with smallest id)
+        index = 0;
+        minId = INT_MAX;
+        for (z = 0; z < 63; z++)
         {
-          index = z;
-          minId = errorData[z].id;
+          if (errorData[z].id < minId)
+          {
+            index = z;
+            minId = errorData[z].id;
+          }
         }
       }
     }
-  }
 
-  // init error data
-  errorData[index].id = errorDataId;
-  z = 0;
-  i = 0;
-  while ((z < strlen(text)) && (i < 2048-1))
-  {
-    if (!iscntrl(text[z])) { errorData[index].text[i] = text[z]; i++; }
-    z++;
+    // init error data
+    errorData[index].id = errorDataId;
+    z = 0;
+    i = 0;
+    while ((z < stringLength(text)) && (i < ERROR_MAX_TEXT_LENGTH-1))
+    {
+      if (!iscntrl(text[z])) { errorData[index].text[i] = text[z]; i++; }
+      z++;
+    }
+    errorData[index].text[i] = '\0';
+    #ifndef NDEBUG
+      errorData[index].fileName = fileName;
+      errorData[index].lineNb   = lineNb;
+    #endif /* not NDEBUG */
   }
-  errorData[index].text[i] = '\0';
-  #ifndef NDEBUG
-    errorData[index].fileName = fileName;
-    errorData[index].lineNb   = lineNb;
-  #endif /* not NDEBUG */
+  pthread_mutex_unlock(&errorTextLock);
 
   return index+1;
 }
@@ -132,7 +366,6 @@ int _Error_dataToIndex(const char *format, ...)
 #define ERROR_LINENB_TEXT ERROR_GET_LINENB_TEXT(error)
 #define ERROR_DATA        ERROR_GET_DATA(error)
 #define ERROR_ERRNO       ERROR_GET_ERRNO(error)
-#define ERROR_ERRNO_TEXT  ERROR_GET_ERRNO_TEXT(error)
 
 unsigned int Error_getCode(Errors error)
 {
@@ -210,206 +443,273 @@ const char *Error_getErrnoText(Errors error)
 
 const char *Error_getText(Errors error)
 {
-  static char errorText[2048];
+  static char errorText[ERROR_MAX_TEXT_LENGTH];
 
   stringClear(errorText);
   switch (ERROR_GET_CODE(error))
   {
+#line 11 "errors.def"
     case ERROR_CODE_NONE: stringSet(errorText,sizeof(errorText),"none"); break;
     case ERROR_CODE_INSUFFICIENT_MEMORY:
+#line 15 "errors.def"
       stringSet(errorText,sizeof(errorText),"insufficient memory");
       break;
     case ERROR_CODE_INIT:
+#line 16 "errors.def"
       stringSet(errorText,sizeof(errorText),"init");
       break;
     case ERROR_CODE_INVALID_ARGUMENT:
+#line 17 "errors.def"
       stringSet(errorText,sizeof(errorText),"invalid argument");
       break;
     case ERROR_CODE_CONFIG:
+#line 18 "errors.def"
       stringSet(errorText,sizeof(errorText),"config error");
       break;
     case ERROR_CODE_ABORTED:
+#line 19 "errors.def"
       stringSet(errorText,sizeof(errorText),"aborted");
       break;
     case ERROR_CODE_FUNCTION_NOT_SUPPORTED:
+#line 20 "errors.def"
       stringSet(errorText,sizeof(errorText),"function not supported");
       break;
     case ERROR_CODE_STILL_NOT_IMPLEMENTED:
+#line 21 "errors.def"
       stringSet(errorText,sizeof(errorText),"function still not implemented");
       break;
     case ERROR_CODE_TESTCODE:
+#line 22 "errors.def"
       stringSet(errorText,sizeof(errorText),"test code");
       break;
     case ERROR_CODE_INVALID_PATTERN:
+#line 25 "errors.def"
       stringSet(errorText,sizeof(errorText),"init pattern matching");
       break;
     case ERROR_CODE_INIT_TLS:
+#line 28 "errors.def"
       stringSet(errorText,sizeof(errorText),"init TLS (SSL)");
       break;
     case ERROR_CODE_NO_TLS_CA:
+#line 29 "errors.def"
       stringSet(errorText,sizeof(errorText),"no TLS (SSL) certificate authority file 'bar-ca.pem'");
       break;
     case ERROR_CODE_NO_TLS_CERTIFICATE:
+#line 30 "errors.def"
       stringSet(errorText,sizeof(errorText),"no TLS (SSL) certificate file 'bar-server-cert.pem'");
       break;
     case ERROR_CODE_NO_TLS_KEY:
+#line 31 "errors.def"
       stringSet(errorText,sizeof(errorText),"no or unreadable TLS (SSL) key file 'bar-server-key.pem'");
       break;
     case ERROR_CODE_INVALID_TLS_CA:
+#line 32 "errors.def"
       stringSet(errorText,sizeof(errorText),"invalid TLS (SSL) certificate authority");
       break;
     case ERROR_CODE_INVALID_TLS_CERTIFICATE:
+#line 33 "errors.def"
       stringSet(errorText,sizeof(errorText),"invalid TLS (SSL) certificate");
       break;
     case ERROR_CODE_TLS_HANDSHAKE:
+#line 34 "errors.def"
       stringSet(errorText,sizeof(errorText),"TLS (SSL) handshake failure");
       break;
     case ERROR_CODE_INVALID_SSH_SPEFICIER:
+#line 35 "errors.def"
       stringSet(errorText,sizeof(errorText),"invalid SSH specifier");
       break;
     case ERROR_CODE_SSH_SESSION_FAIL:
+#line 36 "errors.def"
       stringSet(errorText,sizeof(errorText),"initialize ssh session fail");
       break;
     case ERROR_CODE_SSH_AUTHENTIFICATION:
+#line 37 "errors.def"
       stringSet(errorText,sizeof(errorText),"invalid ssh password");
       break;
     case ERROR_CODE_FTP_SESSION_FAIL:
+#line 40 "errors.def"
       stringSet(errorText,sizeof(errorText),"initialize FTP session fail");
       break;
     case ERROR_CODE_FTP_AUTHENTIFICATION:
+#line 41 "errors.def"
       stringSet(errorText,sizeof(errorText),"invalid FTP user/password");
       break;
     case ERROR_CODE_INIT_COMPRESS:
+#line 44 "errors.def"
       stringSet(errorText,sizeof(errorText),"init compress");
       break;
     case ERROR_CODE_COMPRESS_ERROR:
+#line 45 "errors.def"
       stringSet(errorText,sizeof(errorText),"compress");
       break;
     case ERROR_CODE_DEFLATE_ERROR:
+#line 46 "errors.def"
       stringSet(errorText,sizeof(errorText),"deflate");
       break;
     case ERROR_CODE_INFLATE_ERROR:
+#line 47 "errors.def"
       stringSet(errorText,sizeof(errorText),"inflate");
       break;
     case ERROR_CODE_COMPRESS_EOF:
+#line 48 "errors.def"
       stringSet(errorText,sizeof(errorText),"compress end of file");
       break;
     case ERROR_CODE_UNSUPPORTED_BLOCK_SIZE:
+#line 51 "errors.def"
       stringSet(errorText,sizeof(errorText),"unsupported block size");
       break;
     case ERROR_CODE_INIT_CRYPT:
+#line 52 "errors.def"
       stringSet(errorText,sizeof(errorText),"init crypt");
       break;
     case ERROR_CODE_NO_CRYPT_PASSWORD:
+#line 53 "errors.def"
       stringSet(errorText,sizeof(errorText),"no password given for cipher");
       break;
     case ERROR_CODE_INVALID_PASSWORD:
+#line 54 "errors.def"
       stringSet(errorText,sizeof(errorText),"invalid password");
       break;
     case ERROR_CODE_INIT_CIPHER:
+#line 55 "errors.def"
       stringSet(errorText,sizeof(errorText),"init cipher");
       break;
     case ERROR_CODE_ENCRYPT_FAIL:
+#line 56 "errors.def"
       stringSet(errorText,sizeof(errorText),"encrypt");
       break;
     case ERROR_CODE_DECRYPT_FAIL:
+#line 57 "errors.def"
       stringSet(errorText,sizeof(errorText),"decrypt");
       break;
+#line 64 "errors.def"
     case ERROR_CODE_CREATE_FILE:
+#line 64 "errors.def"
     case ERROR_CODE_OPEN_FILE:
+#line 64 "errors.def"
     case ERROR_CODE_OPEN_DIRECTORY:
+#line 64 "errors.def"
     case ERROR_CODE_IO_ERROR:
       {
         strncpy(errorText,strerror(ERROR_CODE),sizeof(errorText)-1); errorText[sizeof(errorText)-1] = '\0';
       }
       break;
     case ERROR_CODE_PARSE_DEVICE_LIST:
+#line 66 "errors.def"
       stringSet(errorText,sizeof(errorText),"error parsing device list");
       break;
     case ERROR_CODE_FILE_EXITS:
+#line 67 "errors.def"
       stringSet(errorText,sizeof(errorText),"file already exists");
       break;
     case ERROR_CODE_FILE_NOT_FOUND:
+#line 68 "errors.def"
       stringSet(errorText,sizeof(errorText),"file not found");
       break;
     case ERROR_CODE_END_OF_ARCHIVE:
+#line 71 "errors.def"
       stringSet(errorText,sizeof(errorText),"end of archive");
       break;
     case ERROR_CODE_NO_FILE_ENTRY:
+#line 72 "errors.def"
       stringSet(errorText,sizeof(errorText),"no file entry");
       break;
     case ERROR_CODE_NO_FILE_DATA:
+#line 73 "errors.def"
       stringSet(errorText,sizeof(errorText),"no data entry");
       break;
     case ERROR_CODE_NO_DIRECTORY_ENTRY:
+#line 74 "errors.def"
       stringSet(errorText,sizeof(errorText),"no directory entry");
       break;
     case ERROR_CODE_NO_LINK_ENTRY:
+#line 75 "errors.def"
       stringSet(errorText,sizeof(errorText),"no link entry");
       break;
     case ERROR_CODE_NO_SPECIAL_ENTRY:
+#line 76 "errors.def"
       stringSet(errorText,sizeof(errorText),"no special entry");
       break;
     case ERROR_CODE_END_OF_DATA:
+#line 77 "errors.def"
       stringSet(errorText,sizeof(errorText),"end of data");
       break;
     case ERROR_CODE_CRC_ERROR:
+#line 78 "errors.def"
       stringSet(errorText,sizeof(errorText),"CRC error");
       break;
     case ERROR_CODE_FILE_INCOMPLETE:
+#line 79 "errors.def"
       stringSet(errorText,sizeof(errorText),"file is incomplete");
       break;
     case ERROR_CODE_WRONG_FILE_TYPE:
+#line 80 "errors.def"
       stringSet(errorText,sizeof(errorText),"wrong file type");
       break;
     case ERROR_CODE_FILES_DIFFER:
+#line 81 "errors.def"
       stringSet(errorText,sizeof(errorText),"files differ");
       break;
     case ERROR_CODE_CORRUPT_DATA:
+#line 82 "errors.def"
       stringSet(errorText,sizeof(errorText),"corrupt data or invalid password");
       break;
     case ERROR_CODE_NOT_AN_INCREMENTAL_FILE:
+#line 85 "errors.def"
       stringSet(errorText,sizeof(errorText),"invalid incremental file");
       break;
     case ERROR_CODE_WRONG_INCREMENTAL_FILE_VERSION:
+#line 86 "errors.def"
       stringSet(errorText,sizeof(errorText),"wrong incremental file version");
       break;
     case ERROR_CODE_CORRUPT_INCREMENTAL_FILE:
+#line 87 "errors.def"
       stringSet(errorText,sizeof(errorText),"corrupt incremental file");
       break;
     case ERROR_CODE_HOST_NOT_FOUND:
+#line 90 "errors.def"
       stringSet(errorText,sizeof(errorText),"host not found");
       break;
+#line 92 "errors.def"
     case ERROR_CODE_CONNECT_FAIL:
       {
         strncpy(errorText,strerror(ERROR_CODE),sizeof(errorText)-1); errorText[sizeof(errorText)-1] = '\0';
       }
       break;
     case ERROR_CODE_NO_LOGIN_NAME:
+#line 94 "errors.def"
       stringSet(errorText,sizeof(errorText),"no login name given");
       break;
     case ERROR_CODE_NO_PASSWORD:
+#line 95 "errors.def"
       stringSet(errorText,sizeof(errorText),"no password given");
       break;
     case ERROR_CODE_NETWORK_SEND:
+#line 96 "errors.def"
       stringSet(errorText,sizeof(errorText),"sending data fail");
       break;
     case ERROR_CODE_NETWORK_RECEIVE:
+#line 97 "errors.def"
       stringSet(errorText,sizeof(errorText),"receiving data fail");
       break;
     case ERROR_CODE_NETWORK_EXECUTE_FAIL:
+#line 98 "errors.def"
       stringSet(errorText,sizeof(errorText),"execute command fail");
       break;
     case ERROR_CODE_INVALID_DEVICE_SPECIFIER:
+#line 101 "errors.def"
       stringSet(errorText,sizeof(errorText),"invalid device specifier");
       break;
     case ERROR_CODE_LOAD_VOLUME_FAIL:
+#line 102 "errors.def"
       stringSet(errorText,sizeof(errorText),"load volume fail");
       break;
     case ERROR_CODE_FORK_FAIL:
+#line 105 "errors.def"
       stringSet(errorText,sizeof(errorText),"fork for execute external program fail");
       break;
     case ERROR_CODE_EXEC_FAIL:
+#line 106 "errors.def"
       stringSet(errorText,sizeof(errorText),"execute external program fail");
       break;
 

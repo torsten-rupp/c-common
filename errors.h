@@ -2,6 +2,8 @@
 #ifndef __ERRORS__
 #define __ERRORS__
 
+#include <stdint.h>
+
 /***********************************************************************
 * Name   : ERROR_
 * Purpose: create error
@@ -26,7 +28,11 @@
 * Notes  : -
 ***********************************************************************/
 
-#define ERRORX_(code,errno,format,...) Errorx_((ERROR_CODE_ ## code),errno,format, ## __VA_ARGS__)
+#ifndef NDEBUG
+  #define ERRORX_(code,errno,format,...) Errorx_(__FILE__,__LINE__,(ERROR_CODE_ ## code),errno,format, ## __VA_ARGS__)
+#else
+  #define ERRORX_(code,errno,format,...) Errorx_((ERROR_CODE_ ## code),errno,format, ## __VA_ARGS__)
+#endif
 
 /***********************************************************************
 * Name   : ERRORF_
@@ -78,21 +84,23 @@
 /***********************************************************************
 * Name   : Errorx_
 * Purpose: create extended error
-* Input  : code   - error code; see ERROR_...
-*          errno  - errno or 0
-*          format - format string (like printf)
-*          ...    - optional arguments for format string
+* Input  : fileName - file name
+*          lineNb   - line number
+*          code     - error code; see ERROR_...
+*          errno    - errno or 0
+*          format   - format string (like printf)
+*          ...      - optional arguments for format string
 * Output : -
 * Return : error
 * Notes  : -
 ***********************************************************************/
 
 #ifndef NDEBUG
-  #define Errorx_(code,errno,format,...) ((Errors)(intptr_t)(  (((errno) << 16) & 0xFFFF0000) \
-                                                             | ((_Error_dataToIndex(__FILE__,__LINE__,format, ## __VA_ARGS__) << 10) & 0x0000FC00) \
-                                                             | (((code) << 0) & 0x000003FF) \
-                                                            ) \
-                                         )
+  #define Errorx_(fileName,lineNb,code,errno,format,...) ((Errors)(intptr_t)(  (((errno) << 16) & 0xFFFF0000) \
+                                                                             | ((_Error_dataToIndex(fileName,lineNb,format, ## __VA_ARGS__) << 10) & 0x0000FC00) \
+                                                                             | (((code) << 0) & 0x000003FF) \
+                                                                            ) \
+                                                         )
 #else
   #define Errorx_(code,errno,format,...) ((Errors)(intptr_t)(  (((errno) << 16) & 0xFFFF0000) \
                                                              | ((_Error_dataToIndex(format, ## __VA_ARGS__) << 10) & 0x0000FC00) \
@@ -104,71 +112,137 @@
 typedef enum
 {
   ERROR_CODE_NONE = 0,
+#line 15 "errors.def"
   ERROR_CODE_INSUFFICIENT_MEMORY = 1,
+#line 16 "errors.def"
   ERROR_CODE_INIT = 2,
+#line 17 "errors.def"
   ERROR_CODE_INVALID_ARGUMENT = 3,
+#line 18 "errors.def"
   ERROR_CODE_CONFIG = 4,
+#line 19 "errors.def"
   ERROR_CODE_ABORTED = 5,
+#line 20 "errors.def"
   ERROR_CODE_FUNCTION_NOT_SUPPORTED = 6,
+#line 21 "errors.def"
   ERROR_CODE_STILL_NOT_IMPLEMENTED = 7,
+#line 22 "errors.def"
   ERROR_CODE_TESTCODE = 8,
+#line 25 "errors.def"
   ERROR_CODE_INVALID_PATTERN = 9,
+#line 28 "errors.def"
   ERROR_CODE_INIT_TLS = 10,
+#line 29 "errors.def"
   ERROR_CODE_NO_TLS_CA = 11,
+#line 30 "errors.def"
   ERROR_CODE_NO_TLS_CERTIFICATE = 12,
+#line 31 "errors.def"
   ERROR_CODE_NO_TLS_KEY = 13,
+#line 32 "errors.def"
   ERROR_CODE_INVALID_TLS_CA = 14,
+#line 33 "errors.def"
   ERROR_CODE_INVALID_TLS_CERTIFICATE = 15,
+#line 34 "errors.def"
   ERROR_CODE_TLS_HANDSHAKE = 16,
+#line 35 "errors.def"
   ERROR_CODE_INVALID_SSH_SPEFICIER = 17,
+#line 36 "errors.def"
   ERROR_CODE_SSH_SESSION_FAIL = 18,
+#line 37 "errors.def"
   ERROR_CODE_SSH_AUTHENTIFICATION = 19,
+#line 40 "errors.def"
   ERROR_CODE_FTP_SESSION_FAIL = 20,
+#line 41 "errors.def"
   ERROR_CODE_FTP_AUTHENTIFICATION = 21,
+#line 44 "errors.def"
   ERROR_CODE_INIT_COMPRESS = 22,
+#line 45 "errors.def"
   ERROR_CODE_COMPRESS_ERROR = 23,
+#line 46 "errors.def"
   ERROR_CODE_DEFLATE_ERROR = 24,
+#line 47 "errors.def"
   ERROR_CODE_INFLATE_ERROR = 25,
+#line 48 "errors.def"
   ERROR_CODE_COMPRESS_EOF = 26,
+#line 51 "errors.def"
   ERROR_CODE_UNSUPPORTED_BLOCK_SIZE = 27,
+#line 52 "errors.def"
   ERROR_CODE_INIT_CRYPT = 28,
+#line 53 "errors.def"
   ERROR_CODE_NO_CRYPT_PASSWORD = 29,
+#line 54 "errors.def"
   ERROR_CODE_INVALID_PASSWORD = 30,
+#line 55 "errors.def"
   ERROR_CODE_INIT_CIPHER = 31,
+#line 56 "errors.def"
   ERROR_CODE_ENCRYPT_FAIL = 32,
+#line 57 "errors.def"
   ERROR_CODE_DECRYPT_FAIL = 33,
+#line 60 "errors.def"
   ERROR_CODE_CREATE_FILE = 34,
+#line 61 "errors.def"
   ERROR_CODE_OPEN_FILE = 35,
+#line 62 "errors.def"
   ERROR_CODE_OPEN_DIRECTORY = 36,
+#line 63 "errors.def"
   ERROR_CODE_IO_ERROR = 37,
+#line 66 "errors.def"
   ERROR_CODE_PARSE_DEVICE_LIST = 38,
+#line 67 "errors.def"
   ERROR_CODE_FILE_EXITS = 39,
+#line 68 "errors.def"
   ERROR_CODE_FILE_NOT_FOUND = 40,
+#line 71 "errors.def"
   ERROR_CODE_END_OF_ARCHIVE = 41,
+#line 72 "errors.def"
   ERROR_CODE_NO_FILE_ENTRY = 42,
+#line 73 "errors.def"
   ERROR_CODE_NO_FILE_DATA = 43,
+#line 74 "errors.def"
   ERROR_CODE_NO_DIRECTORY_ENTRY = 44,
+#line 75 "errors.def"
   ERROR_CODE_NO_LINK_ENTRY = 45,
+#line 76 "errors.def"
   ERROR_CODE_NO_SPECIAL_ENTRY = 46,
+#line 77 "errors.def"
   ERROR_CODE_END_OF_DATA = 47,
+#line 78 "errors.def"
   ERROR_CODE_CRC_ERROR = 48,
+#line 79 "errors.def"
   ERROR_CODE_FILE_INCOMPLETE = 49,
+#line 80 "errors.def"
   ERROR_CODE_WRONG_FILE_TYPE = 50,
+#line 81 "errors.def"
   ERROR_CODE_FILES_DIFFER = 51,
+#line 82 "errors.def"
   ERROR_CODE_CORRUPT_DATA = 52,
+#line 85 "errors.def"
   ERROR_CODE_NOT_AN_INCREMENTAL_FILE = 53,
+#line 86 "errors.def"
   ERROR_CODE_WRONG_INCREMENTAL_FILE_VERSION = 54,
+#line 87 "errors.def"
   ERROR_CODE_CORRUPT_INCREMENTAL_FILE = 55,
+#line 90 "errors.def"
   ERROR_CODE_HOST_NOT_FOUND = 56,
+#line 91 "errors.def"
   ERROR_CODE_CONNECT_FAIL = 57,
+#line 94 "errors.def"
   ERROR_CODE_NO_LOGIN_NAME = 58,
+#line 95 "errors.def"
   ERROR_CODE_NO_PASSWORD = 59,
+#line 96 "errors.def"
   ERROR_CODE_NETWORK_SEND = 60,
+#line 97 "errors.def"
   ERROR_CODE_NETWORK_RECEIVE = 61,
+#line 98 "errors.def"
   ERROR_CODE_NETWORK_EXECUTE_FAIL = 62,
+#line 101 "errors.def"
   ERROR_CODE_INVALID_DEVICE_SPECIFIER = 63,
+#line 102 "errors.def"
   ERROR_CODE_LOAD_VOLUME_FAIL = 64,
+#line 105 "errors.def"
   ERROR_CODE_FORK_FAIL = 65,
+#line 106 "errors.def"
   ERROR_CODE_EXEC_FAIL = 66,
 
   ERROR_CODE_UNKNOWN = 67
@@ -261,10 +335,12 @@ typedef intptr_t* Errors;
 * Output : -
 * Return : index
 * Notes  : internal usage only!
+*          additional format specifiers:
+*            %E convert errno to text (with lower case start)
 ***********************************************************************/
 
 #ifndef NDEBUG
-int _Error_dataToIndex(const char *fileName, ulong lineNb, const char *format, ...);
+int _Error_dataToIndex(const char *fileName, unsigned long lineNb, const char *format, ...);
 #else
 int _Error_dataToIndex(const char *format, ...);
 #endif
