@@ -101,8 +101,8 @@ CTEST(hashTables,clear)
                  CALLBACK_(NULL,NULL)
                 );
   HashTable_put(&hashTable,
-                "test1",
-                5,
+                "test",
+                4,
                 "data",
                 4
                );
@@ -118,68 +118,145 @@ CTEST(hashTables,clear)
   HashTable_done(&hashTable);
 }
 
-CTEST(hashTables,interate)
+CTEST(hashTables,find)
+{
+  HashTable            hashTable;
+  const HashTableEntry *hashTableEntry;
+
+  HashTable_init(&hashTable,
+                 100,
+                 CALLBACK_(NULL,NULL),
+                 CALLBACK_(NULL,NULL),
+                 CALLBACK_(NULL,NULL)
+                );
+  HashTable_put(&hashTable,
+                "test",
+                4,
+                "data",
+                4
+               );
+  HashTable_put(&hashTable,
+                "test2",
+                5,
+                "data",
+                4
+               );
+
+  hashTableEntry = HashTable_find(&hashTable,"test",4,NULL,NULL);
+  ASSERT_NOT_NULL(hashTableEntry);
+  ASSERT_TRUE(hashTableEntry->keyLength == 4);
+  ASSERT_TRUE(memcmp(hashTableEntry->keyData,"test",4) == 0);
+  ASSERT_TRUE(hashTableEntry->length == 4);
+  ASSERT_TRUE(memcmp(hashTableEntry->data,"data",4) == 0);
+
+  ASSERT_NULL(HashTable_find(&hashTable,"testX",5,NULL,NULL));
+  HashTable_done(&hashTable);
+}
+
+CTEST(hashTables,contains)
 {
   HashTable hashTable;
-#if 0
-  String         s;
-  StringIterator stringIterator;
-  uint           i;
-  char           ch;
-  Codepoint      codepoint;
 
-  s = HashTable_new();
+  HashTable_init(&hashTable,
+                 100,
+                 CALLBACK_(NULL,NULL),
+                 CALLBACK_(NULL,NULL),
+                 CALLBACK_(NULL,NULL)
+                );
+  HashTable_put(&hashTable,
+                "test",
+                4,
+                "data",
+                4
+               );
+  HashTable_put(&hashTable,
+                "test2",
+                5,
+                "data",
+                4
+               );
+  ASSERT_TRUE(HashTable_contains(&hashTable,"test",4));
+  ASSERT_TRUE(HashTable_contains(&hashTable,"test2",5));
+  ASSERT_FALSE(HashTable_contains(&hashTable,"test2X",6));
+  HashTable_done(&hashTable);
+}
 
-  HashTable_setCString(s,"test");
-  ASSERT_STR("test",HashTable_cString(s));
+CTEST(hashTables,interate)
+{
+  HashTable         hashTable;
+  HashTableIterator hashTableIterator;
+  bool              foundFlags[2];
+  void              *keyData,*data;
+  ulong             keyLength,length;
 
-  ASSERT_STR("aXaa",
-             HashTable_cString(HashTable_iterate(s,
-                                           CALLBACK_INLINE(const char*,(char ch, void *userData),
-                                                           {
-                                                             ASSERT_EQUAL(userData,NULL);
+  HashTable_init(&hashTable,
+                 100,
+                 CALLBACK_(NULL,NULL),
+                 CALLBACK_(NULL,NULL),
+                 CALLBACK_(NULL,NULL)
+                );
+  HashTable_put(&hashTable,
+                "test",
+                4,
+                "data",
+                4
+               );
+  HashTable_put(&hashTable,
+                "test2",
+                5,
+                "data2222",
+                8
+               );
 
-                                                             return (ch == 'e') ? "X" : "a";
-                                                           },NULL
-                                                          )
-                                          )
-                           )
-            );
+  foundFlags[0] = FALSE;
+  foundFlags[1] = FALSE;
+  HashTable_initIterator(&hashTableIterator,
+                         &hashTable
+                        );
+  ASSERT_TRUE(HashTable_getNext(&hashTableIterator,
+                                &keyData,
+                                &keyLength,
+                                &data,
+                                &length
+                               )
+             );
+  if ((keyLength == 4) && (memcmp(keyData,"test",4) == 0)) foundFlags[0] = TRUE;
+  if ((keyLength == 5) && (memcmp(keyData,"test2",5) == 0)) foundFlags[1] = TRUE;
+  ASSERT_TRUE(HashTable_getNext(&hashTableIterator,
+                                &keyData,
+                                &keyLength,
+                                &data,
+                                &length
+                               )
+             );
+  if ((keyLength == 4) && (memcmp(keyData,"test",4) == 0)) foundFlags[0] = TRUE;
+  if ((keyLength == 5) && (memcmp(keyData,"test2",5) == 0)) foundFlags[1] = TRUE;
+  ASSERT_FALSE(HashTable_getNext(&hashTableIterator,
+                                 &keyData,
+                                 &keyLength,
+                                 &data,
+                                 &length
+                                )
+             );
+  ASSERT_TRUE(foundFlags[0]);
+  ASSERT_TRUE(foundFlags[1]);
+  HashTable_doneIterator(&hashTableIterator);
 
-  HashTable_setCString(s,"test");
+  HashTable_done(&hashTable);
+}
 
-  stringIterator = HashTable_iterateBegin(s);
-  i = 0;
-  while (stringIterator < HashTable_iterateEnd(s))
-  {
-    ch = HashTable_iterateNext(s,&stringIterator);
-    switch (i)
-    {
-      case 0: ASSERT_EQUAL(ch,'t'); break;
-      case 1: ASSERT_EQUAL(ch,'e'); break;
-      case 2: ASSERT_EQUAL(ch,'s'); break;
-      case 3: ASSERT_EQUAL(ch,'t'); break;
-    }
-    i++;
-  }
+CTEST(hashTables,printStatistic)
+{
+  HashTable hashTable;
 
-  stringIterator = HashTable_iterateBegin(s);
-  i = 0;
-  while (stringIterator < HashTable_iterateEnd(s))
-  {
-    codepoint = HashTable_iterateNextUTF8(s,&stringIterator);
-    switch (i)
-    {
-      case 0: ASSERT_EQUAL(codepoint,'t'); break;
-      case 1: ASSERT_EQUAL(codepoint,'e'); break;
-      case 2: ASSERT_EQUAL(codepoint,'s'); break;
-      case 3: ASSERT_EQUAL(codepoint,'t'); break;
-    }
-    i++;
-  }
-
-  HashTable_delete(s);
-#endif
+  HashTable_init(&hashTable,
+                 100,
+                 CALLBACK_(NULL,NULL),
+                 CALLBACK_(NULL,NULL),
+                 CALLBACK_(NULL,NULL)
+                );
+  HashTable_printStatistic(&hashTable);
+  HashTable_done(&hashTable);
 }
 
 int main(int argc, const char *argv[])
