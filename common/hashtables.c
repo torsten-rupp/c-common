@@ -8,6 +8,8 @@
 *
 \***********************************************************************/
 
+#define __HASH_TABLE_IMPLEMENTATION__
+
 /****************************** Includes *******************************/
 #include <stdlib.h>
 #include <stdio.h>
@@ -15,17 +17,9 @@
 
 #include "global.h"
 
-#include "dictionaries.h"
+#include "hashtables.h"
 
 /****************** Conditional compilation switches *******************/
-
-#define COLLISION_ALGORITHM_LINEAR_PROBING    1
-#define COLLISION_ALGORITHM_QUADRATIC_PROBING 2
-#define COLLISION_ALGORITHM_REHASH            3
-
-//#define COLLISION_ALGORITHM COLLISION_ALGORITHM_LINEAR_PROBING
-//#define COLLISION_ALGORITHM COLLISION_ALGORITHM_QUADRATIC_PROBING
-#define COLLISION_ALGORITHM COLLISION_ALGORITHM_REHASH
 
 /***************************** Constants *******************************/
 
@@ -34,9 +28,13 @@
 #define DATA_DELTA_SIZE ( 4*1024)
 #define MAX_DATA_SIZE   (2*1024*1024*1024)
 
-/* hash table sizes */
+// hash table sizes
 LOCAL const uint TABLE_SIZES[] =
 {
+  63,
+  127,
+  257,
+  521,
   1031,
   2053,
   4099,
@@ -70,6 +68,101 @@ LOCAL const uint TABLE_SIZES[] =
 #ifdef __cplusplus
   extern "C" {
 #endif
+
+/***********************************************************************\
+* Name   : getHashTableSize
+* Purpose: get size of hash table
+* Input  : minSize - min. size
+* Output : -
+* Return : size
+* Notes  : -
+\***********************************************************************/
+
+ulong getHashTableSize(ulong minSize)
+{
+  uint i;
+
+  i = 0;
+  while (   (i < SIZE_OF_ARRAY(TABLE_SIZES))
+         && (minSize < TABLE_SIZES[i])
+        )
+  {
+    i++;
+  }
+
+  return (i < SIZE_OF_ARRAY(TABLE_SIZES)) ? TABLE_SIZES[i] : 0L;
+}
+
+/***********************************************************************\
+* Name   : calculateHash
+* Purpose: calculate hash
+* Input  : data   - data
+*          length - length of data
+* Output : -
+* Return : hash value
+* Notes  : -
+\***********************************************************************/
+
+LOCAL ulong calculateHash(const void *keyData, ulong keyLength)
+{
+  byte       hashBytes[4];
+  const byte *p;
+  uint       z;
+
+  assert(keyData != NULL);
+
+  p = (const byte*)keyData;
+
+  hashBytes[0] = (keyLength > 0) ? (*p) : 0; p++;
+  hashBytes[1] = (keyLength > 1) ? (*p) : 0; p++;
+  hashBytes[2] = (keyLength > 2) ? (*p) : 0; p++;
+  hashBytes[3] = (keyLength > 3) ? (*p) : 0; p++;
+  for (z = 4; z < keyLength; z++)
+  {
+    hashBytes[z%4] ^= (*p); p++;
+  }
+
+  return (ulong)(hashBytes[3] << 24) |
+         (ulong)(hashBytes[2] << 16) |
+         (ulong)(hashBytes[1] <<  8) |
+         (ulong)(hashBytes[0] <<  0);
+}
+
+/***********************************************************************\
+* Name   : defaultHashFunction
+* Purpose: default function to calculate hash value
+* Input  : keyData   - key data
+*          keyLength - length of key data
+*          userData  - user data
+* Output : -
+* Return : hash value
+* Notes  : -
+\***********************************************************************/
+
+LOCAL ulong defaultHashFunction(const void *keyData, ulong keyLength, void *userData)
+{
+  UNUSED_VARIABLE(userData);
+
+  return calculateHash(keyData,keyLength);
+}
+
+/***********************************************************************\
+* Name   : defaultEqualsFunction
+* Purpose: default function to check if key data equals
+* Input  : data0,data1 - data entries to compare
+*          length      - length of data entries
+*          userData    - user data
+* Output : -
+* Return : TRUE if equal, FALSE otherwise
+* Notes  : -
+\***********************************************************************/
+
+LOCAL bool defaultEqualsFunction(const void *data0, const void *data1, ulong length, void *userData)
+{
+  UNUSED_VARIABLE(userData);
+
+  return memcmp(data0,data1,length) == 0;
+}
 
 #if COLLISION_ALGORITHM==COLLISION_ALGORITHM_QUADRATIC_PROBING
 /***********************************************************************\
@@ -136,41 +229,6 @@ LOCAL_INLINE ulong rotHash(ulong hash, int n)
 }
 
 /***********************************************************************\
-* Name   : calculateHash
-* Purpose: calculate hash
-* Input  : data   - data
-*          length - length of data
-* Output : -
-* Return : hash value
-* Notes  : -
-\***********************************************************************/
-
-LOCAL ulong calculateHash(const void *keyData, ulong keyLength)
-{
-  byte       hashBytes[4];
-  const byte *p;
-  uint       z;
-
-  assert(keyData != NULL);
-
-  p = (const byte*)keyData;
-
-  hashBytes[0] = (keyLength > 0) ? (*p) : 0; p++;
-  hashBytes[1] = (keyLength > 1) ? (*p) : 0; p++;
-  hashBytes[2] = (keyLength > 2) ? (*p) : 0; p++;
-  hashBytes[3] = (keyLength > 3) ? (*p) : 0; p++;
-  for (z = 4; z < keyLength; z++)
-  {
-    hashBytes[z%4] ^= (*p); p++;
-  }
-
-  return (ulong)(hashBytes[3] << 24) |
-         (ulong)(hashBytes[2] << 16) |
-         (ulong)(hashBytes[1] <<  8) |
-         (ulong)(hashBytes[0] <<  0);
-}
-
-/***********************************************************************\
 * Name   : equalsEntry
 * Purpose: check if entry is equal to data
 * Input  : entry - entry
@@ -181,19 +239,34 @@ LOCAL ulong calculateHash(const void *keyData, ulong keyLength)
 * Notes  : -
 \***********************************************************************/
 
-LOCAL_INLINE bool equalsEntry(const HashTableEntry *entry,
-                              ulong                hash,
-                              ulong                key,
+LOCAL_INLINE bool equalsEntry(const HashTableEntry     *entry,
+                              ulong                    hash,
+                              const void               *keyData,
+                              ulong                    keyLength,
+                              HashTableEqualsFunction hashTableCompareFunction,
+                              void                     *hashTableCompareUserData
                              )
 {
   assert(entry != NULL);
   assert(keyData != NULL);
 
-  if ((hash == entry->hash) && (entry->keyLength == keyLength))
+  if (   (hash == entry->hash)
+      && (entry->keyData != NULL)
+      && (entry->keyLength == keyLength))
   {
-    if (entry->key == key)
+    if (hashTableCompareFunction != NULL)
     {
-      return TRUE;
+      if (hashTableCompareFunction(hashTableCompareUserData,entry->keyData,keyData,keyLength))
+      {
+        return TRUE;
+      }
+    }
+    else
+    {
+      if (memcmp(entry->keyData,keyData,keyLength) == 0)
+      {
+        return TRUE;
+      }
     }
   }
 
@@ -201,229 +274,90 @@ LOCAL_INLINE bool equalsEntry(const HashTableEntry *entry,
 }
 
 /***********************************************************************\
-* Name   : findEntryIndex
-* Purpose: find entry index of entry in table
-* Input  : entryTable - entry table
-*          hash       - data hash value
-*          key        - key value
-* Output : -
-* Return : index of -1 if entry not found
-* Notes  : -
-\***********************************************************************/
-
-LOCAL int findEntryIndex(HashTableEntryTable      *entryTable,
-                         ulong                    hash,
-                         ulong                    key,
-                         HashTableCompareFunction hashTableCompareFunction,
-                         void                     *hashTableCompareUserData
-                        )
-{
-  uint z,i;
-  int  entryIndex;
-
-  assert(entryTable != NULL);
-  assert(keyData != NULL);
-
-  for (z = 0; z <= entryTable->sizeIndex; z++)
-  {
-    #if COLLISION_ALGORITHM==COLLISION_ALGORITHM_LINEAR_PROBING
-      for (i = 0; i < LINEAR_PROBING_COUNT; i++)
-      {
-        entryIndex = addModulo(hash,i,TABLE_SIZES[z]);
-        if (equalsEntry(&entryTable->entries[entryIndex],
-                        hash,
-                        keyData,
-                        keyLength,
-                        hashTableCompareFunction,
-                        hashTableCompareUserData
-                       )
-           )
-        {
-          return entryIndex;
-        }
-      }
-    #endif /* COLLISION_ALGORITHM==COLLISION_ALGORITHM_LINEAR_PROBING */
-    #if COLLISION_ALGORITHM==COLLISION_ALGORITHM_QUADRATIC_PROBING
-      entryIndex = modulo(hash,TABLE_SIZES[z]);
-      if (equalsEntry(&entryTable->entries[entryIndex],
-                      hash,
-                      keyData,
-                      keyLength,
-                      hashTableCompareFunction,
-                      hashTableCompareUserData
-                     )
-         )
-      {
-        return entryIndex;
-      }
-      for (i = 1; i < QUADRATIC_PROBING_COUNT; i++)
-      {
-        entryIndex = addModulo(hash,i*i,TABLE_SIZES[z]);
-        if (equalsEntry(&entryTable->entries[entryIndex],
-                        hash,
-                        keyData,
-                        keyLength,
-                        hashTableCompareFunction,
-                        hashTableCompareUserData
-                       )
-           )
-        {
-          return entryIndex;
-        }
-        entryIndex = subModulo(hash,i*i,TABLE_SIZES[z]);
-        if (equalsEntry(&entryTable->entries[entryIndex],
-                        hash,
-                        keyData,
-                        keyLength,
-                        hashTableCompareFunction,
-                        hashTableCompareUserData
-                       )
-           )
-        {
-          return entryIndex;
-        }
-      }
-    #endif /* COLLISION_ALGORITHM==COLLISION_ALGORITHM_QUADRATIC_PROBING */
-    #if COLLISION_ALGORITHM==COLLISION_ALGORITHM_REHASH
-      for (i = 0; i < REHASHING_COUNT; i++)
-      {
-        entryIndex = rotHash(hash,i)%TABLE_SIZES[z];
-        if (equalsEntry(&entryTable->entries[entryIndex],
-                        hash,
-                        keyData,
-                        keyLength,
-                        hashTableCompareFunction,
-                        hashTableCompareUserData
-                       )
-           )
-        {
-          return entryIndex;
-        }
-      }
-    #endif /* COLLISION_ALGORITHM==COLLISION_ALGORITHM_REHASH */
-  }
-
-  return -1;
-}
-
-/***********************************************************************\
-* Name   : findFreeEntryIndex
-* Purpose: find free index in hash table
-* Input  : entryTable - entry table
-*          hash       - hash value
-* Output : -
-* Return : index of -1 if not free entry in table
-* Notes  : -
-\***********************************************************************/
-
-LOCAL int findFreeEntryIndex(HashTableEntryTable *entryTable,
-                             ulong               hash
-                            )
-{
-  uint z,i;
-  int  entryIndex;
-
-  assert(entryTable != NULL);
-
-  for (z = 0; z <= entryTable->sizeIndex; z++)
-  {
-    #if COLLISION_ALGORITHM==COLLISION_ALGORITHM_LINEAR_PROBING
-      for (i = 0; i < LINEAR_PROBING_COUNT; i++)
-      {
-        entryIndex = addModulo(hash,i,TABLE_SIZES[z]);
-        if (entryTable->entries[entryIndex].data == NULL)
-        {
-          return entryIndex;
-        }
-      }
-    #endif /* COLLISION_ALGORITHM==COLLISION_ALGORITHM_LINEAR_PROBING */
-    #if COLLISION_ALGORITHM==COLLISION_ALGORITHM_QUADRATIC_PROBING
-      entryIndex = modulo(hash,TABLE_SIZES[z]);
-      if (entryTable->entries[entryIndex].data == NULL)
-      {
-        return entryIndex;
-      }
-      for (i = 0; i < QUADRATIC_PROBING_COUNT; i++)
-      {
-        entryIndex = addModulo(hash,i*i,TABLE_SIZES[z]);
-        if (entryTable->entries[entryIndex].data == NULL)
-        {
-          return entryIndex;
-        }
-        entryIndex = subModulo(hash,i*i,TABLE_SIZES[z]);
-        if (entryTable->entries[entryIndex].data == NULL)
-        {
-          return entryIndex;
-        }
-      }
-    #endif /* COLLISION_ALGORITHM==COLLISION_ALGORITHM_QUADRATIC_PROBING */
-    #if COLLISION_ALGORITHM==COLLISION_ALGORITHM_REHASH
-      for (i = 0; i < REHASHING_COUNT; i++)
-      {
-        entryIndex = rotHash(hash,i)%TABLE_SIZES[z];
-        if (entryTable->entries[entryIndex].data == NULL)
-        {
-          return entryIndex;
-        }
-      }
-    #endif /* COLLISION_ALGORITHM==COLLISION_ALGORITHM_REHASH */
-  }
-
-  return -1;
-}
-
-/***********************************************************************\
 * Name   : findEntry
 * Purpose: find entry in hash table
-* Input  : hashTable                - hash table
-*          hash                     - data hash value
-*          data                     - data
-*          length                   - length of data
-* Output : hashTableEntryTable - hash table entry table
-*          index               - index in table
-* Return : TRUE if entry found, FALSE otherwise
+* Input  : hashTable          - hash table
+*          hash               - data hash value
+*          data               - data
+*          length             - length of data
+*          hashTableEntry     - hash table entry (can be NULL)
+*          prevHashTableEntry - orevious hash table entry (can be NULL)
+* Output : hashTableEntry     - hash table entry
+*          prevHashTableEntry - orevious hash table entry
+* Return : TRUE iff entry found
 * Notes  : -
 \***********************************************************************/
 
-LOCAL bool findEntry(HashTable           *hashTable,
-                     ulong               hash,
-                     const void          *keyData,
-                     ulong               keyLength,
-                     HashTableEntryTable **hashTableEntryTable,
-                     uint                *index
+LOCAL bool findEntry(HashTable      *hashTable,
+                     ulong          hash,
+                     const void     *keyData,
+                     ulong          keyLength,
+                     HashTableEntry **foundHashTableEntry,
+                     HashTableEntry **prevHashTableEntry
                     )
 {
-  uint z;
-  uint tableIndex;
-  int  i;
+  HashTableEntry *hashTableEntry;
+  ulong          tableIndex;
+  ulong          i;
 
   assert(hashTable != NULL);
   assert(keyData != NULL);
-  assert(hashTableEntryTable != NULL);
   assert(index != NULL);
 
-  (*hashTableEntryTable) = NULL;
-  (*index)                = -1;
-  z = 0;
-  while ((z < hashTable->entryTableCount) && ((*hashTableEntryTable) == NULL))
-  {
-    tableIndex = (hash+z)%hashTable->entryTableCount;
-    i = findEntryIndex(&hashTable->entryTables[tableIndex],
-                       hash,
-                       keyData,
-                       keyLength,
-                       hashTable->hashTableCompareFunction,
-                       hashTable->hashTableCompareUserData
-                      );
-    if (i >= 0)
-    {
-      (*hashTableEntryTable) = &hashTable->entryTables[tableIndex];
-      (*index)               = i;
-    }
-    z++;
-  }
+  tableIndex = hash%hashTable->size;
 
-  return ((*hashTableEntryTable) !=NULL);
+  #if   COLLISION_ALGORITHM==COLLISION_ALGORITHM_NONE
+    if (prevHashTableEntry != NULL) (*prevHashTableEntry) = NULL;
+    hashTableEntry = &hashTable->entries[tableIndex];
+    while (   (hashTableEntry != NULL)
+           && (hashTableEntry->keyData != NULL)
+           && (   (keyLength != hashTableEntry->keyLength)
+               || !hashTable->equalsFunction(keyData,
+                                             hashTableEntry->keyData,
+                                             keyLength,
+                                             hashTable->equalsUserData
+                                            )
+              )
+          )
+    {
+      if (prevHashTableEntry != NULL) (*prevHashTableEntry) = hashTableEntry;
+      hashTableEntry = hashTableEntry->next;
+    }
+    if (   (hashTableEntry != NULL)
+        && (hashTableEntry->keyData != NULL)
+       )
+    {
+      if (foundHashTableEntry != NULL) (*foundHashTableEntry) = hashTableEntry;
+      return TRUE;
+    }
+    else
+    {
+      return FALSE;
+    }
+  #elif COLLISION_ALGORITHM==COLLISION_ALGORITHM_LINEAR_PROBING
+    i = 0L;
+    do
+    {
+      hashTableEntry = &hashTable->entries[(tableIndex+i)%hashTable->size];
+      foundFlag = hashTable->equalsFunction(keyData,
+                                            hashTableEntry->data,
+                                            keyLength,
+                                            hashTable->equalsUserData
+                                           );
+      if (!foundFlag) i++;
+    }
+    while (   !foundFlag
+           && (i < hashTable->size)
+          );
+    hashTableEntry = hashTable->entries[hash%hashTable->size];
+    return foundFlag ? hashTableEntry : NULL;
+  #elif COLLISION_ALGORITHM==COLLISION_ALGORITHM_QUADRATIC_PROBING
+    #error NYI
+  #elif COLLISION_ALGORITHM==COLLISION_ALGORITHM_REHASH
+    #error NYI
+  #else
+    #error No hash table collision algorithm defined!
+  #endif /* COLLISION_ALGORITHM==COLLISION_ALGORITHM_... */
 }
 
 /***********************************************************************\
@@ -437,38 +371,52 @@ LOCAL bool findEntry(HashTable           *hashTable,
 * Notes  : -
 \***********************************************************************/
 
-LOCAL bool findFreeEntry(HashTable           *hashTable,
-                         ulong               hash,
-                         HashTableEntryTable **hashTableEntryTable,
-                         uint                *index
-                        )
+LOCAL HashTableEntry* findFreeEntry(HashTable *hashTable,
+                                    ulong     hash
+                                   )
 {
-  uint z;
-  uint tableIndex;
-  int  i;
+  HashTableEntry *hashTableEntry,*newHashTableEntry;
+  ulong          tableIndex;
+  ulong          i;
 
   assert(hashTable != NULL);
-  assert(hashTableEntryTable != NULL);
-  assert(index != NULL);
 
-  (*hashTableEntryTable) = NULL;
-  (*index)                = -1;
-  z = 0;
-  while ((z < hashTable->entryTableCount) && ((*hashTableEntryTable) == NULL))
-  {
-    tableIndex = (hash+z)%hashTable->entryTableCount;
-    i = findFreeEntryIndex(&hashTable->entryTables[tableIndex],
-                           hash
-                          );
-    if (i >= 0)
+  tableIndex = hash%hashTable->size;
+
+  #if   COLLISION_ALGORITHM==COLLISION_ALGORITHM_NONE
+    hashTableEntry = &hashTable->entries[tableIndex];
+    if (hashTableEntry->keyData != NULL)
     {
-      (*hashTableEntryTable) = &hashTable->entryTables[tableIndex];
-      (*index)               = i;
+      hashTableEntry = (HashTableEntry*)malloc(sizeof(HashTableEntry));
+      if (hashTableEntry != NULL)
+      {
+        hashTableEntry->next = hashTable->entries[tableIndex].next;
+        hashTable->entries[tableIndex].next = hashTableEntry;
+      }
     }
-    z++;
-  }
+  #elif COLLISION_ALGORITHM==COLLISION_ALGORITHM_LINEAR_PROBING
+    i = 0L;
+    do
+    {
+      hashTableEntry = &hashTable->entries[(tableIndex+i)%hashTable->size];
+      if (hashTableEntry->keyData != NULL)
+      {
+        i++;
+      }
+    }
+    while (   (hashTableEntry->keyData != NULL)
+           && (i < hashTable->size)
+          );
+    if (i >= hashTable->size) hashTableEntry = NULL;
+  #elif COLLISION_ALGORITHM==COLLISION_ALGORITHM_QUADRATIC_PROBING
+    #error NYI
+  #elif COLLISION_ALGORITHM==COLLISION_ALGORITHM_REHASH
+    #error NYI
+  #else
+    #error No hash table collision algorithm defined!
+  #endif /* COLLISION_ALGORITHM==COLLISION_ALGORITHM_... */
 
-  return ((*hashTableEntryTable) !=NULL);
+  return hashTableEntry;
 }
 
 /***********************************************************************\
@@ -498,120 +446,142 @@ LOCAL HashTableEntry *growTable(HashTableEntry *entries, uint oldSize, uint newS
 
 /*---------------------------------------------------------------------*/
 
-bool HashTable_init(HashTable *hashTable)
+bool HashTable_init(HashTable               *hashTable,
+                    ulong                   minSize,
+                    HashTableHashFunction   hashFunction,
+                    void                    *hashUserData,
+                    HashTableEqualsFunction equalsFunction,
+                    void                    *equalsUserData,
+                    HashTableFreeFunction   freeFunction,
+                    void                    *freeUserData
+                   )
 {
+  ulong size;
+
   assert(hashTable != NULL);
 
-  hashTable->entryTables = (HashTableEntryTable*)malloc(sizeof(HashTableEntryTable)*1);
-  if (hashTable->entryTables == NULL)
+  size = getHashTableSize(minSize);
+
+  hashTable->entries = (HashTableEntry*)calloc(size,sizeof(HashTableEntry));
+  if (hashTable->entries == NULL)
   {
     return FALSE;
   }
-  hashTable->entryTableCount = 1;
+  hashTable->entryCount     = 0;
+  hashTable->size           = size;
 
-  hashTable->entryTables[0].entries = (HashTableEntry*)calloc(TABLE_SIZES[0],sizeof(HashTableEntry));
-  if (hashTable->entryTables[0].entries == NULL)
-  {
-    free(hashTable->entryTables);
-    return FALSE;
-  }
-  hashTable->entryTables[0].sizeIndex  = 0;
-  hashTable->entryTables[0].entryCount = 0;
-
-  hashTable->hashTableCompareFunction = hashTableCompareFunction;
-  hashTable->hashTableCompareUserData = hashTableCompareUserData;
+  hashTable->hashFunction   = (hashFunction != NULL) ? hashFunction : defaultHashFunction;
+  hashTable->hashUserData   = hashUserData;
+  hashTable->equalsFunction = (equalsFunction != NULL) ? equalsFunction : defaultEqualsFunction;
+  hashTable->equalsUserData = equalsUserData;
+  hashTable->freeFunction   = freeFunction;
+  hashTable->freeUserData   = freeUserData;
 
   return TRUE;
 }
 
-void HashTable_done(HashTable             *hashTable,
-                    HashTableFreeFunction hashTableFreeFunction,
-                    void                  *hashTableFreeUserData
-                   )
+void HashTable_done(HashTable *hashTable)
 {
-  uint z;
-  uint index;
+  uint           i;
+  HashTableEntry *hashTableEntry;
 
   assert(hashTable != NULL);
-  assert(hashTable->entryTables != NULL);
+  assert(hashTable->entries != NULL);
 
-  for (z = 0; z < hashTable->entryTableCount; z++)
+  for (i = 0; i < hashTable->size; i++)
   {
-    assert(hashTable->entryTables[z].entries != NULL);
-
-    for (index = 0; index < TABLE_SIZES[hashTable->entryTables[z].sizeIndex]; index++)
+    if (hashTable->entries[i].data != NULL)
     {
-      if (hashTable->entryTables[z].entries[index].data != NULL)
-      {
-        if (hashTableFreeFunction != NULL)
+      #if HASH_TABLE_COLLISION_ALGORITHM == HASH_TABLE_COLLISION_ALGORITHM_NONE
+        hashTableEntry = &hashTable->entries[i];
+        while (hashTableEntry != NULL)
         {
-          hashTableFreeFunction(hashTableFreeUserData,
-                                hashTable->entryTables[z].entries[index].data,
-                                hashTable->entryTables[z].entries[index].length
-                               );
+          if (hashTableEntry->keyData != NULL)
+          {
+            if (hashTable->freeFunction != NULL)
+            {
+              hashTable->freeFunction(hashTableEntry->data,
+                                      hashTableEntry->length,
+                                      hashTable->freeUserData
+                                     );
+            }
+            if (hashTableEntry->data != NULL) free(hashTableEntry->data);
+            free(hashTableEntry->keyData);
+          }
+
+          hashTableEntry = hashTableEntry->next;
         }
-        free(hashTable->entryTables[z].entries[index].data);
-        free(hashTable->entryTables[z].entries[index].keyData);
-      }
-    }
-    free(hashTable->entryTables[z].entries);
-  }
-  free(hashTable->entryTables);
-}
-
-void HashTable_clear(HashTable             *hashTable,
-                     HashTableFreeFunction hashTableFreeFunction,
-                     void                  *hashTableFreeUserData
-                    )
-{
-  uint z;
-  uint index;
-
-  assert(hashTable != NULL);
-  assert(hashTable->entryTables != NULL);
-
-  for (z = 0; z < hashTable->entryTableCount; z++)
-  {
-    assert(hashTable->entryTables[z].entries != NULL);
-
-    for (index = 0; index < TABLE_SIZES[hashTable->entryTables[z].sizeIndex]; index++)
-    {
-      if (hashTable->entryTables[z].entries[index].data != NULL)
-      {
-        if (hashTableFreeFunction != NULL)
+      #else
+        if (hashTableEntry->keyData != NULL)
         {
-          hashTableFreeFunction(hashTableFreeUserData,
-                                hashTable->entryTables[z].entries[index].data,
-                                hashTable->entryTables[z].entries[index].length
-                               );
+          if (hashTable->freeFunction != NULL)
+          {
+            hashTable->freeFunction(hashTable->entries[i].data,
+                                    hashTable->entries[i].length,
+                                    hashTable->freeUserData
+                                   );
+          }
+          if (hashTableEntry->data != NULL) free(hashTable->entries[i].data);
+          free(hashTable->entries[i].keyData);
         }
-        free(hashTable->entryTables[z].entries[index].data);
-        free(hashTable->entryTables[z].entries[index].keyData);
-
-        hashTable->entryTables[z].entries[index].data = NULL;
-      }
+      #endif
     }
   }
+  free(hashTable->entries);
 }
 
-ulong HashTable_count(const HashTable *hashTable)
+void HashTable_clear(HashTable *hashTable)
 {
-  ulong count;
-  uint  z;
+  uint           i;
+  HashTableEntry *hashTableEntry;
 
   assert(hashTable != NULL);
-  assert(hashTable->entryTables != NULL);
+  assert(hashTable->entries != NULL);
 
-  count = 0;
-  for (z = 0; z < hashTable->entryTableCount; z++)
+  for (i = 0; i < hashTable->size; i++)
   {
-    count += hashTable->entryTables[z].entryCount;
-  }
+    #if HASH_TABLE_COLLISION_ALGORITHM == HASH_TABLE_COLLISION_ALGORITHM_NONE
+      hashTableEntry = &hashTable->entries[i];
+      while (hashTableEntry != NULL)
+      {
+        if (hashTableEntry->keyData != NULL)
+        {
+          if (hashTable->freeFunction != NULL)
+          {
+            hashTable->freeFunction(hashTable->freeUserData,
+                                    hashTableEntry->data,
+                                    hashTableEntry->length
+                                   );
+          }
+          if (hashTableEntry->data != NULL) free(hashTableEntry->data);;
+          free(hashTableEntry->keyData);
 
-  return count;
+          hashTableEntry->keyData = NULL;
+        }
+
+        hashTableEntry = hashTableEntry->next;
+      }
+    #else
+      if (hashTableEntry->keyData != NULL)
+      {
+        if (hashTable->freeFunction != NULL)
+        {
+          hashTable->freeFunction(hashTable->freeUserData,
+                                  hashTable->entries[i].data,
+                                  hashTable->entries[i].length
+                                 );
+        }
+        free(hashTable->entries[i].data);
+        free(hashTable->entries[i].keyData);
+
+        hashTableEntry->keyData = NULL;
+      }
+    #endif
+  }
+  hashTable->entryCount = 0L;
 }
 
-bool HashTable_add(HashTable *hashTable,
+bool HashTable_put(HashTable *hashTable,
                    const void *keyData,
                    ulong      keyLength,
                    const void *data,
@@ -619,293 +589,152 @@ bool HashTable_add(HashTable *hashTable,
                   )
 {
   ulong               hash;
-  HashTableEntryTable *hashTableEntryTable;
+  HashTableEntry      *hashTableEntry;
   uint                entryIndex;
   void                *newData;
   uint                tableIndex;
-  uint                newSizeIndex;
   uint                z,i;
-  HashTableEntry      *newEntries;
-  HashTableEntryTable *entryTables;
 
   assert(hashTable != NULL);
+  assert(hashTable->entries != NULL);
 
-  hash = calculateHash(keyData,keyLength);
+  hash = (hashTable->hashFunction != NULL)
+           ? hashTable->hashFunction(keyData,keyLength,hashTable->hashUserData)
+           : calculateHash(keyData,keyLength);
 
-  /* update entry */
-  if (findEntry(hashTable,hash,keyData,keyLength,&hashTableEntryTable,&entryIndex))
+  if (findEntry(hashTable,hash,keyData,keyLength,&hashTableEntry,NULL))
   {
-    assert(hashTableEntryTable->entries != NULL);
+fprintf(stderr,"%s:%d: _\n",__FILE__,__LINE__);
+    // update entry
 
     // allocate/resize data memory
-    if (hashTableEntryTable->entries[entryIndex].length != length)
+    if (hashTableEntry->length != length)
     {
-      newData = realloc(hashTableEntryTable->entries[entryIndex].data,length);
+      newData = realloc(hashTableEntry->data,length);
       if (newData == NULL)
       {
         return FALSE;
       }
-      hashTableEntryTable->entries[entryIndex].data   = newData;
-      hashTableEntryTable->entries[entryIndex].length = length;
+      hashTableEntry->data   = newData;
+      hashTableEntry->length = length;
     }
 
     // copy data
-    memcpy(hashTableEntryTable->entries[entryIndex].data,data,length);
+    memcpy(hashTableEntry->data,data,length);
 
-    return TRUE;
-  }
-
-  /* add entry in existing table */
-  if (findFreeEntry(hashTable,hash,&hashTableEntryTable,&entryIndex))
-  {
-    assert(hashTableEntryTable->entries != NULL);
-
-    // allocate key memory
-    hashTableEntryTable->entries[entryIndex].keyData = malloc(keyLength);
-    if (hashTableEntryTable->entries[entryIndex].keyData == NULL)
-    {
-      return FALSE;
-    }
-
-    // allocate data memory
-    hashTableEntryTable->entries[entryIndex].data = malloc(length);
-    if (hashTableEntryTable->entries[entryIndex].data == NULL)
-    {
-      free(hashTableEntryTable->entries[entryIndex].keyData);
-      return FALSE;
-    }
-
-    // copy key data
-    hashTableEntryTable->entries[entryIndex].hash = hash;
-    memcpy(hashTableEntryTable->entries[entryIndex].keyData,keyData,keyLength);
-    hashTableEntryTable->entries[entryIndex].keyLength = keyLength;
-
-    // copy data
-    memcpy(hashTableEntryTable->entries[entryIndex].data,data,length);
-    hashTableEntryTable->entries[entryIndex].length = length;
-
-    hashTableEntryTable->entryCount++;
-
-    return TRUE;
-  }
-
-  /* find a table which can be resized and where new entry can be
-     stored in extended table, store entry in extended table
-  */
-  hashTableEntryTable = NULL;
-  z = 0;
-  while ((z < hashTable->entryTableCount) && (hashTableEntryTable == NULL))
-  {
-    assert(hashTable->entryTables != NULL);
-
-    tableIndex = (hash+z)%hashTable->entryTableCount;
-    newSizeIndex = hashTable->entryTables[tableIndex].sizeIndex+1;
-    while ((newSizeIndex < SIZE_OF_ARRAY(TABLE_SIZES)) && (hashTableEntryTable == NULL))
-    {
-      #if COLLISION_ALGORITHM==COLLISION_ALGORITHM_LINEAR_PROBING
-        entryIndex = 0;
-        i = 0;
-        while ((i < LINEAR_PROBING_COUNT) && (entryIndex < TABLE_SIZES[hashTable->entryTables[tableIndex].sizeIndex]))
-        {
-          entryIndex = addModulo(hash,i,TABLE_SIZES[newSizeIndex]);
-          i++;
-        }
-      #endif /* COLLISION_ALGORITHM==COLLISION_ALGORITHM_LINEAR_PROBING */
-      #if COLLISION_ALGORITHM==COLLISION_ALGORITHM_QUADRATIC_PROBING
-        entryIndex = modulo(hash,TABLE_SIZES[newSizeIndex]);
-        if (entryIndex < TABLE_SIZES[hashTable->entryTables[tableIndex].sizeIndex])
-        {
-          i = 0;
-          while (i < QUADRATIC_PROBING_COUNT)
-          {
-            entryIndex = addModulo(hash,i*i,TABLE_SIZES[newSizeIndex]);
-            if (entryIndex >= TABLE_SIZES[hashTable->entryTables[tableIndex].sizeIndex]) break;
-            entryIndex = subModulo(hash,i*i,TABLE_SIZES[newSizeIndex]);
-            if (entryIndex >= TABLE_SIZES[hashTable->entryTables[tableIndex].sizeIndex]) break;
-            i++;
-          }
-        }
-      #endif /* COLLISION_ALGORITHM==COLLISION_ALGORITHM_QUADRATIC_PROBING */
-      #if COLLISION_ALGORITHM==COLLISION_ALGORITHM_REHASH
-        entryIndex = 0;
-        i = 0;
-        while ((i < REHASHING_COUNT) && (entryIndex < TABLE_SIZES[hashTable->entryTables[tableIndex].sizeIndex]))
-        {
-          entryIndex = rotHash(hash,i)%TABLE_SIZES[newSizeIndex];
-          i++;
-        }
-      #endif /* COLLISION_ALGORITHM==COLLISION_ALGORITHM_REHASH */
-      if (entryIndex >= TABLE_SIZES[hashTable->entryTables[tableIndex].sizeIndex])
-      {
-//fprintf(stderr,"%s,%d: vor grow %p\n",__FILE__,__LINE__,hashTable->entryTables[tableIndex].entries);
-        newEntries = growTable(hashTable->entryTables[tableIndex].entries,
-                               TABLE_SIZES[hashTable->entryTables[tableIndex].sizeIndex],
-                               TABLE_SIZES[newSizeIndex]
-                              );
-        if (newEntries != NULL)
-        {
-          hashTable->entryTables[tableIndex].entries   = newEntries;
-          hashTable->entryTables[tableIndex].sizeIndex = newSizeIndex;
-
-          hashTableEntryTable = &hashTable->entryTables[tableIndex];
-        }
-//fprintf(stderr,"%s,%d: nach grow %p\n",__FILE__,__LINE__,hashTable->entryTables[tableIndex].entries);
-      }
-      newSizeIndex++;
-    }
-    z++;
-  }
-  if (hashTableEntryTable != NULL)
-  {
-    assert(hashTableEntryTable->entries != NULL);
-
-    // allocate key memory
-    hashTableEntryTable->entries[entryIndex].keyData = malloc(keyLength);
-    if (hashTableEntryTable->entries[entryIndex].keyData == NULL)
-    {
-      return FALSE;
-    }
-
-    // allocate data memory
-    hashTableEntryTable->entries[entryIndex].data = malloc(length);
-    if (hashTableEntryTable->entries[entryIndex].data == NULL)
-    {
-      free(hashTableEntryTable->entries[entryIndex].keyData);
-      return FALSE;
-    }
-
-    // clopy key data
-    hashTableEntryTable->entries[entryIndex].hash = hash;
-    memcpy(hashTableEntryTable->entries[entryIndex].keyData,keyData,keyLength);
-    hashTableEntryTable->entries[entryIndex].keyLength = keyLength;
-
-    // copy data
-    memcpy(hashTableEntryTable->entries[entryIndex].data,data,length);
-    hashTableEntryTable->entries[entryIndex].length = length;
-
-    hashTableEntryTable->entryCount++;
-
-    return TRUE;
-  }
-
-  /* add new table and store entry in new table */
-  newEntries = (HashTableEntry*)calloc(TABLE_SIZES[0],sizeof(HashTableEntry));
-  if (newEntries == NULL)
-  {
-    return FALSE;
-  }
-  entryTables = (HashTableEntryTable*)realloc(hashTable->entryTables,(hashTable->entryTableCount+1)*sizeof(HashTableEntryTable));
-  if (entryTables == NULL)
-  {
-    free(newEntries);
-    return FALSE;
-  }
-  entryTables[hashTable->entryTableCount].entries    = newEntries;
-  entryTables[hashTable->entryTableCount].sizeIndex  = 0;
-  entryTables[hashTable->entryTableCount].entryCount = 0;
-  hashTable->entryTables = entryTables;
-  hashTable->entryTableCount++;
-
-  hashTableEntryTable = &entryTables[hashTable->entryTableCount-1];
-  entryIndex = rotHash(hash,0)%TABLE_SIZES[0];
-  hashTableEntryTable->entries[entryIndex].keyData = malloc(keyLength);
-  if (hashTableEntryTable->entries[entryIndex].keyData == NULL)
-  {
-    return FALSE;
-  }
-  hashTableEntryTable->entries[entryIndex].data = malloc(length);
-  if (hashTableEntryTable->entries[entryIndex].data == NULL)
-  {
-    free(hashTableEntryTable->entries[entryIndex].keyData);
-    return FALSE;
-  }
-  hashTableEntryTable->entries[entryIndex].hash = hash;
-  memcpy(hashTableEntryTable->entries[entryIndex].keyData,keyData,keyLength);
-  hashTableEntryTable->entries[entryIndex].keyLength = keyLength;
-  memcpy(hashTableEntryTable->entries[entryIndex].data,data,length);
-  hashTableEntryTable->entries[entryIndex].length = length;
-  hashTableEntryTable->entryCount++;
-
-  return TRUE;
-}
-
-void HashTable_rem(HashTable             *hashTable,
-                   const void            *keyData,
-                   ulong                 keyLength,
-                   HashTableFreeFunction hashTableFreeFunction,
-                   void                  *hashTableFreeUserData
-                  )
-{
-  ulong               hash;
-  HashTableEntryTable *hashTableEntryTable;
-  uint                index;
-
-  assert(hashTable != NULL);
-
-  hash = calculateHash(keyData,keyLength);
-
-  /* remove entry */
-  if (findEntry(hashTable,hash,keyData,keyLength,&hashTableEntryTable,&index))
-  {
-    assert(hashTableEntryTable->entries != NULL);
-    assert(hashTableEntryTable->entryCount > 0);
-
-    if (hashTableFreeFunction != NULL)
-    {
-      hashTableFreeFunction(hashTableFreeUserData,
-                            hashTableEntryTable->entries[index].data,
-                            hashTableEntryTable->entries[index].length
-                           );
-    }
-    free(hashTableEntryTable->entries[index].data);
-    free(hashTableEntryTable->entries[index].keyData);
-
-    hashTableEntryTable->entries[index].data      = NULL;
-    hashTableEntryTable->entries[index].length    = 0;
-    hashTableEntryTable->entries[index].keyData   = NULL;
-    hashTableEntryTable->entries[index].keyLength = 0;
-
-    hashTableEntryTable->entryCount--;
-  }
-}
-
-bool HashTable_find(HashTable  *hashTable,
-                    const void *keyData,
-                    ulong      keyLength,
-                    void       **data,
-                    ulong      *length
-                   )
-{
-  ulong               hash;
-  HashTableEntryTable *hashTableEntryTable;
-  uint                index;
-
-  assert(hashTable != NULL);
-
-  hash = calculateHash(keyData,keyLength);
-
-  if (findEntry(hashTable,hash,keyData,keyLength,&hashTableEntryTable,&index))
-  {
-    assert(hashTableEntryTable->entries != NULL);
-
-    if (data   != NULL) (*data)   = hashTableEntryTable->entries[index].data;
-    if (length != NULL) (*length) = hashTableEntryTable->entries[index].length;
     return TRUE;
   }
   else
   {
-    return FALSE;
+    // add entry
+
+    hashTableEntry =findFreeEntry(hashTable,hash);
+    if (hashTableEntry != NULL)
+    {
+      // allocate key memory
+      hashTableEntry->keyData = malloc(keyLength);
+      if (hashTableEntry->keyData == NULL)
+      {
+        return FALSE;
+      }
+
+      // allocate data memory
+      hashTableEntry->data = malloc(length);
+      if (hashTableEntry->data == NULL)
+      {
+        free(hashTableEntry->keyData);
+        hashTableEntry->keyData = NULL;
+        return FALSE;
+      }
+
+      // copy key data
+      memcpy(hashTableEntry->keyData,keyData,keyLength);
+      hashTableEntry->keyLength = keyLength;
+
+      // copy data
+      memcpy(hashTableEntry->data,data,length);
+      hashTableEntry->length = length;
+
+      hashTable->entryCount++;
+
+      return TRUE;
+    }
+    else
+    {
+      return FALSE;
+    }
   }
 }
 
-bool HashTable_contain(HashTable  *hashTable,
-                       const void *keyData,
-                       ulong      keyLength
-                      )
+void HashTable_remove(HashTable  *hashTable,
+                      const void *keyData,
+                      ulong      keyLength
+                     )
 {
-  assert(hashTable != NULL);
+  ulong          hash;
+  HashTableEntry *hashTableEntry,*prevHashTableEntry;
+  uint           index;
 
-  return HashTable_find(hashTable,keyData,keyLength,NULL,NULL);
+  assert(hashTable != NULL);
+  assert(hashTable->entries != NULL);
+
+  hash = calculateHash(keyData,keyLength);
+
+  // remove entry
+  if (findEntry(hashTable,hash,keyData,keyLength,&hashTableEntry,&prevHashTableEntry))
+  {
+    assert(hashTable->entryCount > 0);
+
+    if (hashTable->freeFunction != NULL)
+    {
+      hashTable->freeFunction(hashTableEntry->data,
+                              hashTableEntry->length,
+                              hashTable->freeUserData
+                             );
+    }
+    if (hashTableEntry->data != NULL) free(hashTableEntry->data);;
+    free(hashTableEntry->keyData);
+
+    hashTableEntry->keyData = NULL;
+    #if HASH_TABLE_COLLISION_ALGORITHM == HASH_TABLE_COLLISION_ALGORITHM_NONE
+      if (prevHashTableEntry != NULL)
+      {
+        prevHashTableEntry->next = hashTableEntry->next;
+        free(hashTableEntry);
+      }
+    #endif
+
+    hashTable->entryCount--;
+  }
+}
+
+HashTableEntry *HashTable_find(HashTable  *hashTable,
+                               const void *keyData,
+                               ulong      keyLength,
+                               void       **data,
+                               ulong      *length
+                              )
+{
+  ulong          hash;
+  HashTableEntry *hashTableEntry;
+  uint           index;
+
+  assert(hashTable != NULL);
+  assert(hashTable->entries != NULL);
+
+  hash = calculateHash(keyData,keyLength);
+
+  if (findEntry(hashTable,hash,keyData,keyLength,&hashTableEntry,NULL))
+  {
+    if (data   != NULL) (*data)   = hashTableEntry->data;
+    if (length != NULL) (*length) = hashTableEntry->length;
+
+    return hashTableEntry;
+  }
+  else
+  {
+    return NULL;
+  }
 }
 
 void HashTable_initIterator(HashTableIterator *hashTableIterator,
@@ -914,10 +743,11 @@ void HashTable_initIterator(HashTableIterator *hashTableIterator,
 {
   assert(hashTableIterator != NULL);
   assert(hashTable != NULL);
+  assert(hashTable->entries != NULL);
 
-  hashTableIterator->hashTable = hashTable;
-  hashTableIterator->i          = 0;
-  hashTableIterator->j          = 0;
+  hashTableIterator->hashTable      = hashTable;
+  hashTableIterator->i              = 0;
+  hashTableIterator->hashTableEntry = NULL;
 }
 
 void HashTable_doneIterator(HashTableIterator *hashTableIterator)
@@ -938,6 +768,8 @@ bool HashTable_getNext(HashTableIterator *hashTableIterator,
   HashTableEntry *hashTableEntry;
 
   assert(hashTableIterator != NULL);
+  assert(hashTableIterator->hashTable != NULL);
+  assert(hashTableIterator->hashTable->entries != NULL);
 
   if (keyData   != NULL) (*keyData)   = NULL;
   if (keyLength != NULL) (*keyLength) = 0;
@@ -945,17 +777,29 @@ bool HashTable_getNext(HashTableIterator *hashTableIterator,
   if (length    != NULL) (*length)    = 0;
 
   foundFlag = FALSE;
-  if (hashTableIterator->i < hashTableIterator->hashTable->entryTableCount)
-  {
-    assert(hashTableIterator->hashTable->entryTables != NULL);
 
+  #if HASH_TABLE_COLLISION_ALGORITHM == HASH_TABLE_COLLISION_ALGORITHM_NONE
+    if (hashTableIterator->hashTableEntry != NULL)
+    {
+      if (keyData   != NULL) (*keyData)   = hashTableIterator->hashTableEntry->keyData;
+      if (keyLength != NULL) (*keyLength) = hashTableIterator->hashTableEntry->keyLength;
+      if (data      != NULL) (*data)      = hashTableIterator->hashTableEntry->data;
+      if (length    != NULL) (*length)    = hashTableIterator->hashTableEntry->length;
+
+      hashTableIterator->hashTableEntry = hashTableIterator->hashTableEntry->next;
+
+      foundFlag = TRUE;
+    }
+  #endif
+
+  if (!foundFlag && (hashTableIterator->i < hashTableIterator->hashTable->size))
+  {
     do
     {
-      /* get entry */
-      assert(hashTableIterator->hashTable->entryTables[hashTableIterator->i].entries != NULL);
-      hashTableEntry = &hashTableIterator->hashTable->entryTables[hashTableIterator->i].entries[hashTableIterator->j];
+      // get entry
+      hashTableEntry = &hashTableIterator->hashTable->entries[hashTableIterator->i];
 
-      /* check if used/empty */
+      // check if used/empty
       if (hashTableEntry->data != NULL)
       {
         if (keyData   != NULL) (*keyData)   = hashTableEntry->keyData;
@@ -965,19 +809,21 @@ bool HashTable_getNext(HashTableIterator *hashTableIterator,
         foundFlag = TRUE;
       }
 
-      /* next entry */
-      if (hashTableIterator->j < TABLE_SIZES[hashTableIterator->hashTable->entryTables[hashTableIterator->i].sizeIndex]-1)
-      {
-        hashTableIterator->j++;
-      }
-      else
-      {
-        hashTableIterator->i++;
-        hashTableIterator->j = 0;
-      }
+      // next entry
+      #if HASH_TABLE_COLLISION_ALGORITHM == HASH_TABLE_COLLISION_ALGORITHM_NONE
+        if (hashTableEntry->next != NULL)
+        {
+          hashTableIterator->hashTableEntry = hashTableEntry->next;
+        }
+        else
+        {
+          hashTableIterator->i++;
+        }
+      #else
+      #endif
     }
     while (!foundFlag
-           && (hashTableIterator->i < hashTableIterator->hashTable->entryTableCount)
+           && (hashTableIterator->i < hashTableIterator->hashTable->size)
           );
   }
 
@@ -985,8 +831,8 @@ bool HashTable_getNext(HashTableIterator *hashTableIterator,
 }
 
 bool HashTable_iterate(HashTable                *hashTable,
-                       HashTableIterateFunction hashTableIterateFunction,
-                       void                     *hashTableIterateUserData
+                       HashTableIterateFunction iterateFunction,
+                       void                     *iterateUserData
                       )
 {
   HashTableIterator hashTableIterator;
@@ -997,7 +843,7 @@ bool HashTable_iterate(HashTable                *hashTable,
   ulong             length;
 
   assert(hashTable != NULL);
-  assert(hashTableIterateFunction != NULL);
+  assert(iterateFunction != NULL);
 
   okFlag = TRUE;
   HashTable_initIterator(&hashTableIterator,hashTable);
@@ -1010,7 +856,7 @@ bool HashTable_iterate(HashTable                *hashTable,
          && okFlag
         )
   {
-    okFlag = hashTableIterateFunction(hashTableIterateUserData,keyData,keyLength,data,length);
+    okFlag = iterateFunction(keyData,keyLength,data,length,iterateUserData);
   }
   HashTable_doneIterator(&hashTableIterator);
 
@@ -1020,25 +866,11 @@ bool HashTable_iterate(HashTable                *hashTable,
 #ifndef NDEBUG
 void HashTable_printStatistic(const HashTable *hashTable)
 {
-  ulong totalEntryCount,totalIndexCount;
-  uint  z;
-
   assert(hashTable != NULL);
 
   fprintf(stderr,"Hash table statistics:\n");
-  fprintf(stderr,"  tables : %d\n",hashTable->entryTableCount);
-
-  totalEntryCount = 0;
-  totalIndexCount = 0;
-  for (z = 0; z < hashTable->entryTableCount; z++)
-  {
-    fprintf(stderr,"    table #%02d: %u entries/%u size\n",z,hashTable->entryTables[z].entryCount,TABLE_SIZES[hashTable->entryTables[z].sizeIndex]);
-    totalEntryCount += hashTable->entryTables[z].entryCount;
-    totalIndexCount += TABLE_SIZES[hashTable->entryTables[z].sizeIndex];
-  }
-
-  fprintf(stderr,"  total entries: %lu\n",totalEntryCount);
-  fprintf(stderr,"  total size:    %lu\n",totalIndexCount);
+  fprintf(stderr,"    %u entries\n",hashTable->entryCount);
+  fprintf(stderr,"    %u size\n",hashTable->size);
 }
 #endif /* NDEBUG */
 
