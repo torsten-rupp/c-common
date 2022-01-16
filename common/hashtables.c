@@ -239,34 +239,24 @@ LOCAL_INLINE ulong rotHash(ulong hash, int n)
 * Notes  : -
 \***********************************************************************/
 
-LOCAL_INLINE bool equalsEntry(const HashTableEntry     *entry,
-                              ulong                    hash,
-                              const void               *keyData,
-                              ulong                    keyLength,
-                              HashTableEqualsFunction hashTableCompareFunction,
-                              void                     *hashTableCompareUserData
+LOCAL_INLINE bool equalsEntry(const HashTableEntry    *hashTableEntry,
+                              ulong                   hash,
+                              const void              *keyData,
+                              ulong                   keyLength,
+                              HashTableEqualsFunction equalsFunction,
+                              void                    *equalsUserData
                              )
 {
-  assert(entry != NULL);
+  assert(hashTableEntry != NULL);
   assert(keyData != NULL);
+  assert(equalsFunction != NULL);
 
-  if (   (hash == entry->hash)
-      && (entry->keyData != NULL)
-      && (entry->keyLength == keyLength))
+  if (   (hashTableEntry->keyData != NULL)
+      && (hashTableEntry->keyLength == keyLength))
   {
-    if (hashTableCompareFunction != NULL)
+    if (equalsFunction(equalsUserData,hashTableEntry->keyData,keyData,keyLength))
     {
-      if (hashTableCompareFunction(hashTableCompareUserData,entry->keyData,keyData,keyLength))
-      {
-        return TRUE;
-      }
-    }
-    else
-    {
-      if (memcmp(entry->keyData,keyData,keyLength) == 0)
-      {
-        return TRUE;
-      }
+      return TRUE;
     }
   }
 

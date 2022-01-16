@@ -46,11 +46,11 @@ typedef ulong(*HashTableHashFunction)(const void *keyData, ulong keyLength, void
 /***********************************************************************\
 * Name   : HashTableEqualsFunction
 * Purpose: compare hash table entries
-* Input  : data0,data1 - data entries to compare
-*          length      - length of data entries
+* Input  : data0,data1 - data to compare
+*          length      - length of data
 *          userData    - user data
 * Output : -
-* Return : TRUE if equal, FALSE otherwise
+* Return : TRUE iff equal
 * Notes  : -
 \***********************************************************************/
 
@@ -64,7 +64,7 @@ typedef bool(*HashTableEqualsFunction)(const void *data0, const void *data1, ulo
 *          userData - user data
 * Output : -
 * Return : -
-* Notes  : -
+* Notes  : data is freed by the hash table!
 \***********************************************************************/
 
 typedef void(*HashTableFreeFunction)(const void *data, ulong length, void *userData);
@@ -75,8 +75,6 @@ typedef struct HashTablEntry
   #ifdef HASH_TABLE_COLLISION_ALGORITHM == HASH_TABLE_COLLISION_ALGORITHM_NONE
     struct HashTablEntry *next;
   #endif
-
-  ulong hash;                                // hash code
 
   void  *keyData;                            // key data of entry
   ulong keyLength;                           // length of key data in entry
@@ -89,9 +87,8 @@ typedef struct HashTablEntry
 typedef struct
 {
   HashTableEntry          *entries;         // entries array
-  uint                    entryCount;       // number of entries in array
-  uint                    size;             // size (see TABLE_SIZES)
-
+  ulong                   entryCount;       // number of entries in array
+  ulong                   size;             // size (see TABLE_SIZES)
 
   HashTableHashFunction   hashFunction;
   void                    *hashUserData;
@@ -103,18 +100,16 @@ typedef struct
 
 typedef struct
 {
-  const HashTable      *hashTable;
-  uint                 i;
+  const HashTable *hashTable;
+  ulong           i;
   #if HASH_TABLE_COLLISION_ALGORITHM == HASH_TABLE_COLLISION_ALGORITHM_NONE
     const HashTableEntry *hashTableEntry;
   #endif
 } HashTableIterator;
 
-/* delete hash entry function */
-
 /***********************************************************************\
 * Name   : HashTableIterateFunction
-* Purpose: iterator function
+* Purpose: hash table iterator function
 * Input  : keyData   - key data
 *          keyLength - length of key data
 *          data      - data entry
@@ -142,15 +137,17 @@ typedef bool(*HashTableIterateFunction)(const void *keyData, ulong keyLength, co
 /***********************************************************************\
 * Name   : HashTable_init
 * Purpose: initialize hash table
-* Input  : hashTable       - hash table variable
-*          hashFunction    - hash function or NULL
-*          hashUserData    - hash function user data
+* Input  : hashTable      - hash table variable
+*          minSize        - min. size (will be rounded to next ceiling
+*                           prime number)
+*          hashFunction   - hash function or NULL
+*          hashUserData   - hash function user data
 *          equalsFunction - hash table entry free function or NULL
 *          equalsUserData - hash table entry free function user data
-*          freeFunction    - hash table entry free function or NULL
-*          freeUserData    - hash table entry free function user data
+*          freeFunction   - hash table entry free function or NULL
+*          freeUserData   - hash table entry free function user data
 * Output : hashTable - hash table
-* Return : TRUE if hash table initialized, FALSE otherwise
+* Return : TRUE iff hash table initialized
 * Notes  : -
 \***********************************************************************/
 
@@ -176,17 +173,16 @@ bool HashTable_init(HashTable               *hashTable,
 void HashTable_done(HashTable *hashTable);
 
 /***********************************************************************\
-* Name   : HashTable_init
-* Purpose: initialize hash table
-* Input  : hashTable       - hash table variable
-*          hashFunction    - hash function or NULL
-*          hashUserData    - hash function user data
+* Name   : HashTable_new
+* Purpose: allocate hash table
+* Input  : hashFunction   - hash function or NULL
+*          hashUserData   - hash function user data
 *          equalsFunction - hash table entry free function or NULL
 *          equalsUserData - hash table entry free function user data
-*          freeFunction    - hash table entry free function or NULL
-*          freeUserData    - hash table entry free function user data
+*          freeFunction   - hash table entry free function or NULL
+*          freeUserData   - hash table entry free function user data
 * Output : hashTable - hash table
-* Return : TRUE if hash table initialized, FALSE otherwise
+* Return : hash table or NULL
 * Notes  : -
 \***********************************************************************/
 
@@ -252,11 +248,7 @@ INLINE void HashTable_delete(HashTable *hashTable)
 /***********************************************************************\
 * Name   : HashTable_clear
 * Purpose: clear hash table
-* Input  : hashTable             - hash table
-*          hashTableFreeFunction - hash table entry free function or
-*                                  NULL
-*          hashTableFreeUserData - hash table entry free function user
-*                                  data
+* Input  : hashTable - hash table
 * Output : -
 * Return : -
 * Notes  : -
@@ -292,7 +284,15 @@ INLINE bool HashTable_isEmpty(const HashTable *hashTable)
 * Notes  : -
 \***********************************************************************/
 
-ulong HashTable_count(const HashTable *hashTable);
+INLINE ulong HashTable_count(const HashTable *hashTable);
+#if defined(NDEBUG) || defined(__HASH_TABLE_IMPLEMENTATION__)
+INLINE ulong HashTable_count(const HashTable *hashTable)
+{
+  assert(hashTable != NULL);
+
+  return hashTable->entryCount;
+}
+#endif /* NDEBUG || __HASH_TABLE_IMPLEMENTATION__ */
 
 /***********************************************************************\
 * Name   : HashTable_add

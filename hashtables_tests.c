@@ -31,20 +31,6 @@ CTEST(hashTables,new_delete)
   HashTable_delete(hashTable);
 }
 
-CTEST(hashTables,isEmpty)
-{
-  HashTable hashTable;
-
-  HashTable_init(&hashTable,
-                 100,
-                 CALLBACK_(NULL,NULL),
-                 CALLBACK_(NULL,NULL),
-                 CALLBACK_(NULL,NULL)
-                );
-  ASSERT_TRUE(HashTable_isEmpty(&hashTable));
-  HashTable_done(&hashTable);
-}
-
 CTEST(hashTables,put)
 {
   HashTable hashTable;
@@ -89,6 +75,42 @@ CTEST(hashTables,remove)
   ASSERT_TRUE(HashTable_isEmpty(&hashTable));
   HashTable_done(&hashTable);
 }
+
+CTEST(hashTables,isEmpty)
+{
+  HashTable hashTable;
+
+  HashTable_init(&hashTable,
+                 100,
+                 CALLBACK_(NULL,NULL),
+                 CALLBACK_(NULL,NULL),
+                 CALLBACK_(NULL,NULL)
+                );
+  ASSERT_TRUE(HashTable_isEmpty(&hashTable));
+  HashTable_done(&hashTable);
+}
+
+CTEST(hashTables,count)
+{
+  HashTable hashTable;
+
+  HashTable_init(&hashTable,
+                 100,
+                 CALLBACK_(NULL,NULL),
+                 CALLBACK_(NULL,NULL),
+                 CALLBACK_(NULL,NULL)
+                );
+  ASSERT_EQUAL(HashTable_count(&hashTable),0);
+  HashTable_put(&hashTable,
+                "test",
+                4,
+                "data",
+                4
+               );
+  ASSERT_EQUAL(HashTable_count(&hashTable),1);
+  HashTable_done(&hashTable);
+}
+
 
 CTEST(hashTables,clear)
 {
