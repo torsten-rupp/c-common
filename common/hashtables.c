@@ -78,7 +78,7 @@ LOCAL const uint TABLE_SIZES[] =
 * Notes  : -
 \***********************************************************************/
 
-ulong getHashTableSize(ulong minSize)
+LOCAL ulong getHashTableSize(ulong minSize)
 {
   uint i;
 
@@ -229,41 +229,6 @@ LOCAL_INLINE ulong rotHash(ulong hash, int n)
 }
 
 /***********************************************************************\
-* Name   : equalsEntry
-* Purpose: check if entry is equal to data
-* Input  : entry - entry
-*          hash  - data hash value
-*          key   - key value
-* Output : -
-* Return : TRUE if entry is equal, FALSE otherwise
-* Notes  : -
-\***********************************************************************/
-
-LOCAL_INLINE bool equalsEntry(const HashTableEntry    *hashTableEntry,
-                              ulong                   hash,
-                              const void              *keyData,
-                              ulong                   keyLength,
-                              HashTableEqualsFunction equalsFunction,
-                              void                    *equalsUserData
-                             )
-{
-  assert(hashTableEntry != NULL);
-  assert(keyData != NULL);
-  assert(equalsFunction != NULL);
-
-  if (   (hashTableEntry->keyData != NULL)
-      && (hashTableEntry->keyLength == keyLength))
-  {
-    if (equalsFunction(equalsUserData,hashTableEntry->keyData,keyData,keyLength))
-    {
-      return TRUE;
-    }
-  }
-
-  return FALSE;
-}
-
-/***********************************************************************\
 * Name   : findEntry
 * Purpose: find entry in hash table
 * Input  : hashTable          - hash table
@@ -288,7 +253,6 @@ LOCAL bool findEntry(HashTable      *hashTable,
 {
   HashTableEntry *hashTableEntry;
   ulong          tableIndex;
-  ulong          i;
 
   assert(hashTable != NULL);
   assert(keyData != NULL);
@@ -365,9 +329,8 @@ LOCAL HashTableEntry* findFreeEntry(HashTable *hashTable,
                                     ulong     hash
                                    )
 {
-  HashTableEntry *hashTableEntry,*newHashTableEntry;
+  HashTableEntry *hashTableEntry;
   ulong          tableIndex;
-  ulong          i;
 
   assert(hashTable != NULL);
 
@@ -538,9 +501,9 @@ void HashTable_clear(HashTable *hashTable)
         {
           if (hashTable->freeFunction != NULL)
           {
-            hashTable->freeFunction(hashTable->freeUserData,
-                                    hashTableEntry->data,
-                                    hashTableEntry->length
+            hashTable->freeFunction(hashTableEntry->data,
+                                    hashTableEntry->length,
+                                    hashTable->freeUserData
                                    );
           }
           if (hashTableEntry->data != NULL) free(hashTableEntry->data);;
@@ -556,9 +519,9 @@ void HashTable_clear(HashTable *hashTable)
       {
         if (hashTable->freeFunction != NULL)
         {
-          hashTable->freeFunction(hashTable->freeUserData,
-                                  hashTable->entries[i].data,
-                                  hashTable->entries[i].length
+          hashTable->freeFunction(hashTable->entries[i].data,
+                                  hashTable->entries[i].length,
+                                  hashTable->freeUserData
                                  );
         }
         free(hashTable->entries[i].data);
@@ -580,10 +543,7 @@ bool HashTable_put(HashTable *hashTable,
 {
   ulong               hash;
   HashTableEntry      *hashTableEntry;
-  uint                entryIndex;
   void                *newData;
-  uint                tableIndex;
-  uint                z,i;
 
   assert(hashTable != NULL);
   assert(hashTable->entries != NULL);
@@ -594,7 +554,6 @@ bool HashTable_put(HashTable *hashTable,
 
   if (findEntry(hashTable,hash,keyData,keyLength,&hashTableEntry,NULL))
   {
-fprintf(stderr,"%s:%d: _\n",__FILE__,__LINE__);
     // update entry
 
     // allocate/resize data memory
@@ -663,7 +622,6 @@ void HashTable_remove(HashTable  *hashTable,
 {
   ulong          hash;
   HashTableEntry *hashTableEntry,*prevHashTableEntry;
-  uint           index;
 
   assert(hashTable != NULL);
   assert(hashTable->entries != NULL);
@@ -698,16 +656,13 @@ void HashTable_remove(HashTable  *hashTable,
   }
 }
 
-HashTableEntry *HashTable_find(HashTable  *hashTable,
-                               const void *keyData,
-                               ulong      keyLength,
-                               void       **data,
-                               ulong      *length
-                              )
+const HashTableEntry *HashTable_find(HashTable  *hashTable,
+                                     const void *keyData,
+                                     ulong      keyLength
+                                    )
 {
   ulong          hash;
   HashTableEntry *hashTableEntry;
-  uint           index;
 
   assert(hashTable != NULL);
   assert(hashTable->entries != NULL);
@@ -716,9 +671,6 @@ HashTableEntry *HashTable_find(HashTable  *hashTable,
 
   if (findEntry(hashTable,hash,keyData,keyLength,&hashTableEntry,NULL))
   {
-    if (data   != NULL) (*data)   = hashTableEntry->data;
-    if (length != NULL) (*length) = hashTableEntry->length;
-
     return hashTableEntry;
   }
   else
@@ -859,8 +811,8 @@ void HashTable_printStatistic(const HashTable *hashTable)
   assert(hashTable != NULL);
 
   fprintf(stderr,"Hash table statistics:\n");
-  fprintf(stderr,"    %u entries\n",hashTable->entryCount);
-  fprintf(stderr,"    %u size\n",hashTable->size);
+  fprintf(stderr,"    %lu entries\n",hashTable->entryCount);
+  fprintf(stderr,"    %lu size\n",hashTable->size);
 }
 #endif /* NDEBUG */
 

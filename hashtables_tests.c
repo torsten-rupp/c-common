@@ -27,7 +27,7 @@ CTEST(hashTables,new_delete)
                             CALLBACK_(NULL,NULL),
                             CALLBACK_(NULL,NULL)
                            );
-  ASSERT_NOT_EQUAL(hashTable,NULL);
+  ASSERT_NOT_NULL(hashTable);
   HashTable_delete(hashTable);
 }
 
@@ -164,14 +164,14 @@ CTEST(hashTables,find)
                 4
                );
 
-  hashTableEntry = HashTable_find(&hashTable,"test",4,NULL,NULL);
+  hashTableEntry = HashTable_find(&hashTable,"test",4);
   ASSERT_NOT_NULL(hashTableEntry);
   ASSERT_TRUE(hashTableEntry->keyLength == 4);
   ASSERT_TRUE(memcmp(hashTableEntry->keyData,"test",4) == 0);
   ASSERT_TRUE(hashTableEntry->length == 4);
   ASSERT_TRUE(memcmp(hashTableEntry->data,"data",4) == 0);
 
-  ASSERT_NULL(HashTable_find(&hashTable,"testX",5,NULL,NULL));
+  ASSERT_NULL(HashTable_find(&hashTable,"testX",5));
   HashTable_done(&hashTable);
 }
 
@@ -208,7 +208,7 @@ CTEST(hashTables,interate)
   HashTable         hashTable;
   HashTableIterator hashTableIterator;
   bool              foundFlags[2];
-  void              *keyData,*data;
+  const void        *keyData,*data;
   ulong             keyLength,length;
 
   HashTable_init(&hashTable,

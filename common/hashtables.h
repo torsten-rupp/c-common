@@ -72,7 +72,7 @@ typedef void(*HashTableFreeFunction)(const void *data, ulong length, void *userD
 // hash entry
 typedef struct HashTablEntry
 {
-  #ifdef HASH_TABLE_COLLISION_ALGORITHM == HASH_TABLE_COLLISION_ALGORITHM_NONE
+  #if HASH_TABLE_COLLISION_ALGORITHM == HASH_TABLE_COLLISION_ALGORITHM_NONE
     struct HashTablEntry *next;
   #endif
 
@@ -295,15 +295,15 @@ INLINE ulong HashTable_count(const HashTable *hashTable)
 #endif /* NDEBUG || __HASH_TABLE_IMPLEMENTATION__ */
 
 /***********************************************************************\
-* Name   : HashTable_add
-* Purpose: add entry to hash table
+* Name   : HashTable_put
+* Purpose: put entry to hash table
 * Input  : hashTable - hash table
 *          keyData   - key data
 *          keyLength - length of key data
-*          data      - entry data
-*          length    - length of entry data
+*          data      - entry data (can be NULL)
+*          length    - length of entry data (can be 0)
 * Output : -
-* Return : TRUE if entry added, FALSE otherwise
+* Return : TRUE iff entry stored in hash table
 * Notes  : -
 \***********************************************************************/
 
@@ -315,14 +315,11 @@ bool HashTable_put(HashTable  *hashTable,
                   );
 
 /***********************************************************************\
-* Name   : HashTable_rem
+* Name   : HashTable_remove
 * Purpose: remove entry from hash table
-* Input  : hashTable             - hash table
-*          key                   - key value
-*          hashTableFreeFunction - hash table entry free function or
-*                                  NULL
-*          hashTableFreeUserData - hash table entry free function user
-*                                  data
+* Input  : hashTable - hash table
+*          keyData   - key data
+*          keyLength - length of key data
 * Output : -
 * Return : -
 * Notes  : -
@@ -339,18 +336,14 @@ void HashTable_remove(HashTable  *hashTable,
 * Input  : hashTable - hash table
 *          keyData   - key data
 *          keyLength - length of key data
-*          data      - entry data iff entry found (can be NULL)
-*          length    - length of data (can be NULL)
-* Return : TRUE if entry found, FALSE otherwise
+* Return : found entry or NULL
 * Notes  : -
 \***********************************************************************/
 
-HashTableEntry *HashTable_find(HashTable  *hashTable,
-                               const void *keyData,
-                               ulong      keyLength,
-                               void       **data,
-                               ulong      *length
-                              );
+const HashTableEntry *HashTable_find(HashTable  *hashTable,
+                                     const void *keyData,
+                                     ulong      keyLength
+                                    );
 
 /***********************************************************************\
 * Name   : HashTable_containss
@@ -359,7 +352,7 @@ HashTableEntry *HashTable_find(HashTable  *hashTable,
 *          keyData   - key data
 *          keyLength - length of key data
 * Output : -
-* Return : TRUE if entry is in hash table, FALSE otherwise
+* Return : TRUE iff entry is in hash table
 * Notes  : -
 \***********************************************************************/
 
@@ -375,7 +368,7 @@ INLINE bool HashTable_contains(HashTable *hashTable,
 {
   assert(hashTable != NULL);
 
-  return HashTable_find(hashTable,keyData,keyLength,NULL,NULL) != NULL;
+  return HashTable_find(hashTable,keyData,keyLength) != NULL;
 }
 #endif /* NDEBUG || __HASH_TABLE_IMPLEMENTATION__ */
 
@@ -394,7 +387,7 @@ void HashTable_initIterator(HashTableIterator *hashTableIterator,
                            );
 
 /***********************************************************************\
-* Name   : HashTable_getNext
+* Name   : HashTable_doneIterator
 * Purpose: deinit hash table iterator
 * Input  : hashTableIterator - hash table iterator
 * Output : -
