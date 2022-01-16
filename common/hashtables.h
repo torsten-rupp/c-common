@@ -428,10 +428,19 @@ bool HashTable_getNext(HashTableIterator *hashTableIterator,
 
 bool HashTable_iterate(HashTable                *hashTable,
                        HashTableIterateFunction iterateFunction,
-                       void                      *iterateUserData
+                       void                     *iterateUserData
                       );
 
 #ifndef NDEBUG
+/***********************************************************************\
+* Name   : HashTable_printStatistic
+* Purpose: print hash table statistics
+* Input  : hashTable - hash table
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
 void HashTable_printStatistic(const HashTable *hashTable);
 #endif /* NDEBUG */
 
