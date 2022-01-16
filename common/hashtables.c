@@ -534,16 +534,16 @@ void HashTable_clear(HashTable *hashTable)
   hashTable->entryCount = 0L;
 }
 
-bool HashTable_put(HashTable *hashTable,
-                   const void *keyData,
-                   ulong      keyLength,
-                   const void *data,
-                   ulong      length
-                  )
+HashTableEntry *HashTable_put(HashTable *hashTable,
+                              const void *keyData,
+                              ulong      keyLength,
+                              const void *data,
+                              ulong      length
+                             )
 {
-  ulong               hash;
-  HashTableEntry      *hashTableEntry;
-  void                *newData;
+  ulong          hash;
+  HashTableEntry *hashTableEntry;
+  void           *newData;
 
   assert(hashTable != NULL);
   assert(hashTable->entries != NULL);
@@ -562,7 +562,7 @@ bool HashTable_put(HashTable *hashTable,
       newData = realloc(hashTableEntry->data,length);
       if (newData == NULL)
       {
-        return FALSE;
+        return NULL;
       }
       hashTableEntry->data   = newData;
       hashTableEntry->length = length;
@@ -571,20 +571,20 @@ bool HashTable_put(HashTable *hashTable,
     // copy data
     memcpy(hashTableEntry->data,data,length);
 
-    return TRUE;
+    return hashTableEntry;
   }
   else
   {
     // add entry
 
-    hashTableEntry =findFreeEntry(hashTable,hash);
+    hashTableEntry = findFreeEntry(hashTable,hash);
     if (hashTableEntry != NULL)
     {
       // allocate key memory
       hashTableEntry->keyData = malloc(keyLength);
       if (hashTableEntry->keyData == NULL)
       {
-        return FALSE;
+        return NULL;
       }
 
       // allocate data memory
@@ -593,7 +593,7 @@ bool HashTable_put(HashTable *hashTable,
       {
         free(hashTableEntry->keyData);
         hashTableEntry->keyData = NULL;
-        return FALSE;
+        return NULL;
       }
 
       // copy key data
@@ -606,11 +606,11 @@ bool HashTable_put(HashTable *hashTable,
 
       hashTable->entryCount++;
 
-      return TRUE;
+      return hashTableEntry;
     }
     else
     {
-      return FALSE;
+      return NULL;
     }
   }
 }

@@ -303,16 +303,16 @@ INLINE ulong HashTable_count(const HashTable *hashTable)
 *          data      - entry data (can be NULL)
 *          length    - length of entry data (can be 0)
 * Output : -
-* Return : TRUE iff entry stored in hash table
+* Return : hash table entry or NULL
 * Notes  : -
 \***********************************************************************/
 
-bool HashTable_put(HashTable  *hashTable,
-                   const void *keyData,
-                   ulong      keyLength,
-                   const void *data,
-                   ulong      length
-                  );
+HashTableEntry *HashTable_put(HashTable  *hashTable,
+                              const void *keyData,
+                              ulong      keyLength,
+                              const void *data,
+                              ulong      length
+                             );
 
 /***********************************************************************\
 * Name   : HashTable_remove
