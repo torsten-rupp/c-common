@@ -120,7 +120,7 @@ typedef struct
 * Notes  : -
 \***********************************************************************/
 
-typedef bool(*HashTableIterateFunction)(const void *keyData, ulong keyLength, const void *data, ulong length, void *userData);
+typedef bool(*HashTableIterateFunction)(const HashTableEntry *hashTableEntry, void *userData);
 
 /***************************** Variables *******************************/
 
@@ -422,7 +422,7 @@ bool HashTable_getNext(HashTableIterator *hashTableIterator,
 *          hashTableIterateFunction - iterator function
 *          hashTableIterateUserData - iterator function user data
 * Output : -
-* Return : -
+* Return : TRUE iff all hash table entries iterated
 * Notes  : -
 \***********************************************************************/
 

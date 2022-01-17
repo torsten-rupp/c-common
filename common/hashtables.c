@@ -397,6 +397,68 @@ LOCAL HashTableEntry *growTable(HashTableEntry *entries, uint oldSize, uint newS
   return entries;
 }
 
+/***********************************************************************\
+* Name   : getNext
+* Purpose: get next hash table entry
+* Input  : hashTableIterator - hash table iterator
+* Output : -
+* Return : hash table entry or NULL if no more hash table entries
+* Notes  : -
+\***********************************************************************/
+
+LOCAL HashTableEntry *getNext(HashTableIterator *hashTableIterator)
+{
+  bool                 foundFlag;
+  const HashTableEntry *hashTableEntry;
+
+  assert(hashTableIterator != NULL);
+  assert(hashTableIterator->hashTable != NULL);
+  assert(hashTableIterator->hashTable->entries != NULL);
+
+  hashTableEntry = NULL;
+
+  #if HASH_TABLE_COLLISION_ALGORITHM == HASH_TABLE_COLLISION_ALGORITHM_NONE
+    if (hashTableIterator->hashTableEntry != NULL)
+    {
+      hashTableEntry = hashTableIterator->hashTableEntry;
+      hashTableIterator->hashTableEntry = hashTableIterator->hashTableEntry->next;
+    }
+  #endif
+
+  if (   (hashTableEntry == NULL)
+      && (hashTableIterator->i < hashTableIterator->hashTable->size)
+     )
+  {
+    do
+    {
+
+      // check if used/empty
+      if (hashTableIterator->hashTable->entries[hashTableIterator->i].data != NULL)
+      {
+        hashTableEntry = &hashTableIterator->hashTable->entries[hashTableIterator->i];
+      }
+
+      // next entry
+      #if HASH_TABLE_COLLISION_ALGORITHM == HASH_TABLE_COLLISION_ALGORITHM_NONE
+        if (hashTableIterator->hashTable->entries[hashTableIterator->i].next != NULL)
+        {
+          hashTableIterator->hashTableEntry = hashTableIterator->hashTable->entries[hashTableIterator->i].next;
+        }
+        else
+        {
+          hashTableIterator->i++;
+        }
+      #else
+      #endif
+    }
+    while (   (hashTableEntry == NULL)
+           && (hashTableIterator->i < hashTableIterator->hashTable->size)
+          );
+  }
+
+  return hashTableEntry;
+}
+
 /*---------------------------------------------------------------------*/
 
 bool HashTable_init(HashTable               *hashTable,
@@ -706,70 +768,25 @@ bool HashTable_getNext(HashTableIterator *hashTableIterator,
                        ulong             *length
                       )
 {
-  bool           foundFlag;
-  HashTableEntry *hashTableEntry;
+  const HashTableEntry *hashTableEntry;
 
   assert(hashTableIterator != NULL);
   assert(hashTableIterator->hashTable != NULL);
   assert(hashTableIterator->hashTable->entries != NULL);
 
-  if (keyData   != NULL) (*keyData)   = NULL;
-  if (keyLength != NULL) (*keyLength) = 0;
-  if (data      != NULL) (*data)      = NULL;
-  if (length    != NULL) (*length)    = 0;
-
-  foundFlag = FALSE;
-
-  #if HASH_TABLE_COLLISION_ALGORITHM == HASH_TABLE_COLLISION_ALGORITHM_NONE
-    if (hashTableIterator->hashTableEntry != NULL)
-    {
-      if (keyData   != NULL) (*keyData)   = hashTableIterator->hashTableEntry->keyData;
-      if (keyLength != NULL) (*keyLength) = hashTableIterator->hashTableEntry->keyLength;
-      if (data      != NULL) (*data)      = hashTableIterator->hashTableEntry->data;
-      if (length    != NULL) (*length)    = hashTableIterator->hashTableEntry->length;
-
-      hashTableIterator->hashTableEntry = hashTableIterator->hashTableEntry->next;
-
-      foundFlag = TRUE;
-    }
-  #endif
-
-  if (!foundFlag && (hashTableIterator->i < hashTableIterator->hashTable->size))
+  hashTableEntry = getNext(hashTableIterator);
+  if (hashTableEntry != NULL)
   {
-    do
-    {
-      // get entry
-      hashTableEntry = &hashTableIterator->hashTable->entries[hashTableIterator->i];
-
-      // check if used/empty
-      if (hashTableEntry->data != NULL)
-      {
-        if (keyData   != NULL) (*keyData)   = hashTableEntry->keyData;
-        if (keyLength != NULL) (*keyLength) = hashTableEntry->keyLength;
-        if (data      != NULL) (*data)      = hashTableEntry->data;
-        if (length    != NULL) (*length)    = hashTableEntry->length;
-        foundFlag = TRUE;
-      }
-
-      // next entry
-      #if HASH_TABLE_COLLISION_ALGORITHM == HASH_TABLE_COLLISION_ALGORITHM_NONE
-        if (hashTableEntry->next != NULL)
-        {
-          hashTableIterator->hashTableEntry = hashTableEntry->next;
-        }
-        else
-        {
-          hashTableIterator->i++;
-        }
-      #else
-      #endif
-    }
-    while (!foundFlag
-           && (hashTableIterator->i < hashTableIterator->hashTable->size)
-          );
+    if (keyData   != NULL) (*keyData)   = hashTableEntry->keyData;
+    if (keyLength != NULL) (*keyLength) = hashTableEntry->keyLength;
+    if (data      != NULL) (*data)      = hashTableEntry->data;
+    if (length    != NULL) (*length)    = hashTableEntry->length;
+    return TRUE;
   }
-
-  return foundFlag;
+  else
+  {
+    return FALSE;
+  }
 }
 
 bool HashTable_iterate(HashTable                *hashTable,
@@ -777,28 +794,22 @@ bool HashTable_iterate(HashTable                *hashTable,
                        void                     *iterateUserData
                       )
 {
-  HashTableIterator hashTableIterator;
-  bool              okFlag;
-  const void        *keyData;
-  ulong             keyLength;
-  const void        *data;
-  ulong             length;
+  HashTableIterator    hashTableIterator;
+  bool                 okFlag;
+  const HashTableEntry *hashTableEntry;
 
   assert(hashTable != NULL);
   assert(iterateFunction != NULL);
 
   okFlag = TRUE;
   HashTable_initIterator(&hashTableIterator,hashTable);
-  while (   HashTable_getNext(&hashTableIterator,
-                               &keyData,
-                               &keyLength,
-                               &data,
-                               &length
-                              )
+  hashTableEntry = getNext(&hashTableIterator);
+  while (   (hashTableEntry != NULL)
          && okFlag
         )
   {
-    okFlag = iterateFunction(keyData,keyLength,data,length,iterateUserData);
+    okFlag = iterateFunction(hashTableEntry,iterateUserData);
+    hashTableEntry = getNext(&hashTableIterator);
   }
   HashTable_doneIterator(&hashTableIterator);
 

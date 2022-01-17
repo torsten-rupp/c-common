@@ -294,15 +294,15 @@ CTEST(hashTables,iterate)
   foundFlags[0] = FALSE;
   foundFlags[1] = FALSE;
   HashTable_iterate(&hashTable,
-                    CALLBACK_INLINE(bool,(const void *keyData, ulong keyLength, const void *data, ulong length, void *userData),
+                    CALLBACK_INLINE(bool,(const HashTableEntry *hashTableEntry, void *userData),
                     {
-                      UNUSED_VARIABLE(data);
-                      UNUSED_VARIABLE(length);
+                      assert(hashTableEntry != NULL);
+
                       UNUSED_VARIABLE(userData);
 
-                      if ((keyLength == 4) && (memcmp(keyData,"test",4) == 0)) foundFlags[0] = TRUE;
-                      if ((keyLength == 5) && (memcmp(keyData,"test2",5) == 0)) foundFlags[1] = TRUE;
-                      
+                      if ((hashTableEntry->keyLength == 4) && (memcmp(hashTableEntry->keyData,"test",4) == 0)) foundFlags[0] = TRUE;
+                      if ((hashTableEntry->keyLength == 5) && (memcmp(hashTableEntry->keyData,"test2",5) == 0)) foundFlags[1] = TRUE;
+
                       return TRUE;
                     },NULL)
                    );
