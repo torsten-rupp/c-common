@@ -323,25 +323,25 @@ CTEST(strings,map)
 
   s = String_new();
 
-  String_setCString(s,"testtest");
-  ASSERT_STR("testtest",String_cString(s));
+  String_setCString(s,"testtest'test'");
+  ASSERT_STR("testtest'test'",String_cString(s));
 
   t0[0] = String_newCString("t");
-  t0[1] = String_newCString("e");
   t1[0] = String_newCString("00");
+  t0[1] = String_newCString("e");
   t1[1] = String_newCString("11");
-  String_map(s,STRING_BEGIN,t0,t1,2);
-  ASSERT_STR("0011s000011s00",String_cString(s));
+  String_map(s,STRING_BEGIN,t0,t1,2,NULL);
+  ASSERT_STR("0011s000011s00'0011s00'",String_cString(s));
   String_delete(t1[1]);
   String_delete(t1[0]);
   String_delete(t0[1]);
   String_delete(t0[0]);
 
-  String_mapCString(s,STRING_BEGIN,(const char*[]){"0","1"},(const char*[]){"2","3"},2);
-  ASSERT_STR("2233s222233s22",String_cString(s));
+  String_mapCString(s,STRING_BEGIN,(const char*[]){"0","1"},(const char*[]){"2","3"},2,NULL);
+  ASSERT_STR("2233s222233s22'2233s22'",String_cString(s));
 
-  String_mapChar(s,STRING_BEGIN,"s3","X4",2);
-  ASSERT_STR("2244X222244X22",String_cString(s));
+  String_mapChar(s,STRING_BEGIN,"s3","X4",2,NULL);
+  ASSERT_STR("2244X222244X22'2244X22'",String_cString(s));
 
   String_delete(s);
 }
@@ -942,6 +942,9 @@ CTEST(strings,tokenizer)
   ASSERT_STR("",String_cString(token));
   ASSERT_EQUAL(tokenIndex,13);
   ASSERT_TRUE(String_getNextToken(&stringTokenizer,&token,&tokenIndex));
+  ASSERT_STR("",String_cString(token));
+  ASSERT_EQUAL(tokenIndex,16);
+  ASSERT_TRUE(String_getNextToken(&stringTokenizer,&token,&tokenIndex));
   ASSERT_STR("1234",String_cString(token));
   ASSERT_EQUAL(tokenIndex,17);
   String_doneTokenizer(&stringTokenizer);
@@ -981,6 +984,9 @@ CTEST(strings,tokenizer)
   ASSERT_TRUE(String_getNextToken(&stringTokenizer,&token,&tokenIndex));
   ASSERT_STR("",String_cString(token));
   ASSERT_EQUAL(tokenIndex,13);
+  ASSERT_TRUE(String_getNextToken(&stringTokenizer,&token,&tokenIndex));
+  ASSERT_STR("",String_cString(token));
+  ASSERT_EQUAL(tokenIndex,16);
   ASSERT_TRUE(String_getNextToken(&stringTokenizer,&token,&tokenIndex));
   ASSERT_STR("1234",String_cString(token));
   ASSERT_EQUAL(tokenIndex,17);
