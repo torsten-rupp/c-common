@@ -5465,89 +5465,93 @@ bool String_getNextToken(StringTokenizer *stringTokenizer,
 
   assert(stringTokenizer != NULL);
 
-  // check index
-  if (stringTokenizer->index >= (long)stringTokenizer->length)
+  do
   {
-    return FALSE;
-  }
-
-  if (stringTokenizer->skipEmptyTokens)
-  {
-    // skip separator chars
-    while (   (stringTokenizer->index < (long)stringTokenizer->length)
-           && (strchr(stringTokenizer->separatorChars,stringTokenizer->data[stringTokenizer->index]) != NULL)
-          )
+    // check index
+    if (stringTokenizer->index >= (long)stringTokenizer->length)
     {
-      stringTokenizer->index++;
+      return FALSE;
     }
-    if (stringTokenizer->index >= (long)stringTokenizer->length) return FALSE;
-  }
 
-  // get token
-  if (tokenIndex != NULL) (*tokenIndex) = stringTokenizer->index;
-  String_clear(stringTokenizer->token);
-  if (stringTokenizer->quoteChars != NULL)
-  {
-    while (   (stringTokenizer->index < (long)stringTokenizer->length)
-           && (strchr(stringTokenizer->separatorChars,stringTokenizer->data[stringTokenizer->index]) == NULL)
-          )
+    if (stringTokenizer->skipEmptyTokens)
     {
-      s = strchr(stringTokenizer->quoteChars,stringTokenizer->data[stringTokenizer->index]);
-      if (s != NULL)
+      // skip separator chars
+      while (   (stringTokenizer->index < (long)stringTokenizer->length)
+             && (strchr(stringTokenizer->separatorChars,stringTokenizer->data[stringTokenizer->index]) != NULL)
+            )
       {
-        String_appendChar(stringTokenizer->token,stringTokenizer->data[stringTokenizer->index]);
         stringTokenizer->index++;
-        while (   (stringTokenizer->index < (long)stringTokenizer->length)
-               && (stringTokenizer->data[stringTokenizer->index] != (*s))
-              )
+      }
+      if (stringTokenizer->index >= (long)stringTokenizer->length) return FALSE;
+    }
+
+    // get token
+    if (tokenIndex != NULL) (*tokenIndex) = stringTokenizer->index;
+    String_clear(stringTokenizer->token);
+    if (stringTokenizer->quoteChars != NULL)
+    {
+      while (   (stringTokenizer->index < (long)stringTokenizer->length)
+             && (strchr(stringTokenizer->separatorChars,stringTokenizer->data[stringTokenizer->index]) == NULL)
+            )
+      {
+        s = strchr(stringTokenizer->quoteChars,stringTokenizer->data[stringTokenizer->index]);
+        if (s != NULL)
         {
-          if (   ((stringTokenizer->index+1) < (long)stringTokenizer->length)
-              && (   (stringTokenizer->data[stringTokenizer->index] == STRING_ESCAPE_CHARACTER)
-                  || (stringTokenizer->data[stringTokenizer->index] == (*s))
-                 )
-             )
+          stringTokenizer->index++;
+          while (   (stringTokenizer->index < (long)stringTokenizer->length)
+                 && (stringTokenizer->data[stringTokenizer->index] != (*s))
+                )
           {
-            String_appendChar(stringTokenizer->token,stringTokenizer->data[stringTokenizer->index+1]);
-            stringTokenizer->index += 2;
+            if (   ((stringTokenizer->index+1) < (long)stringTokenizer->length)
+                && (   (stringTokenizer->data[stringTokenizer->index] == STRING_ESCAPE_CHARACTER)
+                    || (stringTokenizer->data[stringTokenizer->index] == (*s))
+                   )
+               )
+            {
+              String_appendChar(stringTokenizer->token,stringTokenizer->data[stringTokenizer->index+1]);
+              stringTokenizer->index += 2;
+            }
+            else
+            {
+              String_appendChar(stringTokenizer->token,stringTokenizer->data[stringTokenizer->index]);
+              stringTokenizer->index++;
+            }
           }
-          else
+          if (stringTokenizer->index < (long)stringTokenizer->length)
           {
-            String_appendChar(stringTokenizer->token,stringTokenizer->data[stringTokenizer->index]);
             stringTokenizer->index++;
           }
         }
-        if (stringTokenizer->index < (long)stringTokenizer->length)
+        else
         {
           String_appendChar(stringTokenizer->token,stringTokenizer->data[stringTokenizer->index]);
           stringTokenizer->index++;
         }
       }
-      else
+    }
+    else
+    {
+      while (   (stringTokenizer->index < (long)stringTokenizer->length)
+             && (strchr(stringTokenizer->separatorChars,stringTokenizer->data[stringTokenizer->index]) == NULL)
+            )
       {
         String_appendChar(stringTokenizer->token,stringTokenizer->data[stringTokenizer->index]);
         stringTokenizer->index++;
       }
     }
-  }
-  else
-  {
-    while (   (stringTokenizer->index < (long)stringTokenizer->length)
-           && (strchr(stringTokenizer->separatorChars,stringTokenizer->data[stringTokenizer->index]) == NULL)
-          )
+    if (token != NULL) (*token) = stringTokenizer->token;
+
+    // skip token separator
+    if (   (stringTokenizer->index < (long)stringTokenizer->length)
+        && (strchr(stringTokenizer->separatorChars,stringTokenizer->data[stringTokenizer->index]) != NULL)
+       )
     {
-      String_appendChar(stringTokenizer->token,stringTokenizer->data[stringTokenizer->index]);
       stringTokenizer->index++;
     }
   }
-  if (token != NULL) (*token) = stringTokenizer->token;
-
-  // skip token separator
-  if (   (stringTokenizer->index < (long)stringTokenizer->length)
-      && (strchr(stringTokenizer->separatorChars,stringTokenizer->data[stringTokenizer->index]) != NULL)
-     )
-  {
-    stringTokenizer->index++;
-  }
+  while (   stringTokenizer->skipEmptyTokens
+         && String_isEmpty(stringTokenizer->token)
+        );
 
   return TRUE;
 }
