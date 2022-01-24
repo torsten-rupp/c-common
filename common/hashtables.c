@@ -406,9 +406,8 @@ LOCAL HashTableEntry *growTable(HashTableEntry *entries, uint oldSize, uint newS
 * Notes  : -
 \***********************************************************************/
 
-LOCAL HashTableEntry *getNext(HashTableIterator *hashTableIterator)
+LOCAL const HashTableEntry *getNext(HashTableIterator *hashTableIterator)
 {
-  bool                 foundFlag;
   const HashTableEntry *hashTableEntry;
 
   assert(hashTableIterator != NULL);
@@ -431,7 +430,6 @@ LOCAL HashTableEntry *getNext(HashTableIterator *hashTableIterator)
   {
     do
     {
-
       // check if used/empty
       if (hashTableIterator->hashTable->entries[hashTableIterator->i].data != NULL)
       {
@@ -444,12 +442,8 @@ LOCAL HashTableEntry *getNext(HashTableIterator *hashTableIterator)
         {
           hashTableIterator->hashTableEntry = hashTableIterator->hashTable->entries[hashTableIterator->i].next;
         }
-        else
-        {
-          hashTableIterator->i++;
-        }
-      #else
       #endif
+      hashTableIterator->i++;
     }
     while (   (hashTableEntry == NULL)
            && (hashTableIterator->i < hashTableIterator->hashTable->size)
