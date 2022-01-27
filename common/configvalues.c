@@ -4472,6 +4472,8 @@ void ConfigValue_debugPrintComments(void)
   typedef SHA256_CTX SHA256_;
 #elif defined(HAVE_GCRYPT)
   typedef gcry_md_hd_t SHA256_;
+#else
+  typedef int SHA256_;
 #endif
 
 /***********************************************************************\
@@ -4488,8 +4490,11 @@ void ConfigValue_debugPrintComments(void)
 LOCAL void updateSHA256(SHA256_ sha256, const void *data, uint dateLength)
 {
   #if   defined(HAVE_OPENSSL)
+// TODO: use openssl
   #elif defined(HAVE_GCRYPT)
     gcry_md_write(sha256,data,dateLength);
+  #else
+// TODO: implement simple sha256
   #endif
 }
 
@@ -5014,6 +5019,10 @@ LOCAL void updateSHA256Section(SHA256_           sha256,
 void ConfigValue_debugSHA256(const ConfigValue configValues[], void *buffer, uint bufferSize)
 {
 // TODO: does not compile
+UNUSED_VARIABLE(configValues);
+UNUSED_VARIABLE(buffer);
+UNUSED_VARIABLE(bufferSize);
+HALT_INTERNAL_ERROR_STILL_NOT_IMPLEMENTED();
 #if 0
   SHA256_ sha256;
   uint    index;
