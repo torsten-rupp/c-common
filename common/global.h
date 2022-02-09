@@ -550,8 +550,32 @@ typedef void(*DebugDumpStackTraceOutputFunction)(const char *text, void *userDat
 
 #define UNUSED_VARIABLE(variable) (void)variable
 
+/***********************************************************************\
+* Name   : UNUSED_VARIABLE
+* Purpose: avoid compiler warning for unused variables/parameters
+* Input  : variable - variable
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
 //#define UNUSED_FUNCTION(function) (void)&function;
 #define UNUSED_FUNCTION(function)
+
+/***********************************************************************\
+* Name   : UNUSED_RESULT
+* Purpose: avoid compiler warning for unused result
+* Input  : result - value
+* Output : -
+* Return : -
+* Notes  : http://git.savannah.gnu.org/cgit/gnulib.git/tree/lib/ignore-value.h
+\***********************************************************************/
+
+#if 3 < __GNUC__ + (4 <= __GNUC_MINOR__)
+  #define UNUSED_RESULT(result) (__extension__({ __typeof__(result) __result = (result); (void)__result; }))
+#else
+  #define UNUSED_RESULT(result) ((void)(result))
+#endif
 
 /***********************************************************************\
 * Name   : SIZE_OF_MEMBER
@@ -2896,7 +2920,7 @@ static inline char* stringAppendChar(char *string, ulong stringSize, char ch)
 *          stringSize - size of destination string (including
 *                       terminating NUL)
 *          length     - length
-*          ch         - character
+*          ch         - character to fill string with
 * Output : -
 * Return : string
 * Notes  : string is always NULL or NUL-terminated
@@ -2924,8 +2948,8 @@ static inline char* stringFill(char *string, ulong stringSize, ulong length, cha
 * Input  : string     - destination string
 *          stringSize - size of destination string (including
 *                       terminating NUL)
-*          length     - length
-*          ch         - character
+*          length     - total length
+*          ch         - character to append to string
 * Output : -
 * Return : string
 * Notes  : string is always NULL or NUL-terminated
@@ -4427,6 +4451,21 @@ void debugPrintStackTrace(void);
 
 void debugDumpMemory(const void *address, uint length, bool printAddress);
 #endif /* NDEBUG */
+
+/* profiling with valgrind:
+
+#include <valgrind/callgrind.h>
+
+...
+CALLGRIND_START_INSTRUMENTATION;
+CALLGRIND_TOGGLE_COLLECT;
+<code to analyze>
+CALLGRIND_TOGGLE_COLLECT;
+CALLGRIND_STOP_INSTRUMENTATION;
+
+valgrind --tool=callgrind --tool=callgrind --dump-instr=yes --simulate-cache=yes --collect-jumps=yes --collect-atstart=no --instr-atstart=no <executable> ...
+
+*/
 
 #ifdef __cplusplus
 }
