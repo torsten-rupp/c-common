@@ -157,14 +157,16 @@ void ProgressInfo_step(void *userData)
     progressInfo->lastTimestamp = now;
 
     estimatedTotalTime = stepTime*progressInfo->stepCount;
-//fprintf(stderr,"%s:%d: %llu\n",__FILE__,__LINE__,estimatedTotalTime/1000000);
 
     if (progressInfo->filterWindowSize > 0)
     {
       // average filter of last N values
       progressInfo->filterTimeSum =  progressInfo->filterTimeSum
-                                  +estimatedTotalTime
-                                  -progressInfo->filterTimes[(progressInfo->filterTimeIndex+progressInfo->filterTimeCount-1)%progressInfo->filterTimeCount];
+                                    +estimatedTotalTime
+                                    -((progressInfo->filterTimeCount >= progressInfo->filterWindowSize)
+                                       ? progressInfo->filterTimes[(progressInfo->filterTimeIndex+progressInfo->filterWindowSize-1)%progressInfo->filterTimeCount]
+                                       : 0
+                                     );
 
       progressInfo->filterTimes[progressInfo->filterTimeIndex] = estimatedTotalTime;
       progressInfo->filterTimeIndex = (progressInfo->filterTimeIndex+1) % progressInfo->filterWindowSize;
@@ -175,7 +177,6 @@ void ProgressInfo_step(void *userData)
       // average filter all values
       progressInfo->filterTimeSum += estimatedTotalTime;
     }
-//fprintf(stderr,"%s:%d: %p i0=%u i1=%u estimatedTotalTime=%llu estimatedTotalTimeSum=%llu average=%llu\n",__FILE__,__LINE__,progressInfo,i0,i1,stepTime,progressInfo->estimatedTotalTimeSum,progressInfo->estimatedTotalTimeSum/SIZE_OF_ARRAY(progressInfo->estimatedTotalTimes));
 
     progress     = (progressInfo->step*1000)/progressInfo->stepCount;
     lastProgress = (progressInfo->lastProgressCount > 0)
@@ -203,7 +204,6 @@ void ProgressInfo_step(void *userData)
         estimatedTotalTime = progressInfo->filterTimeSum/progressInfo->step;
       }
       estimatedRestTime  = (elapsedTime < estimatedTotalTime) ? (ulong)(estimatedTotalTime-elapsedTime) : 0LL;
-//fprintf(stderr,"%s:%d: %p i=%u p=%u elapsedTime=%lf estimatedTotalTime=%lf estimatedRestTime=%lf s=%lf\n",__FILE__,__LINE__,progressInfo,progressInfo->filterTimeIndex,progress,(double)elapsedTime/US_PER_SECOND,(double)estimatedTotalTime/US_PER_SECOND,(double)estimatedRestTime/US_PER_SECOND,(double)((progress> 0)?(elapsedTime*1000)/progress:0)/US_PER_SECOND);
 
       progressInfo->infoFunction(progress,
                                  (ulong)(estimatedTotalTime/US_PER_SECOND),
