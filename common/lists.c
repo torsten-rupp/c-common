@@ -698,10 +698,18 @@ void List_done(void *list)
 
 // TODO: callbacks
 #ifdef NDEBUG
-List *List_new(void)
+List *List_new(ListNodeDuplicateFunction duplicateFunction,
+               void                      *duplicateUserData,
+               ListNodeFreeFunction      freeFunction,
+               void                      *freeUserData
+              )
 #else /* not NDEBUG */
-List *__List_new(const char *fileName,
-                 ulong      lineNb
+List *__List_new(const char                *__fileName__,
+                 ulong                     __lineNb__,
+                 ListNodeDuplicateFunction duplicateFunction,
+                 void                      *duplicateUserData,
+                 ListNodeFreeFunction      freeFunction,
+                 void                      *freeUserData
                 )
 #endif /* NDEBUG */
 {
@@ -710,8 +718,11 @@ List *__List_new(const char *fileName,
   list = (List*)malloc(sizeof(List));
   if (list == NULL) return NULL;
 
-// TODO: free callback
-  List_init(list,CALLBACK_(NULL,NULL),CALLBACK_(NULL,NULL));
+  #ifdef NDEBUG
+    List_init(list,CALLBACK_(duplicateFunction,duplicateUserData),CALLBACK_(freeFunction,freeUserData));
+  #else /* not NDEBUG */
+    __List_init(__fileName__,__lineNb__,list,CALLBACK_(duplicateFunction,duplicateUserData),CALLBACK_(freeFunction,freeUserData));
+  #endif /* NDEBUG */
 
   return list;
 }
