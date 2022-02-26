@@ -696,6 +696,7 @@ void List_done(void *list)
   List_clear(list);
 }
 
+// TODO: callbacks
 #ifdef NDEBUG
 List *List_new(void)
 #else /* not NDEBUG */
@@ -947,10 +948,8 @@ void *List_remove(void *list,
   return nextNode;
 }
 
-void *List_removeAndFree(void                 *list,
-                         void                 *node,
-                         ListNodeFreeFunction listNodeFreeFunction,
-                         void                 *listNodeFreeUserData
+void *List_removeAndFree(void *list,
+                         void *node
                         )
 {
   void *nextNode;
@@ -960,9 +959,9 @@ void *List_removeAndFree(void                 *list,
 
   nextNode = ((Node*)node)->next;
   listRemove(list,node);
-  if (listNodeFreeFunction != NULL)
+  if (((List*)list)->freeFunction != NULL)
   {
-    listNodeFreeFunction(node,listNodeFreeUserData);
+    ((List*)list)->freeFunction(node,((List*)list)->freeUserData);
   }
   LIST_DELETE_NODE(node);
 

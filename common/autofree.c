@@ -13,7 +13,7 @@
 
 #include <stdlib.h>
 #include <pthread.h>
-#ifdef HAVE_BACKTRACE
+#ifdef HAVE_EXECINFO_H
   #include <execinfo.h>
 #endif
 #include <assert.h>
@@ -46,14 +46,14 @@ void AutoFree_init(AutoFreeList *autoFreeList)
   assert(autoFreeList != NULL);
 
   pthread_mutex_init(&autoFreeList->lock,NULL);
-  List_init(autoFreeList);
+  List_init(autoFreeList,CALLBACK_(NULL,NULL),CALLBACK_(NULL,NULL));
 }
 
 void AutoFree_done(AutoFreeList *autoFreeList)
 {
   assert(autoFreeList != NULL);
 
-  List_done(autoFreeList,NULL,NULL);
+  List_done(autoFreeList);
   pthread_mutex_destroy(&autoFreeList->lock);
 }
 
@@ -102,7 +102,7 @@ void AutoFree_cleanup(AutoFreeList *autoFreeList)
   assert(autoFreeList != NULL);
 
   AutoFree_freeAll(autoFreeList);
-  List_done(autoFreeList,NULL,NULL);
+  List_done(autoFreeList);
   pthread_mutex_destroy(&autoFreeList->lock);
 }
 
@@ -183,7 +183,7 @@ void __AutoFree_remove(const char   *__fileName__,
       if (autoFreeNode->resource == resource)
       {
         // remove from list
-        autoFreeNode = List_removeAndFree(autoFreeList,autoFreeNode,CALLBACK_(NULL,NULL));
+        autoFreeNode = List_removeAndFree(autoFreeList,autoFreeNode);
         foundFlag = TRUE;
       }
       else

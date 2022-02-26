@@ -131,7 +131,10 @@ void PatternList_init(PatternList *patternList)
 {
   assert(patternList != NULL);
 
-  List_init(patternList);
+  List_init(patternList,
+            CALLBACK_((ListNodeDuplicateFunction)duplicatePatternNode,NULL),
+            CALLBACK_((ListNodeFreeFunction)freePatternNode,NULL)
+           );
 }
 
 void PatternList_initDuplicate(PatternList       *patternList,
@@ -151,14 +154,14 @@ void PatternList_done(PatternList *patternList)
 {
   assert(patternList != NULL);
 
-  List_done(patternList,(ListNodeFreeFunction)freePatternNode,NULL);
+  List_done(patternList);
 }
 
 PatternList *PatternList_clear(PatternList *patternList)
 {
   assert(patternList != NULL);
 
-  return (PatternList*)List_clear(patternList,(ListNodeFreeFunction)freePatternNode,NULL);
+  return (PatternList*)List_clear(patternList);
 }
 
 void PatternList_copy(PatternList       *toPatternList,
@@ -170,7 +173,7 @@ void PatternList_copy(PatternList       *toPatternList,
   assert(toPatternList != NULL);
   assert(fromPatternList != NULL);
 
-  List_copy(toPatternList,NULL,fromPatternList,fromPatternListFromNode,fromPatternListToNode,(ListNodeDuplicateFunction)duplicatePatternNode,NULL);
+  List_copy(toPatternList,NULL,fromPatternList,fromPatternListFromNode,fromPatternListToNode);
 }
 
 void PatternList_move(PatternList       *toPatternList,
@@ -299,7 +302,7 @@ bool PatternList_remove(PatternList *patternList,
   patternNode = (PatternNode*)LIST_FIND(patternList,patternNode,patternNode->id == id);
   if (patternNode != NULL)
   {
-    List_removeAndFree(patternList,patternNode,(ListNodeFreeFunction)freePatternNode,NULL);
+    List_removeAndFree(patternList,patternNode);
     return TRUE;
   }
   else
@@ -323,7 +326,7 @@ bool PatternList_match(const PatternList *patternList,
   patternNode = patternList->head;
   while ((patternNode != NULL) && !matchFlag)
   {
-    matchFlag = Pattern_match(&patternNode->pattern,string,patternMatchMode);
+    matchFlag = Pattern_match(&patternNode->pattern,string,STRING_BEGIN,patternMatchMode,NULL,NULL);
     patternNode = patternNode->next;
   }
 
