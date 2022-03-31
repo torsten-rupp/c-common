@@ -135,6 +135,9 @@ typedef struct
   uint64 endTimestamp;
 } TimeoutInfo;
 
+// UUID (Note; name clash with Windows)
+typedef char UUID_[MISC_UUID_STRING_LENGTH+1];
+
 // machine/application id
 typedef const byte* MachineId;
 
@@ -627,14 +630,15 @@ INLINE void Misc_stopTimeout(TimeoutInfo *timeoutInfo)
 * Name   : Misc_getRestTimeout
 * Purpose: get rest timeout
 * Input  : timeoutInfo - timeout info
+*          maxTimeout  - max. timeout [ms]
 * Output : -
 * Return : rest timeout [ms]
 * Notes  : -
 \***********************************************************************/
 
-INLINE long Misc_getRestTimeout(const TimeoutInfo *timeoutInfo);
+INLINE long Misc_getRestTimeout(const TimeoutInfo *timeoutInfo, long maxTimeout);
 #if defined(NDEBUG) || defined(__MISC_IMPLEMENTATION__)
-INLINE long Misc_getRestTimeout(const TimeoutInfo *timeoutInfo)
+INLINE long Misc_getRestTimeout(const TimeoutInfo *timeoutInfo, long maxTimeout)
 {
   uint64 timestamp;
 
@@ -643,11 +647,13 @@ INLINE long Misc_getRestTimeout(const TimeoutInfo *timeoutInfo)
   if (timeoutInfo->timeout != WAIT_FOREVER)
   {
     timestamp = Misc_getTimestamp();
-    return (timestamp <= timeoutInfo->endTimestamp) ? (long)((timeoutInfo->endTimestamp-timestamp)/US_PER_MS) : 0L;
+    return (timestamp <= timeoutInfo->endTimestamp)
+             ? MIN((long)((timeoutInfo->endTimestamp-timestamp)/US_PER_MS),maxTimeout)
+             : 0L;
   }
   else
   {
-    return WAIT_FOREVER;
+    return maxTimeout;
   }
 }
 #endif /* NDEBUG || __MISC_IMPLEMENTATION__ */
@@ -837,14 +843,15 @@ uint64 Misc_parseDateTime(const char *string);
 *          buffer     - buffer
 *          bufferSize - buffer size
 *          dateTime   - date/time (seconds since 1970-1-1 00:00:00)
+*          utcFlag    - TRUE to format date/time in UTC. FALSE otherwise
 *          format     - format string (see strftime) or NULL for default
 * Output : -
 * Return : date/time string
 * Notes  : -
 \***********************************************************************/
 
-String Misc_formatDateTime(String string, uint64 dateTime, const char *format);
-const char* Misc_formatDateTimeCString(char *buffer, uint bufferSize, uint64 dateTime, const char *format);
+String Misc_formatDateTime(String string, uint64 dateTime, bool utcFlag, const char *format);
+const char* Misc_formatDateTimeCString(char *buffer, uint bufferSize, uint64 dateTime, bool utcFlag, const char *format);
 
 /***********************************************************************\
 * Name   : Misc_udelay
