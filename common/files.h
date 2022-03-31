@@ -92,9 +92,10 @@ typedef enum
 } FileModes;
 
 // additional file open flags
-#define FILE_STREAM        (1 << 16)
-#define FILE_OPEN_NO_CACHE (1 << 17)
-#define FILE_OPEN_NO_ATIME (1 << 18)
+#define FILE_SPARSE        (1 << 16)
+#define FILE_STREAM        (1 << 17)
+#define FILE_OPEN_NO_CACHE (1 << 18)
+#define FILE_OPEN_NO_ATIME (1 << 19)
 
 // special file descriptors
 #define FILE_DESCRIPTOR_STDIN  STDIN_FILENO
@@ -1358,6 +1359,18 @@ bool File_isWritableCString(const char *fileName);
 
 bool File_isNetworkFileSystem(ConstString fileName);
 bool File_isNetworkFileSystemCString(const char *fileName);
+
+/***********************************************************************\
+* Name   : File_isHidden, File_isHiddenCString
+* Purpose: check if file or directory is hidden
+* Input  : fileName - file name
+* Output : -
+* Return : TRUE if file/directory is hidden
+* Notes  : -
+\***********************************************************************/
+
+bool File_isHidden(ConstString fileName);
+bool File_isHiddenCString(const char *fileName);
 
 /***********************************************************************\
 * Name   : File_getInfo, File_getInfoCString
