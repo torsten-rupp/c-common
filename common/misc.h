@@ -75,6 +75,8 @@ typedef enum
 // length of machine id
 #define MISC_MACHINE_ID_LENGTH (128/8)
 
+#define MISC_ID_NONE 0
+
 // text macro patterns
 #define TEXT_MACRO_PATTERN_INTEGER   "[+-]{0,1}\\d+"
 #define TEXT_MACRO_PATTERN_INTEGER64 "[+-]{0,1}\\d+"
@@ -633,12 +635,13 @@ INLINE void Misc_stopTimeout(TimeoutInfo *timeoutInfo)
 *          maxTimeout  - max. timeout [ms]
 * Output : -
 * Return : rest timeout [ms]
-* Notes  : -
+* Notes  : return 'long' because usually timeout parameter could be
+*          WAIT_FOREVER
 \***********************************************************************/
 
-INLINE long Misc_getRestTimeout(const TimeoutInfo *timeoutInfo, long maxTimeout);
+INLINE long Misc_getRestTimeout(const TimeoutInfo *timeoutInfo, ulong maxTimeout);
 #if defined(NDEBUG) || defined(__MISC_IMPLEMENTATION__)
-INLINE long Misc_getRestTimeout(const TimeoutInfo *timeoutInfo, long maxTimeout)
+INLINE long Misc_getRestTimeout(const TimeoutInfo *timeoutInfo, ulong maxTimeout)
 {
   uint64 timestamp;
 
@@ -648,12 +651,12 @@ INLINE long Misc_getRestTimeout(const TimeoutInfo *timeoutInfo, long maxTimeout)
   {
     timestamp = Misc_getTimestamp();
     return (timestamp <= timeoutInfo->endTimestamp)
-             ? MIN((long)((timeoutInfo->endTimestamp-timestamp)/US_PER_MS),maxTimeout)
+             ? MIN((long)((timeoutInfo->endTimestamp-timestamp)/US_PER_MS),(long)MIN(maxTimeout,MAX_LONG))
              : 0L;
   }
   else
   {
-    return maxTimeout;
+    return WAIT_FOREVER;
   }
 }
 #endif /* NDEBUG || __MISC_IMPLEMENTATION__ */
@@ -800,6 +803,17 @@ INLINE bool Misc_isLeapYear(uint year)
   return ((year % 4) == 0) && (((year % 100) != 0) || ((year % 400) == 0));
 }
 #endif /* NDEBUG || __MISC_IMPLEMENTATION__ */
+
+/***********************************************************************\
+* Name   : Misc_isDayLightSavig
+* Purpose: check if day light saving is active for given date/time
+* Input  : dateTime - date/time
+* Output : -
+* Return : TRUE iff day light saving
+* Notes  : -
+\***********************************************************************/
+
+bool Misc_isDayLightSaving(uint64 dateTime);
 
 /***********************************************************************\
 * Name   : Misc_makeDateTime
