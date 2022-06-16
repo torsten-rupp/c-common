@@ -65,6 +65,7 @@ typedef void(*ConfigReportFunction)(const char *errorMessage, void *userData);
 * Notes  : -
 \***********************************************************************/
 
+// TODO: userData as last parameter
 typedef bool(*ConfigParseFunction)(void *userData, void *variable, const char *name, const char *value, char errorMessage[], uint errorMessageSize);
 
 /***********************************************************************\
@@ -1608,11 +1609,14 @@ Errors ConfigValue_writeConfigFile(ConstString       configFileName,
 
 /***********************************************************************\
 * Name   : ConfigValue_listSectionDataIterator
-* Purpose: get next section iterator value
+* Purpose: section iterator handler
 * Input  : sectionDataIterator - section data iterator variable
+*          operation           - operation to execute; see
+*                                CONFIG_VALUE_OPERATION_...
+*          data                - data variable (can be NULL)
 *          userData            - user data
-* Output : -
-* Return : next data element or NULL
+* Output : data - data
+* Return : next section element or NULL
 * Notes  : -
 \***********************************************************************/
 
