@@ -109,7 +109,7 @@ typedef struct
 *          errorMessageSize - max. size of error message
 * Output : symbols      - array with symbols
 *          symbolCount  - number of entries in array
-*          errorMessage - error mesreadSymbolTablesage
+*          errorMessage - error message
 * Return : TRUE iff symbol table read
 * Notes  : -
 \***********************************************************************/
@@ -147,7 +147,7 @@ LOCAL bool readSymbolTable(bfd           *abfd,
 
     (*symbols) = NULL;
     n = bfd_read_minisymbols(abfd,
-                             TRUE /* dynamic */ ,
+                             TRUE,  // dynamic
                              (void**)symbols,
                              &size
                             );
