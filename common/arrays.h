@@ -150,6 +150,30 @@ typedef bool(*ArrayDumpInfoFunction)(const Array *array,
       )
 
 /***********************************************************************\
+* Name   : ARRAY_ITERATEX
+* Purpose: iterated over array and execute block
+* Input  : array         - array
+*          arrayIterator - iteration variable
+*          data          - pointer to data element
+*          condition     - additional condition
+* Output : -
+* Return : -
+* Notes  : usage:
+*            ArrayIterator arrayIterator;
+*
+*            ARRAY_ITERATEX(array,arrayIterator,data,TRUE)
+*            {
+*              ... = data
+*            }
+\***********************************************************************/
+
+#define ARRAY_ITERATEX(array,arrayIterator,data,condition) \
+  for ((arrayIterator) = 0, Array_get(array,0,&(data)); \
+       ((arrayIterator) < Array_length(array)) && (condition); \
+       (arrayIterator)++, Array_get(array,arrayIterator,&(data)) \
+      )
+
+/***********************************************************************\
 * Name   : ARRAY_SEGMENT, ARRAY_SEGMENT_ITERATE
 * Purpose: iterated over array in segments and execute block
 * Input  : array                              - array
@@ -184,30 +208,6 @@ typedef bool(*ArrayDumpInfoFunction)(const Array *array,
       )
 
 /***********************************************************************\
-* Name   : ARRAY_ITERATEX
-* Purpose: iterated over array and execute block
-* Input  : array         - array
-*          arrayIterator - iteration variable
-*          data          - pointer to data element
-*          condition     - additional condition
-* Output : -
-* Return : -
-* Notes  : usage:
-*            ArrayIterator arrayIterator;
-*
-*            ARRAY_ITERATEX(array,arrayIterator,data,TRUE)
-*            {
-*              ... = data
-*            }
-\***********************************************************************/
-
-#define ARRAY_ITERATEX(array,arrayIterator,data,condition) \
-  for ((arrayIterator) = 0, Array_get(array,0,&(data)); \
-       ((arrayIterator) < Array_length(array)) && (condition); \
-       (arrayIterator)++, Array_get(array,arrayIterator,&(data)) \
-      )
-
-/***********************************************************************\
 * Name   : ARRAY_SEGMENTX, ARRAY_SEGMENT_ITERATEX
 * Purpose: iterated over array in segments and execute block
 * Input  : array                              - array
@@ -223,7 +223,7 @@ typedef bool(*ArrayDumpInfoFunction)(const Array *array,
 *
 *            ARRAY_SEGMENT(array,segmentIterator,64)
 *            {
-*              ARRAY_SEGMENT_ITERATE(array,segmentIterator,arrayIterator,data)
+*              ARRAY_SEGMENT_ITERATE(array,arraySegmentIterator,arrayIterator,data)
 *              {
 *                ... = data
 *              }
@@ -475,19 +475,15 @@ void Array_removeAll(Array                *array,
 /***********************************************************************\
 * Name   : Array_contains
 * Purpose: check if array contain data element
-* Input  : array                - array
-*          data                 - data element
-*          arrayCompareFunction - compare function or NULL for memcmp
-*          arrayCompareUserData - user data for compare function
+* Input  : array - array
+*          data  - data element
 * Output : -
 * Return : TRUE if array contain data element, FALSE otherwise
 * Notes  : -
 \***********************************************************************/
 
-bool Array_contains(const Array          *array,
-                    const void           *data,
-                    ArrayCompareFunction arrayCompareFunction,
-                    void                 *arrayCompareUserData
+bool Array_contains(const Array *array,
+                    const void  *data
                    );
 
 /***********************************************************************\
