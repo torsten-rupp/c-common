@@ -164,6 +164,8 @@ LOCAL bool defaultEqualsFunction(const void *data0, const void *data1, ulong len
   return memcmp(data0,data1,length) == 0;
 }
 
+// TODO: still not used
+#if 0
 #if COLLISION_ALGORITHM==COLLISION_ALGORITHM_QUADRATIC_PROBING
 /***********************************************************************\
 * Name   : modulo
@@ -227,6 +229,7 @@ LOCAL_INLINE ulong rotHash(ulong hash, int n)
   shift = 32-n;
   return ((hash & (0xFFFFffff << shift)) >> shift) | (hash << n);
 }
+#endif
 
 /***********************************************************************\
 * Name   : findEntry
@@ -371,6 +374,8 @@ LOCAL HashTableEntry* findFreeEntry(HashTable *hashTable,
   return hashTableEntry;
 }
 
+// TODO: use?
+#if 0
 /***********************************************************************\
 * Name   : growTable
 * Purpose: grow table size
@@ -395,6 +400,7 @@ LOCAL HashTableEntry *growTable(HashTableEntry *entries, uint oldSize, uint newS
 
   return entries;
 }
+#endif
 
 /***********************************************************************\
 * Name   : getNext
