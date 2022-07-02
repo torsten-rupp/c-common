@@ -199,8 +199,10 @@
 
 // memory sizes
 #define KB 1024
-#define MB (1024*1024)
-#define GB (1024L*1024L*1024L)
+#define MB (1024*KB)
+#define GB (1024L*MB)
+#define TB (1024L*GB)
+#define PB (1024L*TB)
 
 // special constants
 #define NO_WAIT      0L
@@ -283,6 +285,7 @@ typedef uint32_t Codepoint;
 // string tokenizer
 typedef struct
 {
+  char       *s;
   const char *delimiters;
   const char *nextToken;
   char       *p;
@@ -3780,19 +3783,20 @@ static inline Codepoint stringIteratorGet(CStringIterator *cStringIterator)
 * Name   : stringTokenizerInit
 * Purpose: init string tokenizer
 * Input  : cStringTokenizer - string tokenizer
-*          string           - string
+*          s                - string
 *          delimiters       - token delimiters
 * Output : -
 * Return : -
 * Notes  : -
 \***********************************************************************/
 
-static inline void stringTokenizerInit(CStringTokenizer *cStringTokenizer, const char *string, const char *delimiters)
+static inline void stringTokenizerInit(CStringTokenizer *cStringTokenizer, const char *s, const char *delimiters)
 {
   assert(cStringTokenizer != NULL);
-  assert(string != NULL);
+  assert(s != NULL);
 
-  cStringTokenizer->nextToken  = strtok_r((char*)string,delimiters,&cStringTokenizer->p);
+  cStringTokenizer->s          = strdup(s);
+  cStringTokenizer->nextToken  = strtok_r(cStringTokenizer->s,delimiters,&cStringTokenizer->p);
   cStringTokenizer->delimiters = delimiters;
 }
 
@@ -3809,7 +3813,7 @@ static inline void stringTokenizerDone(CStringTokenizer *cStringTokenizer)
 {
   assert(cStringTokenizer != NULL);
 
-  UNUSED_VARIABLE(cStringTokenizer);
+  free(cStringTokenizer->s);
 }
 
 /***********************************************************************\
