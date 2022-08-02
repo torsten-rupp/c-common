@@ -161,7 +161,7 @@
 #define MAX_INT16          32767
 #define MIN_INT32          -2147483648
 #define MAX_INT32          2147483647
-#define MIN_INT64          9223372036854775808LL
+#define MIN_INT64          (-9223372036854775807LL-1LL)
 #define MAX_INT64          9223372036854775807LL
 
 #define MIN_UCHAR          0
@@ -2443,6 +2443,61 @@ static inline double normDegree360(double n)
 /*---------------------------------------------------------------------*/
 
 /***********************************************************************\
+* Name   : initSimpleHash
+* Purpose: initialize simple hash
+* Input  : hash - hash variable
+* Output : hash - initialzied hash
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+static inline void initSimpleHash(uint32 *hash)
+{
+  assert(hash != NULL);
+
+  (*hash) = 0L;
+}
+
+/***********************************************************************\
+* Name   : updateSimpleHash
+* Purpose: update simple hash
+* Input  : hash - hash variable
+*          b    - value
+* Output : hash - updated hash variable
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+static inline void updateSimpleHash(uint32 *hash, byte b)
+{
+  assert(hash != NULL);
+
+  (*hash) += b;
+  (*hash) += (*hash) << 10;
+  (*hash) ^= (*hash) >> 6;
+}
+
+/***********************************************************************\
+* Name   : doneSimpleHash
+* Purpose: done simple hash
+* Input  : -
+* Output : -
+* Return : hash value
+* Notes  : -
+\***********************************************************************/
+
+static inline uint32 doneSimpleHash(uint32 hash)
+{
+  hash += hash << 3;
+  hash ^= hash >> 11;
+  hash += hash << 15;
+
+  return hash;
+}
+
+/*---------------------------------------------------------------------*/
+
+/***********************************************************************\
 * Name   : stringClear
 * Purpose: clear string
 * Input  : s - string
@@ -4108,15 +4163,15 @@ static inline bool stringMatch(const char *string, const char *pattern, const ch
 }
 
 /***********************************************************************\
-* Name   : stringHash
-* Purpose: calculate 32bit hash from string
+* Name   : stringSimpleHash
+* Purpose: calculate 32bit simple hash from string
 * Input  : string - string
 * Output : -
 * Return : hash value
 * Notes  : -
 \***********************************************************************/
 
-uint32 stringHash(const char *string);
+uint32 stringSimpleHash(const char *string);
 
 /*---------------------------------------------------------------------*/
 
