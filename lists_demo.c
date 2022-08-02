@@ -71,7 +71,7 @@ int main(int argc, char *argv[])
   UNUSED_VARIABLE(argv);
 
   /* create a list, traverse it, delete list */
-  List_init(&stringList);
+  List_init(&stringList,NULL,NULL,(ListNodeFreeFunction)freeStringNode,NULL);
 
   stringNode = LIST_NEW_NODE(StringNode);
   strcpy(stringNode->s,"Hello");
@@ -96,10 +96,10 @@ int main(int argc, char *argv[])
     stringNode = stringNode->next;
   }
 
-  List_done(&stringList,(ListNodeFreeFunction)freeStringNode,NULL);
+  List_done(&stringList);
 
   /* create a list, print it, sort it, print it, delete list */
-  List_init(&stringList);
+  List_init(&stringList,NULL,NULL,(ListNodeFreeFunction)freeStringNode,NULL);
 
   stringNode = LIST_NEW_NODE(StringNode);
   strcpy(stringNode->s,"b");
@@ -138,7 +138,7 @@ int main(int argc, char *argv[])
     stringNode = stringNode->next;
   }
 
-  List_done(&stringList,(ListNodeFreeFunction)freeStringNode,NULL);
+  List_done(&stringList);
 
   /* debug checks */
 
@@ -156,8 +156,8 @@ int main(int argc, char *argv[])
 #endif
 
 #if 1
-  List_init(&stringList1);
-  List_init(&stringList2);
+  List_init(&stringList1,NULL,NULL,(ListNodeFreeFunction)freeStringNode,NULL);
+  List_init(&stringList2,NULL,NULL,(ListNodeFreeFunction)freeStringNode,NULL);
 
   stringNode = LIST_NEW_NODE(StringNode);
   strcpy(stringNode->s,"Hello");
@@ -165,8 +165,8 @@ int main(int argc, char *argv[])
   List_append(&stringList1,stringNode);
   List_append(&stringList2,stringNode);
 
-  List_done(&stringList2,(ListNodeFreeFunction)freeStringNode,NULL);
-  List_done(&stringList1,(ListNodeFreeFunction)freeStringNode,NULL);
+  List_done(&stringList2);
+  List_done(&stringList1);
 #endif
 
   return(0);

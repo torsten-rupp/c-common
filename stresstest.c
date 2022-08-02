@@ -57,6 +57,7 @@ LOCAL bool quitFlag;
 
 LOCAL void freeStressNode(StressNode *stressNode, void *userData)
 {
+  UNUSED_VARIABLE(stressNode);
   UNUSED_VARIABLE(userData);
 }
 
@@ -67,7 +68,7 @@ LOCAL void listThreadCode(void)
 
   while (!quitFlag)
   {
-    List_init(&stressList);
+    List_init(&stressList,NULL,NULL,(ListNodeFreeFunction)freeStressNode,NULL);
 
     stressNode = LIST_NEW_NODE(StressNode);
     List_append(&stressList,stressNode);
@@ -76,7 +77,7 @@ LOCAL void listThreadCode(void)
     stressNode = LIST_NEW_NODE(StressNode);
     List_append(&stressList,stressNode);
 
-    List_done(&stressList,(ListNodeFreeFunction)freeStressNode,NULL);
+    List_done(&stressList);
 
     Thread_yield();
   }

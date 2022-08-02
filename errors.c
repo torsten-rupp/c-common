@@ -582,135 +582,95 @@ const char *Error_getText(Errors error)
 #line 57 "errors.def"
       stringSet(errorText,sizeof(errorText),"decrypt");
       break;
-#line 64 "errors.def"
+#line 67 "errors.def"
     case ERROR_CODE_CREATE_FILE:
-#line 64 "errors.def"
+#line 67 "errors.def"
     case ERROR_CODE_OPEN_FILE:
-#line 64 "errors.def"
+#line 67 "errors.def"
     case ERROR_CODE_OPEN_DIRECTORY:
-#line 64 "errors.def"
-    case ERROR_CODE_IO_ERROR:
+#line 67 "errors.def"
+    case ERROR_CODE_END_OF_FILE:
+#line 67 "errors.def"
+    case ERROR_CODE_DIRECTORY_NOT_FOUND_:
+#line 67 "errors.def"
+    case ERROR_CODE_NOT_A_DIRECTORY:
+#line 67 "errors.def"
+    case ERROR_CODE_IO:
       {
         strncpy(errorText,strerror(ERROR_CODE),sizeof(errorText)-1); errorText[sizeof(errorText)-1] = '\0';
       }
       break;
     case ERROR_CODE_PARSE_DEVICE_LIST:
-#line 66 "errors.def"
+#line 71 "errors.def"
       stringSet(errorText,sizeof(errorText),"error parsing device list");
       break;
     case ERROR_CODE_FILE_EXITS:
-#line 67 "errors.def"
+#line 72 "errors.def"
       stringSet(errorText,sizeof(errorText),"file already exists");
       break;
     case ERROR_CODE_FILE_NOT_FOUND:
-#line 68 "errors.def"
+#line 73 "errors.def"
       stringSet(errorText,sizeof(errorText),"file not found");
       break;
-    case ERROR_CODE_END_OF_ARCHIVE:
-#line 71 "errors.def"
-      stringSet(errorText,sizeof(errorText),"end of archive");
-      break;
-    case ERROR_CODE_NO_FILE_ENTRY:
-#line 72 "errors.def"
-      stringSet(errorText,sizeof(errorText),"no file entry");
-      break;
-    case ERROR_CODE_NO_FILE_DATA:
-#line 73 "errors.def"
-      stringSet(errorText,sizeof(errorText),"no data entry");
-      break;
-    case ERROR_CODE_NO_DIRECTORY_ENTRY:
-#line 74 "errors.def"
-      stringSet(errorText,sizeof(errorText),"no directory entry");
-      break;
-    case ERROR_CODE_NO_LINK_ENTRY:
-#line 75 "errors.def"
-      stringSet(errorText,sizeof(errorText),"no link entry");
-      break;
-    case ERROR_CODE_NO_SPECIAL_ENTRY:
-#line 76 "errors.def"
-      stringSet(errorText,sizeof(errorText),"no special entry");
-      break;
-    case ERROR_CODE_END_OF_DATA:
-#line 77 "errors.def"
-      stringSet(errorText,sizeof(errorText),"end of data");
-      break;
-    case ERROR_CODE_CRC_ERROR:
-#line 78 "errors.def"
-      stringSet(errorText,sizeof(errorText),"CRC error");
-      break;
-    case ERROR_CODE_FILE_INCOMPLETE:
-#line 79 "errors.def"
-      stringSet(errorText,sizeof(errorText),"file is incomplete");
-      break;
-    case ERROR_CODE_WRONG_FILE_TYPE:
-#line 80 "errors.def"
-      stringSet(errorText,sizeof(errorText),"wrong file type");
-      break;
-    case ERROR_CODE_FILES_DIFFER:
-#line 81 "errors.def"
-      stringSet(errorText,sizeof(errorText),"files differ");
-      break;
-    case ERROR_CODE_CORRUPT_DATA:
-#line 82 "errors.def"
-      stringSet(errorText,sizeof(errorText),"corrupt data or invalid password");
-      break;
-    case ERROR_CODE_NOT_AN_INCREMENTAL_FILE:
-#line 85 "errors.def"
-      stringSet(errorText,sizeof(errorText),"invalid incremental file");
-      break;
-    case ERROR_CODE_WRONG_INCREMENTAL_FILE_VERSION:
-#line 86 "errors.def"
-      stringSet(errorText,sizeof(errorText),"wrong incremental file version");
-      break;
-    case ERROR_CODE_CORRUPT_INCREMENTAL_FILE:
-#line 87 "errors.def"
-      stringSet(errorText,sizeof(errorText),"corrupt incremental file");
-      break;
     case ERROR_CODE_HOST_NOT_FOUND:
-#line 90 "errors.def"
+#line 76 "errors.def"
       stringSet(errorText,sizeof(errorText),"host not found");
       break;
-#line 92 "errors.def"
+#line 78 "errors.def"
+    case ERROR_CODE_OPEN_DEVICE:
+#line 78 "errors.def"
     case ERROR_CODE_CONNECT_FAIL:
       {
         strncpy(errorText,strerror(ERROR_CODE),sizeof(errorText)-1); errorText[sizeof(errorText)-1] = '\0';
       }
       break;
     case ERROR_CODE_NO_LOGIN_NAME:
-#line 94 "errors.def"
+#line 80 "errors.def"
       stringSet(errorText,sizeof(errorText),"no login name given");
       break;
     case ERROR_CODE_NO_PASSWORD:
-#line 95 "errors.def"
+#line 81 "errors.def"
       stringSet(errorText,sizeof(errorText),"no password given");
       break;
     case ERROR_CODE_NETWORK_SEND:
-#line 96 "errors.def"
+#line 82 "errors.def"
       stringSet(errorText,sizeof(errorText),"sending data fail");
       break;
     case ERROR_CODE_NETWORK_RECEIVE:
-#line 97 "errors.def"
+#line 83 "errors.def"
       stringSet(errorText,sizeof(errorText),"receiving data fail");
       break;
     case ERROR_CODE_NETWORK_EXECUTE_FAIL:
-#line 98 "errors.def"
+#line 84 "errors.def"
       stringSet(errorText,sizeof(errorText),"execute command fail");
       break;
     case ERROR_CODE_INVALID_DEVICE_SPECIFIER:
-#line 101 "errors.def"
+#line 87 "errors.def"
       stringSet(errorText,sizeof(errorText),"invalid device specifier");
       break;
     case ERROR_CODE_LOAD_VOLUME_FAIL:
-#line 102 "errors.def"
+#line 88 "errors.def"
       stringSet(errorText,sizeof(errorText),"load volume fail");
       break;
+    case ERROR_CODE_PARSE_COMMAND:
+#line 91 "errors.def"
+      stringSet(errorText,sizeof(errorText),"parse command");
+      break;
+    case ERROR_CODE_IO_REDIRECT_FAIL:
+#line 92 "errors.def"
+      stringSet(errorText,sizeof(errorText),"i/o rediret fail");
+      break;
     case ERROR_CODE_FORK_FAIL:
-#line 105 "errors.def"
+#line 93 "errors.def"
       stringSet(errorText,sizeof(errorText),"fork for execute external program fail");
       break;
     case ERROR_CODE_EXEC_FAIL:
-#line 106 "errors.def"
+#line 94 "errors.def"
       stringSet(errorText,sizeof(errorText),"execute external program fail");
+      break;
+    case ERROR_CODE_EXEC_TERMINATE:
+#line 95 "errors.def"
+      stringSet(errorText,sizeof(errorText),"execute terminated");
       break;
 
   }

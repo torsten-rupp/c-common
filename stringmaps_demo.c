@@ -141,7 +141,7 @@ int main(int argc, char *argv[])
     StringMap_getInt64(stringMap,"b",&l,0); printf("b=%"PRIi64"\n",l);
     StringMap_getDouble(stringMap,"c",&d,0.0); printf("c=%lf\n",d);
     StringMap_getBool(stringMap,"d",&b,FALSE); printf("d=%d\n",b);
-    StringMap_getEnum(stringMap,"e",&e,(StringMapParseEnumFunction)parseEnum,UNKNOWN); printf("e=%d\n",e);
+    StringMap_getEnum(stringMap,"e",&e,(StringMapParseEnumFunction)parseEnum,NULL,UNKNOWN); printf("e=%d\n",e);
     StringMap_getChar(stringMap,"f",&ch,'\0'); printf("f=%c\n",ch);
     StringMap_getCString(stringMap,"g",buffer,sizeof(buffer),NULL); printf("g=%s\n",buffer);
     StringMap_getString(stringMap,"h",string,NULL); printf("h=%s\n",String_cString(string));

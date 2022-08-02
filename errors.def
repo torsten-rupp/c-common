@@ -60,31 +60,17 @@ ERROR DECRYPT_FAIL                   "decrypt"
 ERROR CREATE_FILE
 ERROR OPEN_FILE
 ERROR OPEN_DIRECTORY
-ERROR IO_ERROR
+ERROR END_OF_FILE
+ERROR DIRECTORY_NOT_FOUND_
+ERROR NOT_A_DIRECTORY
+ERROR IO
   strncpy(errorText,strerror(ERROR_CODE),sizeof(errorText)-1); errorText[sizeof(errorText)-1] = '\0';
+
+ERROR OPEN_DEVICE
 
 ERROR PARSE_DEVICE_LIST              "error parsing device list"
 ERROR FILE_EXITS                     "file already exists"
 ERROR FILE_NOT_FOUND                 "file not found"
-
-// archive
-ERROR END_OF_ARCHIVE                 "end of archive"
-ERROR NO_FILE_ENTRY                  "no file entry"
-ERROR NO_FILE_DATA                   "no data entry"
-ERROR NO_DIRECTORY_ENTRY             "no directory entry"
-ERROR NO_LINK_ENTRY                  "no link entry"
-ERROR NO_SPECIAL_ENTRY               "no special entry"
-ERROR END_OF_DATA                    "end of data"
-ERROR CRC_ERROR                      "CRC error"
-ERROR FILE_INCOMPLETE                "file is incomplete"
-ERROR WRONG_FILE_TYPE                "wrong file type"
-ERROR FILES_DIFFER                   "files differ"
-ERROR CORRUPT_DATA                   "corrupt data or invalid password"
-
-// incremental files
-ERROR NOT_AN_INCREMENTAL_FILE        "invalid incremental file"
-ERROR WRONG_INCREMENTAL_FILE_VERSION "wrong incremental file version"
-ERROR CORRUPT_INCREMENTAL_FILE       "corrupt incremental file"
 
 // network
 ERROR HOST_NOT_FOUND                 "host not found"
@@ -102,7 +88,10 @@ ERROR INVALID_DEVICE_SPECIFIER       "invalid device specifier"
 ERROR LOAD_VOLUME_FAIL               "load volume fail"
 
 // exec
+ERROR PARSE_COMMAND                  "parse command"
+ERROR IO_REDIRECT_FAIL               "i/o rediret fail"
 ERROR FORK_FAIL                      "fork for execute external program fail"
 ERROR EXEC_FAIL                      "execute external program fail"
+ERROR EXEC_TERMINATE                 "execute terminated"
 
 // end of file
