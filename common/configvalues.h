@@ -1305,7 +1305,7 @@ uint ConfigValue_nextValueIndex(const ConfigValue configValues[],
 * Notes  :
 ***********************************************************************/
 
-bool ConfigValue_parse(const ConfigValue    *configValues[],
+bool ConfigValue_parse(const ConfigValue    configValues[],
                        const ConfigValue    *configValue,
                        const char           *sectionName,
                        const char           *value,
@@ -1419,7 +1419,7 @@ bool ConfigValue_isCommentLine(const ConfigValue configValues[], ConstString lin
 * Notes  : -
 \***********************************************************************/
 
-void ConfigValue_setComments(const ConfigValue *configValues[],
+void ConfigValue_setComments(const ConfigValue configValues[],
                              const ConfigValue *configValue,
                              const StringList  *commentList
                             );
@@ -1682,7 +1682,7 @@ void ConfigValue_debugSHA256(const ConfigValue configValues[], void *buffer, uin
 \***********************************************************************/
 
 bool ConfigValue_isDefaultComment(const ConfigValue configValues[],
-                                  ConstString       *comment
+                                  ConstString       comment
                                  );
 
 

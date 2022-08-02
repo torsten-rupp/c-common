@@ -1751,7 +1751,7 @@ LOCAL String getUnifiedLine(String unifiedLine, const char *line)
 * Notes  : -
 \***********************************************************************/
 
-LOCAL void setComments(const ConfigValue *configValues[],
+LOCAL void setComments(const ConfigValue configValues[],
                        const ConfigValue *configValue,
                        const StringList  *commentList
                       )
@@ -3235,7 +3235,7 @@ uint ConfigValue_nextValueIndex(const ConfigValue configValues[],
   return (configValues[index].type != CONFIG_VALUE_TYPE_END) ? index : CONFIG_VALUE_INDEX_NONE;
 }
 
-bool ConfigValue_parse(const ConfigValue    *configValues[],
+bool ConfigValue_parse(const ConfigValue    configValues[],
                        const ConfigValue    *configValue,
                        const char           *sectionName,
                        const char           *value,
@@ -3429,7 +3429,7 @@ bool ConfigValue_isCommentLine(const ConfigValue configValues[], ConstString lin
   return isCommentLine;
 }
 
-void ConfigValue_setComments(const ConfigValue *configValues[],
+void ConfigValue_setComments(const ConfigValue configValues[],
                              const ConfigValue *configValue,
                              const StringList  *commentList
                             )
@@ -5405,7 +5405,7 @@ void ConfigValue_debugSHA256(const ConfigValue configValues[], void *buffer, uin
 
 // TODO: temporary
 
-uint32 getCommentHash(const char *comment)
+LOCAL uint32 getCommentHash(const char *comment)
 {
   uint32          hash;
   CStringIterator cstringIterator;
@@ -5428,7 +5428,7 @@ uint32 getCommentHash(const char *comment)
 }
 
 bool ConfigValue_isDefaultComment(const ConfigValue configValues[],
-                                  ConstString       *comment
+                                  ConstString       comment
                                  )
 {
   uint32 commentHash;
@@ -5442,6 +5442,8 @@ bool ConfigValue_isDefaultComment(const ConfigValue configValues[],
   {
     switch (configValues[index].type)
     {
+      case CONFIG_VALUE_TYPE_NONE:
+        break;
       case CONFIG_VALUE_TYPE_BEGIN_SECTION:
         if (configValues[index].separator.text != NULL)
         {
@@ -5453,6 +5455,12 @@ bool ConfigValue_isDefaultComment(const ConfigValue configValues[],
             return TRUE;
           }
         }
+        break;
+      case CONFIG_VALUE_TYPE_END_SECTION:
+        break;
+      case CONFIG_VALUE_TYPE_SEPARATOR:
+        break;
+      case CONFIG_VALUE_TYPE_SPACE:
         break;
       case CONFIG_VALUE_TYPE_COMMENT:
         if (configValues[index].comment.text != NULL)
@@ -5466,6 +5474,22 @@ bool ConfigValue_isDefaultComment(const ConfigValue configValues[],
             return TRUE;
           }
         }
+        break;
+      case CONFIG_VALUE_TYPE_INTEGER:
+      case CONFIG_VALUE_TYPE_INTEGER64:
+      case CONFIG_VALUE_TYPE_DOUBLE:
+      case CONFIG_VALUE_TYPE_BOOLEAN:
+      case CONFIG_VALUE_TYPE_ENUM:
+      case CONFIG_VALUE_TYPE_SELECT:
+      case CONFIG_VALUE_TYPE_SET:
+      case CONFIG_VALUE_TYPE_CSTRING:
+      case CONFIG_VALUE_TYPE_STRING:
+      case CONFIG_VALUE_TYPE_SPECIAL:
+        break;
+      case CONFIG_VALUE_TYPE_IGNORE:
+      case CONFIG_VALUE_TYPE_DEPRECATED:
+        break;
+      case CONFIG_VALUE_TYPE_END:
         break;
     }
     index++;
