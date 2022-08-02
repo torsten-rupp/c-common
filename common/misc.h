@@ -654,7 +654,7 @@ INLINE long Misc_getRestTimeout(const TimeoutInfo *timeoutInfo, ulong maxTimeout
              ? MIN((long)((timeoutInfo->endTimestamp-timestamp)/US_PER_MS),(long)MIN(maxTimeout,MAX_LONG))
              : 0L;
   }
-  else if (maxTimeout < (ulong)MAX_LONG)
+  else if (maxTimeout <= (ulong)MAX_LONG)
   {
     return (long)maxTimeout;
   }
@@ -818,6 +818,40 @@ INLINE bool Misc_isLeapYear(uint year)
 \***********************************************************************/
 
 bool Misc_isDayLightSaving(uint64 dateTime);
+
+/***********************************************************************\
+* Name   : Misc_extractDate
+* Purpose: extract date from date/time
+* Input  : dateTime - date/time (seconds since 1970-1-1 00:00:00)
+* Output : -
+* Return : date since midnight (time 00:00:00)
+* Notes  : -
+\***********************************************************************/
+
+INLINE uint64 Misc_extractDate(uint64 dateTime);
+#if defined(NDEBUG) || defined(__MISC_IMPLEMENTATION__)
+INLINE uint64 Misc_extractDate(uint64 dateTime)
+{
+  return dateTime-(dateTime % S_PER_DAY);
+}
+#endif /* NDEBUG || __MISC_IMPLEMENTATION__ */
+
+/***********************************************************************\
+* Name   : Misc_extractTime
+* Purpose: extract time from date/time
+* Input  : dateTime - date/time (seconds since 1970-1-1 00:00:00)
+* Output : -
+* Return : time
+* Notes  : -
+\***********************************************************************/
+
+INLINE uint32 Misc_extractTime(uint64 dateTime);
+#if defined(NDEBUG) || defined(__MISC_IMPLEMENTATION__)
+INLINE uint32 Misc_extractTime(uint64 dateTime)
+{
+  return (uint32)(dateTime % S_PER_DAY);
+}
+#endif /* NDEBUG || __MISC_IMPLEMENTATION__ */
 
 /***********************************************************************\
 * Name   : Misc_makeDateTime
@@ -1041,7 +1075,7 @@ String Misc_expandMacros(String           string,
 * Purpose: wait for single handle
 * Input  : handle     - handle
 *          signalMask - signal mask (can be NULL)
-*          events     - events to wait for
+*          events     - events to wait for; see HANDLE_EVENT_...
 *          timeout    - timeout [ms[
 * Output : -
 * Return : events; see HANDLE_EVENT_...
