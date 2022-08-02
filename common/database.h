@@ -149,6 +149,7 @@ typedef enum
   DATABASE_DATATYPE_BLOB,
 
   DATABASE_DATATYPE_ARRAY,
+  DATABASE_DATATYPE_FTS,
 
   DATABASE_DATATYPE_UNKNOWN,
 } DatabaseDataTypes;
@@ -207,7 +208,8 @@ typedef enum
 } DatabaseTemporaryTableIds;
 
 #define DATABASE_COMPARE_FLAG_NONE          0
-#define DATABASE_COMPARE_FLAG_INCLUDE_VIEWS (1 << 0)
+#define DATABASE_COMPARE_IGNORE_OBSOLETE    (1 << 0)
+#define DATABASE_COMPARE_FLAG_INCLUDE_VIEWS (1 << 1)
 
 // database check types
 typedef enum
@@ -311,7 +313,6 @@ typedef struct DatabaseNode
   DatabaseSpecifier           databaseSpecifier;
   uint                        openCount;
 
-  DatabaseLockTypes           lockType;
   uint                        pendingReadCount;
   uint                        readCount;
   pthread_cond_t              readTrigger;
@@ -2185,6 +2186,32 @@ void Database_filter(String filterString, const char *format, ...);
 \***********************************************************************/
 
 void Database_filterAppend(String filterString, bool condition, const char *concatenator, const char *format, ...);
+
+/***********************************************************************\
+* Name   : Database_filterDateString
+* Purpose: get date filter string
+* Input  : columnName - column name
+* Output : -
+* Return : filter string with date as timestamp (Unix epoch)
+* Notes  : -
+\***********************************************************************/
+
+char *Database_filterDateString(const DatabaseHandle *databaseHandle,
+                                const char           *columnName
+                               );
+
+/***********************************************************************\
+* Name   : Database_filterTimeString
+* Purpose: get time filter string
+* Input  : columnName - column name
+* Output : -
+* Return : filter string with time as timestamp (seconds since midnight)
+* Notes  : -
+\***********************************************************************/
+
+char *Database_filterTimeString(const DatabaseHandle *databaseHandle,
+                                const char           *columnName
+                               );
 
 /***********************************************************************\
 * Name   : Database_execute
