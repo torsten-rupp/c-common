@@ -674,6 +674,11 @@ LOCAL_INLINE bool checkDatabaseInitialized(DatabaseHandle *databaseHandle)
       #else /* HAVE_POSTGRESQL */
         return FALSE;
       #endif /* HAVE_POSTGRESQL */
+    default:
+      #ifndef NDEBUG
+        HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
+      #endif /* NDEBUG */
+      break;
   }
 
   return FALSE;
@@ -1346,12 +1351,23 @@ LOCAL int progressHandler(void *userData)
 
 LOCAL void sqlite3UnixTimestamp(sqlite3_context *context, int argc, sqlite3_value *argv[])
 {
+  #ifdef HAVE_STRPTIME
+    const char *DATE_TIME_FORMATS[] =
+    {
+      "%Y-%m-%d %H:%M:%S",
+      "%Y-%m-%d"
+    };
+  #endif
+
   const char *text,*format;
   const char *s;
   uint64     timestamp;
-  #ifdef HAVE_GETDATE_R
+  #ifdef HAVE_STRPTIME
+    uint i;
+  #endif
+  #if defined(HAVE_GETDATE_R) || defined(HAVE_STRPTIME)
     struct tm tmBuffer;
-  #endif /* HAVE_GETDATE_R */
+  #endif
   struct tm  *tm;
 
   assert(context != NULL);
@@ -1363,6 +1379,8 @@ LOCAL void sqlite3UnixTimestamp(sqlite3_context *context, int argc, sqlite3_valu
   // get text to convert, optional date/time format
   text   = (const char*)sqlite3_value_text(argv[0]);
   format = (argc >= 2) ? (const char *)argv[1] : NULL;
+
+  timestamp = 0LL;
 
   // convert to Unix timestamp
   if (text != NULL)
@@ -1398,8 +1416,23 @@ LOCAL void sqlite3UnixTimestamp(sqlite3_context *context, int argc, sqlite3_valu
       }
       else
       {
+        s = NULL;
         #ifdef HAVE_STRPTIME
-          s = strptime(text,(format != NULL) ? format : "%Y-%m-%d %H:%M:%S",&tmBuffer);
+          memClear(&tmBuffer,sizeof(tmBuffer));
+          if (format != NULL)
+          {
+            s = strptime(text,format,&tmBuffer);
+          }
+          else
+          {
+            i = 0;
+            do
+            {
+              s = strptime(text,DATE_TIME_FORMATS[i],&tmBuffer);
+              i++;
+            }
+            while ((s == NULL) && (i < SIZE_OF_ARRAY(DATE_TIME_FORMATS)));
+          }
         #else
 UNUSED_VARIABLE(format);
 #ifndef WERROR
@@ -3026,6 +3059,7 @@ LOCAL Errors postgresqlPrepareStatement(PostgresSQLStatement *statement,
   ExecStatusType       postgreSQLExecStatus;
 
   assert(databaseHandle != NULL);
+  DEBUG_CHECK_RESOURCE_TRACE(databaseHandle);
   assert(statement != NULL);
   assert(sqlString != NULL);
 
@@ -3694,6 +3728,11 @@ LOCAL DatabaseId postgresqlGetLastInsertId(PGconn *handle)
       #else /* HAVE_POSTGRESQL */
       #endif /* HAVE_POSTGRESQL */
       break;
+    #ifndef NDEBUG
+      default:
+        HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
+        break;
+    #endif /* NDEBUG */
   }
 
   // set handlers
@@ -3717,6 +3756,11 @@ LOCAL DatabaseId postgresqlGetLastInsertId(PGconn *handle)
             #else /* HAVE_POSTGRESQL */
             #endif /* HAVE_POSTGRESQL */
             break;
+          #ifndef NDEBUG
+            default:
+              HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
+              break;
+          #endif /* NDEBUG */
         }
       #endif /* DATABASE_DEBUG_LOG */
 // TODO: needed?
@@ -3824,6 +3868,11 @@ LOCAL DatabaseId postgresqlGetLastInsertId(PGconn *handle)
       #else /* HAVE_POSTGRESQL */
       #endif /* HAVE_POSTGRESQL */
       break;
+    #ifndef NDEBUG
+      default:
+        HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
+        break;
+    #endif /* NDEBUG */
   }
 
   // specific settings
@@ -3875,6 +3924,11 @@ LOCAL DatabaseId postgresqlGetLastInsertId(PGconn *handle)
       #else /* HAVE_POSTGRESQL */
       #endif /* HAVE_POSTGRESQL */
       break;
+    #ifndef NDEBUG
+      default:
+        HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
+        break;
+    #endif /* NDEBUG */
   }
 
   #ifdef DATABASE_DEBUG
@@ -5391,6 +5445,7 @@ LOCAL void formatParameters(String               sqlString,
 {
   assert(sqlString != NULL);
   assert(databaseHandle != NULL);
+  DEBUG_CHECK_RESOURCE_TRACE(databaseHandle);
   assert(s != NULL);
   assert(parameterCount != NULL);
 
@@ -5449,7 +5504,7 @@ LOCAL void formatParameters(String               sqlString,
             break;
           case DATABASE_TYPE_POSTGRESQL:
             #if defined(HAVE_POSTGRESQL)
-              String_formatAppend(sqlString,"$%u",1+(*parameterCount));
+              String_appendFormat(sqlString,"$%u",1+(*parameterCount));
             #else /* HAVE_POSTGRESQL */
             #endif /* HAVE_POSTGRESQL */
             break;
@@ -7821,7 +7876,7 @@ LOCAL Errors bindFilters(DatabaseStatementHandle *databaseStatementHandle,
                 for (j = 0; j < filters[i].array.length; j++)
                 {
                   if (!String_isEmpty(string)) String_appendChar(string,',');
-                  String_formatAppend(string,"%lld",((DatabaseId*)filters[i].array.data)[j]);
+                  String_appendFormat(string,"%lld",((DatabaseId*)filters[i].array.data)[j]);
                 }
 
                 sqliteResult = sqlite3_bind_text(databaseStatementHandle->sqlite.statementHandle,
@@ -8609,7 +8664,7 @@ LOCAL Errors executePreparedQuery(DatabaseStatementHandle *databaseStatementHand
             // get number of changes
             if (changedRowCount != NULL)
             {
-              (*changedRowCount) = (ulong)mysql_affected_rows(databaseStatementHandle->databaseHandle->mariadb.handle);
+              (*changedRowCount) += (ulong)mysql_affected_rows(databaseStatementHandle->databaseHandle->mariadb.handle);
             }
           }
         #else /* HAVE_MARIADB */
@@ -8632,7 +8687,7 @@ LOCAL Errors executePreparedQuery(DatabaseStatementHandle *databaseStatementHand
             // get number of changes
             if (changedRowCount != NULL)
             {
-              (*changedRowCount) = databaseStatementHandle->postgresql.rowCount;
+              (*changedRowCount) += databaseStatementHandle->postgresql.rowCount;
             }
           }
         #else /* HAVE_POSTGRESQL */
@@ -9133,11 +9188,25 @@ LOCAL Errors getTableColumns(DatabaseColumn columns[],
                                     }
                                     else if (String_startsWithCString(type,"tinyint"))
                                     {
-                                      columns[i].type = DATABASE_DATATYPE_INT;
+                                      if (isPrimaryKey)
+                                      {
+                                        columns[i].type = DATABASE_DATATYPE_PRIMARY_KEY;
+                                      }
+                                      else
+                                      {
+                                        columns[i].type = DATABASE_DATATYPE_INT;
+                                      }
                                     }
                                     else if (String_startsWithCString(type,"bigint"))
                                     {
-                                      columns[i].type = DATABASE_DATATYPE_INT64;
+                                      if (isPrimaryKey)
+                                      {
+                                        columns[i].type = DATABASE_DATATYPE_PRIMARY_KEY;
+                                      }
+                                      else
+                                      {
+                                        columns[i].type = DATABASE_DATATYPE_INT64;
+                                      }
                                     }
                                     else if (String_startsWithCString(type,"double"))
                                     {
@@ -9816,6 +9885,11 @@ void Database_doneSpecifier(DatabaseSpecifier *databaseSpecifier)
       #else /* HAVE_POSTGRESQL */
       #endif /* HAVE_POSTGRESQL */
       break;
+    #ifndef NDEBUG
+      default:
+        HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
+        break;
+    #endif /* NDEBUG */
   }
 }
 
@@ -9921,6 +9995,11 @@ bool Database_equalSpecifiers(const DatabaseSpecifier *databaseSpecifier0,
         #else /* HAVE_POSTGRESQL */
         #endif /* HAVE_POSTGRESQL */
         break;
+      #ifndef NDEBUG
+        default:
+          HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
+          break;
+      #endif /* NDEBUG */
     }
   }
 
@@ -9970,6 +10049,11 @@ String Database_getPrintableName(String                  string,
         String_clear(string);
       #endif /* HAVE_POSTGRESQL */
       break;
+    #ifndef NDEBUG
+      default:
+        HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
+        break;
+    #endif /* NDEBUG */
   }
 
   return string;
@@ -10121,6 +10205,11 @@ Errors Database_rename(DatabaseSpecifier *databaseSpecifier,
         return ERROR_FUNCTION_NOT_SUPPORTED;
       #endif /* HAVE_POSTGRESQL */
       break;
+    #ifndef NDEBUG
+      default:
+        HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
+        break;
+    #endif /* NDEBUG */
   }
   assert(error != ERROR_UNKNOWN);
 
@@ -10236,6 +10325,11 @@ Errors Database_create(const DatabaseSpecifier *databaseSpecifier,
         error = ERROR_FUNCTION_NOT_SUPPORTED;
       #endif /* HAVE_POSTGRESQL */
       break;
+    #ifndef NDEBUG
+      default:
+        HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
+        break;
+    #endif /* NDEBUG */
   }
   assert(error != ERROR_UNKNOWN);
 
@@ -12638,7 +12732,7 @@ Errors Database_copyTable(DatabaseHandle                       *fromDatabaseHand
   uint                    i,j;
   uint                    n;
   String                  sqlSelectString,sqlInsertString;
-  uint                    selectParameterCount;
+  uint                    selectParameterCount,insertParameterCount;
 
   DatabaseColumnInfo      fromColumnInfo,toColumnInfo;
 
@@ -12717,14 +12811,14 @@ assert(Thread_isCurrentThread(toDatabaseHandle->debug.threadId));
     }
     else
     {
-      fromColumnMap[i] = -1;
+      fromColumnMap[i] = UNUSED;
     }
   }
   #ifdef DEBUG_COPY_TABLE
-    fprintf(stderr,"mapping:\n");
+    fprintf(stderr,"mapping: %u\n",toColumnCount);
     for (uint i = 0; i < toColumnCount; i++)
     {
-      if (fromColumnMap[i] != -1)
+      if (fromColumnMap[i] != UNUSED)
       {
         fprintf(stderr,
                 "  from %2u:%-30s -> to %2u:%-30s\n",
@@ -12744,7 +12838,7 @@ assert(Thread_isCurrentThread(toDatabaseHandle->debug.threadId));
   {
     if (toColumns[i].type != DATABASE_DATATYPE_PRIMARY_KEY)
     {
-      if (fromColumnMap[i] != -1)
+      if (fromColumnMap[i] != UNUSED)
       {
         parameterMap[parameterMapCount] = i;
         parameterMapCount++;
@@ -12770,7 +12864,7 @@ assert(Thread_isCurrentThread(toDatabaseHandle->debug.threadId));
     }
     for (uint i = 0; i < parameterMapCount; i++)
     {
-      if (fromColumnMap[parameterMap[i]] != -1)
+      if (fromColumnMap[parameterMap[i]] != UNUSED)
       {
         assert(stringEqualsIgnoreCase(fromColumns[fromColumnMap[parameterMap[i]]].name,toColumns[parameterMap[i]].name));
       }
@@ -12799,7 +12893,7 @@ assert(Thread_isCurrentThread(toDatabaseHandle->debug.threadId));
     if (i > 0) String_appendChar(sqlSelectString,',');
     String_appendCString(sqlSelectString,fromColumns[i].name);
   }
-  String_formatAppend(sqlSelectString," FROM %s",fromTableName);
+  String_appendFormat(sqlSelectString," FROM %s",fromTableName);
   if (filter != NULL)
   {
     String_appendCString(sqlSelectString," WHERE ");
@@ -12807,38 +12901,39 @@ assert(Thread_isCurrentThread(toDatabaseHandle->debug.threadId));
   }
   if (!stringIsEmpty(groupBy))
   {
-    String_formatAppend(sqlSelectString," GROUP BY %s",groupBy);
+    String_appendFormat(sqlSelectString," GROUP BY %s",groupBy);
   }
   if (!stringIsEmpty(orderBy))
   {
-    String_formatAppend(sqlSelectString," ORDER BY %s",orderBy);
+    String_appendFormat(sqlSelectString," ORDER BY %s",orderBy);
   }
   if (limit < DATABASE_UNLIMITED)
   {
-    String_formatAppend(sqlSelectString," LIMIT %"PRIu64,limit);
+    String_appendFormat(sqlSelectString," LIMIT %"PRIu64,limit);
   }
   if (offset > 0LL)
   {
-    String_formatAppend(sqlSelectString," OFFSET %"PRIu64,offset);
+    String_appendFormat(sqlSelectString," OFFSET %"PRIu64,offset);
   }
   DATABASE_DEBUG_SQL(fromDatabaseHandle,sqlSelectString);
   #ifdef DEBUG_COPY_TABLE
     fprintf(stderr,"SQL select: %s\n",String_cString(sqlSelectString));
   #endif /* DEBUG_COPY_TABLE */
 
-  sqlInsertString = String_format(String_new(),"INSERT INTO %s (",toTableName);
+  sqlInsertString      = String_format(String_new(),"INSERT INTO %s (",toTableName);
+  insertParameterCount = 0;
   for (i = 0; i < parameterMapCount; i++)
   {
     if (i > 0) String_appendChar(sqlInsertString,',');
     String_appendCString(sqlInsertString,fromColumns[fromColumnMap[parameterMap[i]]].name);
   }
-  String_formatAppend(sqlInsertString,") VALUES (");
+  String_appendFormat(sqlInsertString,") VALUES (");
   for (i = 0; i < parameterMapCount; i++)
   {
     if (i > 0) String_appendChar(sqlInsertString,',');
-    String_appendFormat(sqlInsertString,"$%u",1+i);
+    formatParameters(sqlInsertString,toDatabaseHandle,"?",&insertParameterCount);
   }
-  String_formatAppend(sqlInsertString,")");
+  String_appendFormat(sqlInsertString,")");
   DATABASE_DEBUG_SQL(fromDatabaseHandle,sqlInsertString);
   #ifdef DEBUG_COPY_TABLE
     fprintf(stderr,"SQL insert: %s\n",String_cString(sqlInsertString));
@@ -12952,11 +13047,16 @@ assert(Thread_isCurrentThread(toDatabaseHandle->debug.threadId));
                                        // set to-values
                                        for (i = 0; i < parameterMapCount; i++)
                                        {
+                                         assert(i < parameterValueCount);
+                                         assert(parameterMap[i] < toColumnCount);
+                                         assert(fromColumnMap[parameterMap[i]] != UNUSED);
+
                                          memCopyFast(&parameterValues[i].data,
                                                      sizeof(parameterValues[i].data),
-                                                     &values[parameterMap[fromColumnMap[i]]].data,
-                                                     sizeof(values[parameterMap[fromColumnMap[i]]].data)
+                                                     &values[fromColumnMap[parameterMap[i]]].data,
+                                                     sizeof(values[fromColumnMap[parameterMap[i]]].data)
                                                     );
+
 #if 0
 fprintf(stderr,"%s:%d: index: f=%d->t=%d->p=%d name: f=%s->t=%s types: f=%s->t=%s values: f=%s->t=%s\n",__FILE__,__LINE__,
 (i < parameterMapCount) ? fromColumnMap[parameterMap[i]] : -1,
@@ -12974,14 +13074,16 @@ debugDatabaseValueToString(buffer2,sizeof(buffer2),&toValues[parameterMap[i]])
 
                                        for (i = 0; i < toColumnCount; i++)
                                        {
-                                         if (fromColumnMap[i] != -1)
+                                         if (fromColumnMap[i] != UNUSED)
                                          {
-                                         memCopyFast(&toValues[i].data,
-                                                     sizeof(toValues[i].data),
-                                                     &fromDatabaseStatementHandle.results[fromColumnMap[i]].data,
-                                                     sizeof(fromDatabaseStatementHandle.results[fromColumnMap[i]].data)
-                                                    );
-                                                  }
+                                           assert(i < toValueCount);
+
+                                           memCopyFast(&toValues[i].data,
+                                                       sizeof(toValues[i].data),
+                                                       &fromDatabaseStatementHandle.results[fromColumnMap[i]].data,
+                                                       sizeof(fromDatabaseStatementHandle.results[fromColumnMap[i]].data)
+                                                      );
+                                         }
                                        }
 
                                        // mark to index-id with 'any'
@@ -13011,6 +13113,10 @@ debugDatabaseValueToString(buffer2,sizeof(buffer2),&toValues[parameterMap[i]])
                                        // copy parameter data
                                        for (i = 0; i < parameterMapCount; i++)
                                        {
+                                         assert(i < parameterValueCount);
+                                         assert(fromColumnMap[i] != UNUSED);
+                                         assert((uint)fromColumnMap[i] < toColumnInfo.count);
+
 //fprintf(stderr,"%s:%d: copy %d -> %d\n",__FILE__,__LINE__,parameterMap[i],i);
                                          memCopyFast(&parameterValues[i].data,
                                                      sizeof(parameterValues[i].data),
@@ -14645,7 +14751,7 @@ char *Database_filterDateString(const DatabaseHandle *databaseHandle,
   switch (Database_getType(databaseHandle))
   {
     case DATABASE_TYPE_SQLITE3:
-      return stringFormat(buffer,sizeof(buffer),"UNIXEPOCH(DATE(DATETIME(%s,'unixepoch')))",columnName);
+      return stringFormat(buffer,sizeof(buffer),"UNIX_TIMESTAMP(DATE(DATETIME(%s,'unixepoch')))",columnName);
     case DATABASE_TYPE_MARIADB:
       #if defined(HAVE_MARIADB)
         return stringFormat(buffer,sizeof(buffer),"(UNIX_TIMESTAMP(DATE(%s))+(UNIX_TIMESTAMP(TIME(NOW()))-UNIX_TIMESTAMP(UTC_TIME())))",columnName);
@@ -14689,6 +14795,8 @@ char *Database_filterTimeString(const DatabaseHandle *databaseHandle,
         return NULL;
       #endif /* HAVE_POSTGRESQL */
   }
+
+  return NULL;
 }
 
 Errors Database_execute(DatabaseHandle          *databaseHandle,
@@ -15097,16 +15205,16 @@ Errors Database_insert(DatabaseHandle       *databaseHandle,
             if (i > 0) String_appendChar(sqlString,',');
             if (values[i].value != NULL)
             {
-              String_formatAppend(sqlString,"%s=",values[i].name);
+              String_appendFormat(sqlString,"%s=",values[i].name);
               formatParameters(sqlString,databaseHandle,values[i].value,&parameterCount);
             }
             else
             {
-              String_formatAppend(sqlString,"%s=",values[i].name);
+              String_appendFormat(sqlString,"%s=",values[i].name);
               formatParameters(sqlString,databaseHandle,"?",&parameterCount);
             }
           }
-          String_formatAppend(sqlString," WHERE ");
+          String_appendFormat(sqlString," WHERE ");
           formatParameters(sqlString,databaseHandle,filter,&parameterCount);
         }
       #else /* HAVE_POSTGRESQL */
@@ -15341,19 +15449,19 @@ Errors Database_insertSelect(DatabaseHandle       *databaseHandle,
   }
   if (!stringIsEmpty(groupBy))
   {
-    String_formatAppend(sqlString," GROUP BY %s",groupBy);
+    String_appendFormat(sqlString," GROUP BY %s",groupBy);
   }
   if (!stringIsEmpty(orderBy))
   {
-    String_formatAppend(sqlString," ORDER BY %s",orderBy);
+    String_appendFormat(sqlString," ORDER BY %s",orderBy);
   }
   if (limit < DATABASE_UNLIMITED)
   {
-    String_formatAppend(sqlString," LIMIT %"PRIu64,limit);
+    String_appendFormat(sqlString," LIMIT %"PRIu64,limit);
   }
   if (offset > 0LL)
   {
-    String_formatAppend(sqlString," OFFSET %"PRIu64,offset);
+    String_appendFormat(sqlString," OFFSET %"PRIu64,offset);
   }
   #ifndef NDEBUG
     if (IS_SET(flags,DATABASE_FLAG_DEBUG))
@@ -15466,24 +15574,24 @@ Errors Database_update(DatabaseHandle       *databaseHandle,
         break;
     }
   }
-  String_formatAppend(sqlString,"%s SET ",tableName);
+  String_appendFormat(sqlString,"%s SET ",tableName);
   for (uint i = 0; i < valueCount; i++)
   {
     if (i > 0) String_appendChar(sqlString,',');
     if (values[i].value != NULL)
     {
-      String_formatAppend(sqlString,"%s=",values[i].name);
+      String_appendFormat(sqlString,"%s=",values[i].name);
       formatParameters(sqlString,databaseHandle,values[i].value,&parameterCount);
     }
     else
     {
-      String_formatAppend(sqlString,"%s=",values[i].name);
+      String_appendFormat(sqlString,"%s=",values[i].name);
       formatParameters(sqlString,databaseHandle,"?",&parameterCount);
     }
   }
   if (filter != NULL)
   {
-    String_formatAppend(sqlString," WHERE ");
+    String_appendFormat(sqlString," WHERE ");
     formatParameters(sqlString,databaseHandle,filter,&parameterCount);
   }
   #ifndef NDEBUG
@@ -15587,7 +15695,7 @@ Errors Database_delete(DatabaseHandle       *databaseHandle,
   String_appendCString(sqlString,tableName);
   if (filter != NULL)
   {
-    String_formatAppend(sqlString," WHERE ");
+    String_appendFormat(sqlString," WHERE ");
     formatParameters(sqlString,databaseHandle,filter,&parameterCount);
   }
   switch (Database_getType(databaseHandle))
@@ -15595,7 +15703,7 @@ Errors Database_delete(DatabaseHandle       *databaseHandle,
     case DATABASE_TYPE_SQLITE3:
       if (limit < DATABASE_UNLIMITED)
       {
-        String_formatAppend(sqlString," LIMIT %"PRIu64,limit);
+        String_appendFormat(sqlString," LIMIT %"PRIu64,limit);
       }
       break;
     case DATABASE_TYPE_MARIADB:
@@ -15702,7 +15810,7 @@ Errors Database_deleteArray(DatabaseHandle       *databaseHandle,
   String_appendCString(sqlString,tableName);
   if (filter != NULL)
   {
-    String_formatAppend(sqlString," WHERE ");
+    String_appendFormat(sqlString," WHERE ");
     formatParameters(sqlString,databaseHandle,filter,&parameterCount);
   }
   switch (Database_getType(databaseHandle))
@@ -15710,7 +15818,7 @@ Errors Database_deleteArray(DatabaseHandle       *databaseHandle,
     case DATABASE_TYPE_SQLITE3:
       if (limit < DATABASE_UNLIMITED)
       {
-        String_formatAppend(sqlString," LIMIT %"PRIu64,limit);
+        String_appendFormat(sqlString," LIMIT %"PRIu64,limit);
       }
       break;
     case DATABASE_TYPE_MARIADB:
@@ -15805,6 +15913,85 @@ Errors Database_deleteArray(DatabaseHandle       *databaseHandle,
 
   return ERROR_NONE;
 }
+
+Errors Database_deleteByIds(DatabaseHandle   *databaseHandle,
+                            ulong            *changedRowCount,
+                            const char       *tableName,
+                            const char       *columnName,
+                            uint             flags,
+                            const DatabaseId ids[],
+                            ulong            length
+                           )
+{
+  String                  sqlString;
+  ulong                   i;
+  DatabaseStatementHandle databaseStatementHandle;
+  TimeoutInfo             timeoutInfo;
+  Errors                  error;
+
+  assert(databaseHandle != NULL);
+  DEBUG_CHECK_RESOURCE_TRACE(databaseHandle);
+  assert(ids != NULL);
+
+// TODO:
+(void)flags;
+  // create SQL string
+  sqlString = String_format(String_new(),"DELETE FROM %s WHERE %s IN (",tableName,columnName);
+  for (i = 0; i < length; i++)
+  {
+    if (i > 0) String_appendChar(sqlString,',');
+    String_appendFormat(sqlString,"%"PRIi64,ids[i]);
+  }
+  String_appendChar(sqlString,')');
+  #ifndef NDEBUG
+    if (IS_SET(flags,DATABASE_FLAG_DEBUG))
+    {
+      printf("DEBUG: %s\n",String_cString(sqlString));
+    }
+  #endif
+
+  // prepare statement
+  error = prepareStatement(&databaseStatementHandle,
+                           databaseHandle,
+                           String_cString(sqlString),
+                           0
+                          );
+  if (error != ERROR_NONE)
+  {
+    String_delete(sqlString);
+    return error;
+  }
+
+  Misc_initTimeout(&timeoutInfo,databaseHandle->timeout);
+  DATABASE_DOX(error,
+               ERRORX_(DATABASE_TIMEOUT,0,"%s",String_cString(sqlString)),
+               databaseHandle,
+               DATABASE_LOCK_TYPE_READ_WRITE,
+               databaseHandle->timeout,
+  {
+    // execute statement
+    return executePreparedQuery(&databaseStatementHandle,
+                                changedRowCount,
+                                Misc_getRestTimeout(&timeoutInfo,MAX_ULONG)
+                                );
+  });
+  Misc_doneTimeout(&timeoutInfo);
+  if (error != ERROR_NONE)
+  {
+    finalizeStatement(&databaseStatementHandle);
+    String_delete(sqlString);
+    return error;
+  }
+
+  // finalize statementHandle
+  finalizeStatement(&databaseStatementHandle);
+
+  // free resources
+  String_delete(sqlString);
+
+  return ERROR_NONE;
+}
+
 
 #ifdef NDEBUG
   void Database_finalize(DatabaseStatementHandle *databaseStatementHandle)
@@ -15904,17 +16091,17 @@ Errors Database_select(DatabaseStatementHandle *databaseStatementHandle,
         switch (Database_getType(databaseHandle))
         {
           case DATABASE_TYPE_SQLITE3:
-            String_formatAppend(sqlString,"UNIX_TIMESTAMP(%s)",columns[i].name);
+            String_appendFormat(sqlString,"UNIX_TIMESTAMP(%s)",columns[i].name);
             break;
           case DATABASE_TYPE_MARIADB:
             #if defined(HAVE_MARIADB)
-              String_formatAppend(sqlString,"UNIX_TIMESTAMP(%s)",columns[i].name);
+              String_appendFormat(sqlString,"UNIX_TIMESTAMP(%s)",columns[i].name);
             #else /* HAVE_MARIADB */
             #endif /* HAVE_MARIADB */
             break;
           case DATABASE_TYPE_POSTGRESQL:
             #if defined(HAVE_POSTGRESQL)
-              String_formatAppend(sqlString,"EXTRACT(EPOCH FROM %s)",columns[i].name);
+              String_appendFormat(sqlString,"EXTRACT(EPOCH FROM %s)",columns[i].name);
             #else /* HAVE_POSTGRESQL */
             #endif /* HAVE_POSTGRESQL */
             break;
@@ -15925,28 +16112,28 @@ Errors Database_select(DatabaseStatementHandle *databaseStatementHandle,
         break;
     }
   }
-  String_formatAppend(sqlString," FROM ");
+  String_appendFormat(sqlString," FROM ");
   formatParameters(sqlString,databaseHandle,tableName,&parameterCount);
   if (filter != NULL)
   {
-    String_formatAppend(sqlString," WHERE ");
+    String_appendFormat(sqlString," WHERE ");
     formatParameters(sqlString,databaseHandle,filter,&parameterCount);
   }
   if (!stringIsEmpty(groupBy))
   {
-    String_formatAppend(sqlString," GROUP BY %s",groupBy);
+    String_appendFormat(sqlString," GROUP BY %s",groupBy);
   }
   if (!stringIsEmpty(orderBy))
   {
-    String_formatAppend(sqlString," ORDER BY %s",orderBy);
+    String_appendFormat(sqlString," ORDER BY %s",orderBy);
   }
   if (limit < DATABASE_UNLIMITED)
   {
-    String_formatAppend(sqlString," LIMIT %"PRIu64,limit);
+    String_appendFormat(sqlString," LIMIT %"PRIu64,limit);
   }
   if (offset > 0LL)
   {
-    String_formatAppend(sqlString," OFFSET %"PRIu64,offset);
+    String_appendFormat(sqlString," OFFSET %"PRIu64,offset);
   }
   #ifndef NDEBUG
     if (IS_SET(flags,DATABASE_FLAG_DEBUG))
@@ -16130,23 +16317,23 @@ Errors Database_get(DatabaseHandle       *databaseHandle,
               switch (Database_getType(databaseHandle))
               {
                 case DATABASE_TYPE_SQLITE3:
-                  String_formatAppend(sqlString,"UNIX_TIMESTAMP(");
+                  String_appendFormat(sqlString,"UNIX_TIMESTAMP(");
                   formatParameters(sqlString,databaseHandle,columns[j].name,&parameterCount);
-                  String_formatAppend(sqlString,")");
+                  String_appendFormat(sqlString,")");
                   break;
                 case DATABASE_TYPE_MARIADB:
                   #if defined(HAVE_MARIADB)
-                    String_formatAppend(sqlString,"UNIX_TIMESTAMP(");
+                    String_appendFormat(sqlString,"UNIX_TIMESTAMP(");
                     formatParameters(sqlString,databaseHandle,columns[j].name,&parameterCount);
-                    String_formatAppend(sqlString,")");
+                    String_appendFormat(sqlString,")");
                   #else /* HAVE_MARIADB */
                   #endif /* HAVE_MARIADB */
                   break;
                 case DATABASE_TYPE_POSTGRESQL:
                   #if defined(HAVE_POSTGRESQL)
-                    String_formatAppend(sqlString,"EXTRACT(EPOCH FROM ");
+                    String_appendFormat(sqlString,"EXTRACT(EPOCH FROM ");
                     formatParameters(sqlString,databaseHandle,columns[j].name,&parameterCount);
-                    String_formatAppend(sqlString,")");
+                    String_appendFormat(sqlString,")");
                   #else /* HAVE_POSTGRESQL */
                   #endif /* HAVE_POSTGRESQL */
                   break;
@@ -16158,7 +16345,7 @@ Errors Database_get(DatabaseHandle       *databaseHandle,
           }
           if (columns[j].alias != NULL)
           {
-            String_formatAppend(sqlString," AS ");
+            String_appendFormat(sqlString," AS ");
             formatParameters(sqlString,databaseHandle,columns[j].alias,&parameterCount);
           }
         }
@@ -16177,25 +16364,25 @@ Errors Database_get(DatabaseHandle       *databaseHandle,
     }
     if (!stringIsEmpty(groupBy))
     {
-      String_formatAppend(sqlString," GROUP BY %s",groupBy);
+      String_appendFormat(sqlString," GROUP BY %s",groupBy);
     }
     if (!stringIsEmpty(orderBy))
     {
-      String_formatAppend(sqlString," ORDER BY %s",orderBy);
+      String_appendFormat(sqlString," ORDER BY %s",orderBy);
     }
     if (limit < DATABASE_UNLIMITED)
     {
-      String_formatAppend(sqlString," LIMIT %"PRIu64,limit);
+      String_appendFormat(sqlString," LIMIT %"PRIu64,limit);
     }
     if (offset > 0LL)
     {
-      String_formatAppend(sqlString," OFFSET %"PRIu64,offset);
+      String_appendFormat(sqlString," OFFSET %"PRIu64,offset);
     }
   }
   else
   {
     assert(tableNameCount == 1);
-    String_formatAppend(sqlString," %s",tableNames[0]);
+    String_appendFormat(sqlString," %s",tableNames[0]);
   }
   #ifndef NDEBUG
     if (IS_SET(flags,DATABASE_FLAG_DEBUG))
@@ -16203,6 +16390,7 @@ Errors Database_get(DatabaseHandle       *databaseHandle,
       printf("DEBUG: %s\n",String_cString(sqlString));
     }
   #endif
+  assert(parameterCount == (tableNameCount*filterCount));
 
   // prepare statement
   error = prepareStatement(&databaseStatementHandle,
@@ -16341,13 +16529,14 @@ Errors Database_getId(DatabaseHandle       *databaseHandle,
   return error;
 }
 
-Errors Database_getIds(DatabaseHandle      *databaseHandle,
+Errors Database_getIds(DatabaseHandle       *databaseHandle,
                        Array                *ids,
                        const char           *tableName,
                        const char           *columnName,
                        const char           *filter,
                        const DatabaseFilter filters[],
-                       uint                 filterCount
+                       uint                 filterCount,
+                       uint64               limit
                       )
 {
   Errors error;
@@ -16358,8 +16547,6 @@ Errors Database_getIds(DatabaseHandle      *databaseHandle,
   assert(ids != NULL);
   assert(tableName != NULL);
   assert(columnName != NULL);
-
-  Array_clear(ids);
 
   error = Database_get(databaseHandle,
                        CALLBACK_INLINE(Errors,(const DatabaseValue values[], uint valueCount, void *userData),
@@ -16390,7 +16577,7 @@ Errors Database_getIds(DatabaseHandle      *databaseHandle,
                        NULL,  // groupBy
                        NULL,  // orderBy
                        0,
-                       DATABASE_UNLIMITED
+                       limit
                       );
 // TODO: work-around: if not found set newest entry to NONE
 if (Error_getCode(error) == ERROR_CODE_DATABASE_ENTRY_NOT_FOUND)

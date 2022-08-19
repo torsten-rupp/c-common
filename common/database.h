@@ -2450,6 +2450,30 @@ Errors Database_deleteArray(DatabaseHandle       *databaseHandle,
                            );
 
 /***********************************************************************\
+* Name   : Database_deleteByIds
+* Purpose: delete rows from database table by ids array
+* Input  : databaseHandle    - database handle
+*          changedRowCount   - row count variable (can be NULL)
+*          tableName         - table name,
+*          columnName        - column name,
+*          flags             - insert flags; see DATABASE_FLAG__...
+*          ids               - ids array
+*          length            - length of array
+* Output : -
+* Return : ERROR_NONE or error code
+* Notes  : -
+\***********************************************************************/
+
+Errors Database_deleteByIds(DatabaseHandle   *databaseHandle,
+                            ulong            *changedRowCount,
+                            const char       *tableName,
+                            const char       *columnName,
+                            uint             flags,
+                            const DatabaseId ids[],
+                            ulong            length
+                           );
+
+/***********************************************************************\
 * Name   : Database_select
 * Purpose: select rows in database table
 * Input  : databaseHandle      - database handle
@@ -2605,6 +2629,7 @@ Errors Database_getId(DatabaseHandle       *databaseHandle,
 *          filter         - filter string
 *          filters        - filter values
 *          filterCount    - filter values count
+*          limit          - limit
 * Output : ids - database ids array
 * Return : ERROR_NONE or error code
 * Notes  : values are added to array!
@@ -2616,7 +2641,8 @@ Errors Database_getIds(DatabaseHandle       *databaseHandle,
                        const char           *columnName,
                        const char           *filter,
                        const DatabaseFilter filters[],
-                       uint                 filterCount
+                       uint                 filterCount,
+                       uint64               limit
                       );
 
 /***********************************************************************\
