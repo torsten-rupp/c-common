@@ -739,7 +739,7 @@ typedef void(*DebugDumpStackTraceOutputFunction)(const char *text, void *userDat
 * Notes  : alignment must be 2^n!
 \***********************************************************************/
 
-#define ALIGN(n,alignment) (((alignment)>0) ? (((n)+(alignment)-1) & ~((alignment)-1)) : (n))
+#define ALIGN(n,alignment) (((alignment) > 0) ? (((n)+(alignment)-1) & ~((alignment)-1)) : (n))
 
 /***********************************************************************\
 * Name   : IS_SET
