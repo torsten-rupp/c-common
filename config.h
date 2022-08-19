@@ -18,6 +18,12 @@
 #define HAVE_MKDTEMP 1
 #define HAVE_MKSTEMP 1
 
-#define CONFIG_DIR "/etc"
-#define RUNTIME_DIR "/run"
-#define TLS_DIR "/etc/ssl"
+#ifndef CONFIG_DIR
+  #define CONFIG_DIR "/etc"
+#endif
+#ifndef RUNTIME_DIR
+  #define RUNTIME_DIR "/run"
+#endif
+#ifndef TLS_DIR
+  #define TLS_DIR "/etc/ssl"
+#endif
