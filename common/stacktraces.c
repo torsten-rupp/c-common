@@ -36,6 +36,9 @@
 #ifdef HAVE_LINK_H
   #include <link.h>
 #endif
+#ifdef HAVE_ELF_H
+  #include <elf.h>
+#endif
 #ifdef HAVE_DL_H
   #include <dlfcn.h>
 #endif
@@ -91,7 +94,7 @@ typedef struct
   LOCAL uint                    signalHandlerInfoCount;
   LOCAL SignalHandlerFunction   signalHandlerFunction;
   LOCAL void                    *signalHandlerUserData;
-  LOCAL void                    *stackTrace[MAX_STACKTRACE_SIZE+SKIP_STACK_FRAME_COUNT];
+  LOCAL void const              *stackTrace[MAX_STACKTRACE_SIZE+SKIP_STACK_FRAME_COUNT];
 #elif defined(PLATFORM_WINDOWS)
 #endif /* PLATFORM_... */
 
@@ -267,12 +270,12 @@ LOCAL void findAddressInSection(bfd *abfd, asection *section, void *data)
       return;
     }
   #endif
-  #if BFD_SECTION_SIZE_ARGUMENTS_COUNT==2
+  #if (BFD_SECTION_SIZE_ARGUMENTS_COUNT == 2)
     vma  = bfd_section_vma(abfd,section);
   #else
     vma  = bfd_section_vma(section);
   #endif
-  #if BFD_SECTION_VMA_ARGUMENTS_COUNT==2
+  #if (BFD_SECTION_VMA_ARGUMENTS_COUNT == 2)
     size = bfd_section_size(abfd,section);
   #else
     size = bfd_section_size(section);
@@ -635,8 +638,8 @@ LOCAL void sigActionHandler(int signalNumber, siginfo_t *sigInfo, void *context)
    // done signal handlers
    Stacktrace_done();
 
-   // get backtrace
-   stackTraceSize = backtrace(stackTrace, MAX_STACKTRACE_SIZE);
+   // get stacktrace
+   stackTraceSize = getStackTrace(stackTrace, MAX_STACKTRACE_SIZE);
 
    // get signal name
    signalName = NULL;
@@ -781,6 +784,8 @@ void Stacktrace_getSymbols(const char         *executableFileName,
                                                 SymbolInfo *symbolInfo = (SymbolInfo*)userData;
                                                 assert(symbolInfo != NULL);
 
+                                                UNUSED_VARIABLE(address);
+
                                                 symbolInfo->symbolName = stringDuplicate(symbolName);
                                                 symbolInfo->fileName   = stringDuplicate(fileName);
                                                 symbolInfo->lineNb     = lineNb;
@@ -800,6 +805,8 @@ void Stacktrace_getSymbols(const char         *executableFileName,
                                                 {
                                                   SymbolInfo *symbolInfo = (SymbolInfo*)userData;
                                                   assert(symbolInfo != NULL);
+
+                                                  UNUSED_VARIABLE(address);
 
                                                   symbolInfo->symbolName = stringDuplicate(symbolName);
                                                   symbolInfo->fileName   = stringDuplicate(fileName);
@@ -823,6 +830,8 @@ void Stacktrace_getSymbols(const char         *executableFileName,
                                               {
                                                 SymbolInfo *symbolInfo = (SymbolInfo*)userData;
                                                 assert(symbolInfo != NULL);
+
+                                                UNUSED_VARIABLE(address);
 
                                                 symbolInfo->symbolName = stringDuplicate(symbolName);
                                                 symbolInfo->fileName   = stringDuplicate(fileName);
@@ -888,7 +897,6 @@ void Stacktrace_getSymbols(const char         *executableFileName,
     UNUSED_VARIABLE(addresses);
     UNUSED_VARIABLE(addressCount);
     UNUSED_VARIABLE(symbolInfo);
-    UNUSED_VARIABLE(symbolInfoCount);
   #endif /* PLATFORM_... */
 }
 
