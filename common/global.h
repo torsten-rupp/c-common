@@ -739,7 +739,7 @@ typedef void(*DebugDumpStackTraceOutputFunction)(const char *text, void *userDat
 * Notes  : alignment must be 2^n!
 \***********************************************************************/
 
-#define ALIGN(n,alignment) (((alignment) > 0) ? (((n)+(alignment)-1) & ~((alignment)-1)) : (n))
+#define ALIGN(n,alignment) (((alignment)>0) ? (((n)+(alignment)-1) & ~((alignment)-1)) : (n))
 
 /***********************************************************************\
 * Name   : IS_SET
@@ -1653,7 +1653,7 @@ typedef byte* BitSet;
   #define BACKTRACE(stackTrace,stackTraceSize) \
     do \
     { \
-      (stackTraceSize) = backtrace((void*)(stackTrace),SIZE_OF_ARRAY(stackTrace)); \
+      (stackTraceSize) = getStackTrace(stackTrace,SIZE_OF_ARRAY(stackTrace)); \
     } \
     while (0)
 #else /* not HAVE_BACKTRACE */
@@ -1921,6 +1921,36 @@ static inline uint64 getCycleCounter(void)
   #else
     return 0LL;
   #endif /* PLATFORM_... */
+}
+
+/***********************************************************************\
+* Name   : getStackTrace
+* Purpose: get stack trace
+* Input  : stackTrace        - stack trace variable
+*          maxStackTraceSize - max. stack trace size
+* Output : stackTrace - stack trace
+* Return : stack trace size
+* Notes  : -
+\***********************************************************************/
+
+static inline uint getStackTrace(void const * stackTrace[], uint maxStackTraceSize)
+{
+  uint stackTraceSize;
+  #ifdef HAVE_BACKTRACE
+    uint i;
+  #endif
+
+  #ifdef HAVE_BACKTRACE
+    stackTraceSize = (uint)backtrace((void*)stackTrace,maxStackTraceSize);
+    for (i = 0; i < stackTraceSize; i++)
+    {
+      stackTrace[i] = (void const **)((const byte*)stackTrace[i]-1);
+    }
+  #else
+    stackTraceSize = 0;
+  #endif
+
+  return stackTraceSize;
 }
 
 /***********************************************************************\
@@ -2633,6 +2663,48 @@ static inline bool stringStartsWith(const char *s, const char *prefix)
 static inline bool stringStartsWithIgnoreCase(const char *s, const char *prefix)
 {
   return strncasecmp(s,prefix,strlen(prefix)) == 0;
+}
+
+/***********************************************************************\
+* Name   : stringEndsWith
+* Purpose: check if string ends with suffix
+* Input  : s      - string
+*          suffix - suffix
+* Output : -
+* Return : TRUE iff s start with suffix
+* Notes  : -
+\***********************************************************************/
+
+static inline bool stringEndsWith(const char *s, const char *suffix)
+{
+  size_t n,m;
+
+  n = strlen(s);
+  m = strlen(suffix);
+
+  return    (n >= m)
+         && strncmp(s+n-m,suffix,m) == 0;
+}
+
+/***********************************************************************\
+* Name   : stringEndsWithIgnoreCase
+* Purpose: check if string ends with suffix
+* Input  : s      - string
+*          suffix - suffix
+* Output : -
+* Return : TRUE iff s start with suffix
+* Notes  : -
+\***********************************************************************/
+
+static inline bool stringEndsWithIgnoreCase(const char *s, const char *suffix)
+{
+  size_t n,m;
+
+  n = strlen(s);
+  m = strlen(suffix);
+
+  return    (n >= m)
+         && strncasecmp(s+n-m,suffix,m) == 0;
 }
 
 /***********************************************************************\
