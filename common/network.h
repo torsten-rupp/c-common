@@ -93,6 +93,7 @@ typedef struct
         gnutls_certificate_credentials_t credentials;
         gnutls_dh_params_t               dhParams;
         gnutls_session_t                 session;
+        bool                             verifiedCertificate;
       } gnuTLS;
     #endif /* HAVE_GNU_TLS */
   };
@@ -164,6 +165,12 @@ typedef struct
   } stderrBuffer;
 } NetworkExecuteHandle;
 
+typedef enum
+{
+  NETWORK_TLS_TYPE_SERVER,
+  NETWORK_TLS_TYPE_CLIENT
+} NetworkTLSTypes;
+
 /***************************** Variables *******************************/
 
 /****************************** Macros *********************************/
@@ -224,16 +231,21 @@ bool Network_hostExistsCString(const char *hostName);
 /***********************************************************************\
 * Name   : Network_connect
 * Purpose: connect to host
-* Input  : socketType          - socket type; see SOCKET_TYPE_*
-*          hostName            - host name
-*          hostPort            - host port (host byte order)
-*          loginName           - login user name
-*          password            - SSH private key password or NULL
-*          sshPublicKeyData    - SSH public key data for login or NULL
-*          sshPublicKeyLength  - SSH public key data length
-*          sshPrivateKeyData   - SSH private key data for login or NULL
-*          sshPrivateKeyLength - SSH private key data length
-*          socketFlags         - socket flags; see SOCKET_FLAG_*
+* Input  : socketType       - socket type; see SOCKET_TYPE_*
+*          hostName         - host name
+*          hostPort         - host port
+*          loginName        - login user name
+*          password         - SSH private key password or NULL
+*          caData           - TLS CA data or NULL
+*          caLength         - TLS CA data length
+*          cert             - TLS cerificate or NULL
+*          certLength       - TLS cerificate data length
+*          publicKeyData    - SSH public key data or NULL
+*          publicKeyLength  - SSH public key data length
+*          privateKeyData   - TLS/SSH private key data or NULL
+*          privateKeyLength - TLS/SSH private key data length
+*          socketFlags      - socket flags; see SOCKET_FLAG_*
+*          timeout          - timeout [ms] or WAIT_FOREVER/NO_WAIT
 * Output : socketHandle - socket handle
 * Return : ERROR_NONE or errorcode
 * Notes  : -
@@ -245,25 +257,35 @@ Errors Network_connect(SocketHandle *socketHandle,
                        uint         hostPort,
                        ConstString  loginName,
                        Password     *password,
-                       const void   *sshPublicKeyData,
-                       uint         sshPublicKeyLength,
-                       const void   *sshPrivateKeyData,
-                       uint         sshPrivateKeyLength,
-                       SocketFlags  socketFlags
+                       const void   *caData,
+                       uint         caLength,
+                       const void   *certData,
+                       uint         certLength,
+                       const void   *publicKeyData,
+                       uint         publicKeyLength,
+                       const void   *privateKeyData,
+                       uint         privateKeyLength,
+                       SocketFlags  socketFlags,
+                       long         timeout
                       );
 
 /***********************************************************************\
 * Name   : Network_connectDescriptor
 * Purpose: connect to host by descriptor
-* Input  : socketType          - socket type; see SOCKET_TYPE_*
-*          socketDescriptor    - socket descriptor
-*          loginName           - login user name
-*          password            - SSH private key password or NULL
-*          sshPublicKeyData    - SSH public key data for login or NULL
-*          sshPublicKeyLength  - SSH public key data length
-*          sshPrivateKeyData   - SSH private key data for login or NULL
-*          sshPrivateKeyLength - SSH private key data length
-*          socketFlags         - socket flags; see SOCKET_FLAG_*
+* Input  : socketType       - socket type; see SOCKET_TYPE_*
+*          socketDescriptor - socket descriptor
+*          loginName        - login user name
+*          password         - SSH private key password or NULL
+*          caData           - TLS CA data or NULL
+*          caLength         - TLS CA data length
+*          cert             - TLS cerificate or NULL
+*          certLength       - TLS cerificate data length
+*          publicKeyData    - SSH public key data or NULL
+*          publickeyLength  - SSH public key data length
+*          privateKeyData   - TLS/SSH private key data or NULL
+*          privateKeyLength - TLS/SSH private key data length
+*          socketFlags      - socket flags; see SOCKET_FLAG_*
+*          timeout          - timeout [ms] or WAIT_FOREVER/NO_WAIT
 * Output : socketHandle - socket handle
 * Return : ERROR_NONE or errorcode
 * Notes  : -
@@ -274,11 +296,16 @@ Errors Network_connectDescriptor(SocketHandle *socketHandle,
                                  SocketTypes  socketType,
                                  ConstString  loginName,
                                  Password     *password,
-                                 const void   *sshPublicKeyData,
-                                 uint         sshPublicKeyLength,
-                                 const void   *sshPrivateKeyData,
-                                 uint         sshPrivateKeyLength,
-                                 SocketFlags  socketFlags
+                                 const void   *caData,
+                                 uint         caLength,
+                                 const void   *certData,
+                                 uint         certLength,
+                                 const void   *publicKeyData,
+                                 uint         publicKeyLength,
+                                 const void   *privateKeyData,
+                                 uint         privateKeyLength,
+                                 SocketFlags  socketFlags,
+                                 long         timeout
                                 );
 
 /***********************************************************************\
@@ -304,6 +331,25 @@ void Network_disconnect(SocketHandle *socketHandle);
 void Network_disconnectDescriptor(int socketDescriptor);
 
 /***********************************************************************\
+* Name   : Network_getSocketType
+* Purpose: get socket type
+* Input  : socketHandle - socket handle
+* Output : -
+* Return : socket yype
+* Notes  : -
+\***********************************************************************/
+
+INLINE SocketTypes Network_getSocketType(const SocketHandle *socketHandle);
+#if defined(NDEBUG) || defined(__NETWORK_IMPLEMENTATION__)
+INLINE SocketTypes Network_getSocketType(const SocketHandle *socketHandle)
+{
+  assert(socketHandle != NULL);
+
+  return socketHandle->type;
+}
+#endif /* NDEBUG || __NETWORK_IMPLEMENTATION__ */
+
+/***********************************************************************\
 * Name   : Network_isConnected
 * Purpose: check if connected
 * Input  : socketHandle - socket handle
@@ -312,13 +358,51 @@ void Network_disconnectDescriptor(int socketDescriptor);
 * Notes  : connection state is only updated by calling Network_receive()!
 \***********************************************************************/
 
-INLINE bool Network_isConnected(SocketHandle *socketHandle);
+INLINE bool Network_isConnected(const SocketHandle *socketHandle);
 #if defined(NDEBUG) || defined(__NETWORK_IMPLEMENTATION__)
-INLINE bool Network_isConnected(SocketHandle *socketHandle)
+INLINE bool Network_isConnected(const SocketHandle *socketHandle)
 {
   assert(socketHandle != NULL);
 
   return socketHandle->isConnected;
+}
+#endif /* NDEBUG || __NETWORK_IMPLEMENTATION__ */
+
+/***********************************************************************\
+* Name   : Network_isTLS
+* Purpose: check if TLS connection
+* Input  : socketHandle - socket handle
+* Output : -
+* Return : TRUE iff TLS connection
+* Notes  : -
+\***********************************************************************/
+
+INLINE bool Network_isTLS(const SocketHandle *socketHandle);
+#if defined(NDEBUG) || defined(__NETWORK_IMPLEMENTATION__)
+INLINE bool Network_isTLS(const SocketHandle *socketHandle)
+{
+  assert(socketHandle != NULL);
+
+  return socketHandle->type == SOCKET_TYPE_TLS;
+}
+#endif /* NDEBUG || __NETWORK_IMPLEMENTATION__ */
+
+/***********************************************************************\
+* Name   : Network_isTLS
+* Purpose: check if TLS connection
+* Input  : socketHandle - socket handle
+* Output : -
+* Return : TRUE iff TLS connection
+* Notes  : -
+\***********************************************************************/
+
+INLINE bool Network_isInsecureTLS(const SocketHandle *socketHandle);
+#if defined(NDEBUG) || defined(__NETWORK_IMPLEMENTATION__)
+INLINE bool Network_isInsecureTLS(const SocketHandle *socketHandle)
+{
+  assert(socketHandle != NULL);
+
+  return (socketHandle->type == SOCKET_TYPE_TLS) && !socketHandle->gnuTLS.verifiedCertificate;
 }
 #endif /* NDEBUG || __NETWORK_IMPLEMENTATION__ */
 
@@ -351,9 +435,9 @@ INLINE int Network_getSocket(const SocketHandle *socketHandle)
 \***********************************************************************/
 
 #ifdef HAVE_SSH2
-INLINE LIBSSH2_SESSION *Network_getSSHSession(SocketHandle *socketHandle);
+INLINE LIBSSH2_SESSION *Network_getSSHSession(const SocketHandle *socketHandle);
 #if defined(NDEBUG) || defined(__NETWORK_IMPLEMENTATION__)
-INLINE LIBSSH2_SESSION *Network_getSSHSession(SocketHandle *socketHandle)
+INLINE LIBSSH2_SESSION *Network_getSSHSession(const SocketHandle *socketHandle)
 {
   assert(socketHandle != NULL);
   assert(socketHandle->type == SOCKET_TYPE_SSH);
@@ -391,7 +475,7 @@ ulong Network_getAvaibleBytes(SocketHandle *socketHandle);
 * Purpose: receive data from host
 * Input  : socketHandle - socket handle
 *          buffer       - data buffer
-*          timeout      - timeout [ms] or WAIT_FOREVER
+*          timeout      - timeout [ms] or WAIT_FOREVER/NO_WAIT
 *          maxLength    - max. length of data (in bytes)
 * Output : bytesReceived - number of bytes received
 * Return : ERROR_NONE or errorcode
@@ -426,7 +510,7 @@ Errors Network_send(SocketHandle *socketHandle,
 * Purpose: read line from host (end of line: \n or \r\n)
 * Input  : socketHandle - socket handle
 *          line         - string variable
-*          timeout      - timeout [ms] or WAIT_FOREVER
+*          timeout      - timeout [ms] or WAIT_FOREVER/NO_WAIT
 * Output : line - read line
 * Return : ERROR_NONE or error code
 * Notes  : -
@@ -454,7 +538,7 @@ Errors Network_writeLine(SocketHandle *socketHandle,
 /***********************************************************************\
 * Name   : Network_initServer
 * Purpose: initialize a server socket
-* Input  : serverPort        - server port (host byte order)
+* Input  : serverPort        - server port
 *          ServerSocketTypes - server socket type; see
 *                              SERVER_SOCKET_TYPE_*
 *          caData            - TLS CA data or NULL
@@ -506,6 +590,7 @@ int Network_getServerSocket(const ServerSocketHandle *serverSocketHandle);
 * Purpose: accept client connection
 * Input  : serverSocketHandle - server socket handle
 *          socketFlags        - socket falgs
+*          timeout            - timeout [ms] or WAIT_FOREVER/NO_WAIT
 * Output : socketHandle - server socket handle
 * Return : ERROR_NONE or errorcode
 * Notes  : -
@@ -513,7 +598,8 @@ int Network_getServerSocket(const ServerSocketHandle *serverSocketHandle);
 
 Errors Network_accept(SocketHandle             *socketHandle,
                       const ServerSocketHandle *serverSocketHandle,
-                      SocketFlags              socketFlags
+                      SocketFlags              socketFlags,
+                      long                     timeout
                      );
 
 /***********************************************************************\
@@ -531,24 +617,28 @@ Errors Network_reject(const ServerSocketHandle *serverSocketHandle);
 * Name   : Network_startTLS
 * Purpose: start TLS (TLS) encryption on socket connection
 * Input  : socketHandle - socket handle
+*          tlsType      - TLS type; see NETWORK_TLS_TYPE_...
 *          caData       - TLS CA data or NULL (PEM encoded)
 *          caLength     - TLS CA data length
 *          cert         - TLS cerificate or NULL (PEM encoded)
 *          certLength   - TLS cerificate data length
 *          key          - TLS private key or NULL (PEM encoded)
 *          keyLength    - TLS private key data length
+*          timeout      - timeout [ms] or WAIT_FOREVER/NO_WAIT
 * Output : -
 * Return : ERROR_NONE or errorcode
 * Notes  : call after Network_accept() to establish a SSL encryption
 \***********************************************************************/
 
-Errors Network_startTLS(SocketHandle *socketHandle,
-                        const void   *caData,
-                        uint         caLength,
-                        const void   *certData,
-                        uint         certLength,
-                        const void   *keyData,
-                        uint         keyLength
+Errors Network_startTLS(SocketHandle    *socketHandle,
+                        NetworkTLSTypes tlsType,
+                        const void      *caData,
+                        uint            caLength,
+                        const void      *certData,
+                        uint            certLength,
+                        const void      *keyData,
+                        uint            keyLength,
+                        long            timeout
                        );
 
 /***********************************************************************\
@@ -556,7 +646,7 @@ Errors Network_startTLS(SocketHandle *socketHandle,
 * Purpose: get local socket info
 * Input  : socketHandle - socket handle
 * Output : name          - local name (name or IP address as n.n.n.n)
-*          port          - local port (host byte order)
+*          port          - local port
 *          socketAddress - local socket address (can be NULL)
 * Return : -
 * Notes  : -
@@ -573,7 +663,7 @@ void Network_getLocalInfo(SocketHandle  *socketHandle,
 * Purpose: get remove socket info
 * Input  : socketHandle - socket handle
 * Output : name          - remote name (name or IP address, can be NULL)
-*          port          - remote port (host byte order, can be NULL)
+*          port          - remote port (can be NULL)
 *          socketAddress - remote socket address (can be NULL)
 * Return : -
 * Notes  : -
@@ -633,7 +723,7 @@ int Network_terminate(NetworkExecuteHandle *networkExecuteHandle);
 * Input  : networkExecuteHandle - network execute handle
 *          ioType               - i/o type; see
 *                                 NETWORK_EXECUTE_IO_TYPES_*
-*          timeout              - timeout or WAIT_FOREVER [ms]
+*          timeout              - timeout [ms] or WAIT_FOREVER/NO_WAIT
 * Output : -
 * Return : TRUE iff end-of-data, FALSE otherwise
 * Notes  : -
@@ -678,7 +768,7 @@ Errors Network_executeWrite(NetworkExecuteHandle *networkExecuteHandle,
 *                                 NETWORK_EXECUTE_IO_TYPES_*
 *          buffer               - data buffer
 *          maxLength            - max. size of buffer
-*          timeout              - timeout or WAIT_FOREVER [ms]
+*          timeout              - timeout [ms] or WAIT_FOREVER/NO_WAIT
 * Output : bytesRead - number of bytes read
 * Return : ERROR_NONE if data written, error code otherwise
 * Notes  : -
@@ -713,7 +803,7 @@ Errors Network_executeWriteLine(NetworkExecuteHandle *networkExecuteHandle,
 *          ioType               - i/o type; see
 *                                 NETWORK_EXECUTE_IO_TYPES_*
 *          line                 - string variable
-*          timeout              - timeout or WAIT_FOREVER [ms]
+*          timeout              - timeout [ms] or WAIT_FOREVER/NO_WAIT
 * Output : -
 * Return : ERROR_NONE if data written, error code otherwise
 * Notes  : -
