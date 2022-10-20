@@ -210,13 +210,9 @@ typedef struct
 LOCAL DatabaseList databaseList;
 #ifndef DATABASE_LOCK_PER_INSTANCE
   LOCAL pthread_mutexattr_t databaseLockAttribute;
-  LOCAL pthread_mutex_t     databaseLock;
-  LOCAL struct
-  {
-    ThreadId    threadId;
-    const char  *fileName;
-    ulong       lineNb;
-  } databaseLockBy;
+  LOCAL pthread_mutex_t     databaseLock;           // lock for lock/unlock
+// TODO: remove
+  LOCAL DatabaseLockedBy    databaseLockedBy;
 #endif /* DATABASE_LOCK_PER_INSTANCE */
 
 #ifndef NDEBUG
@@ -383,6 +379,98 @@ LOCAL DatabaseList databaseList;
 #endif /* not NDEBUG */
 
 #ifdef DATABASE_LOCK_PER_INSTANCE
+  #ifndef NDEBUG
+    #define DATABASE_HANDLE_LOCK_INFO_SET(databaseHandle) \
+      do \
+      { \
+        databaseHandle->databaseNode->lockedBy.threadId = Thread_getCurrentId(); \
+        databaseHandle->databaseNode->lockedBy.fileName = __fileName__; \
+        databaseHandle->databaseNode->lockedBy.lineNb   = __lineNb__;
+      } \
+      while (0)
+    #define DATABASE_HANDLE_LOCK_INFO_CLEAR(databaseHandle) \
+      do \
+      { \
+        databaseHandle->databaseNode->lockedBy.threadId = THREAD_ID_NONE; \
+        databaseHandle->databaseNode->lockedBy.fileName = NULL; \
+        databaseHandle->databaseNode->lockedBy.lineNb   = 0;
+      } \
+      while (0)
+  #else
+    #define DATABASE_HANDLE_LOCK_INFO_SET(databaseHandle) \
+      do \
+      { \
+        databaseHandle->databaseNode->lockedBy.threadId = Thread_getCurrentId(); \
+      } \
+      while (0)
+    #define DATABASE_HANDLE_LOCK_INFO_CLEAR(databaseHandle) \
+      do \
+      { \
+        databaseHandle->databaseNode->lockedBy.threadId = THREAD_ID_NONE; \
+      } \
+      while (0)
+  #endif
+  #define DATABASE_HANDLE_LOCK_INFO_SAVE(databaseHandle,_lockedBy) \
+    do \
+    { \
+      _lockedBy = databaseHandle->databaseNode->lockedBy; \
+      DATABASE_HANDLE_LOCK_INFO_CLEAR(databaseHandle); \
+    } \
+    while (0)
+  #define DATABASE_HANDLE_LOCK_INFO_RESTORE(databaseHandle,_lockedBy) \
+    do \
+    { \
+      databaseHandle->databaseNode->lockedBy = _lockedBy; \
+    } \
+    while (0)
+#else /* not DATABASE_LOCK_PER_INSTANCE */
+  #ifndef NDEBUG
+    #define DATABASE_HANDLE_LOCK_INFO_SET(databaseHandle) \
+      do \
+      { \
+        databaseLockedBy.threadId = Thread_getCurrentId(); \
+        databaseLockedBy.fileName = __fileName__; \
+        databaseLockedBy.lineNb   = __lineNb__; \
+      } \
+      while (0)
+    #define DATABASE_HANDLE_LOCK_INFO_CLEAR(databaseHandle) \
+      do \
+      { \
+        databaseLockedBy.threadId = THREAD_ID_NONE; \
+        databaseLockedBy.fileName = NULL; \
+        databaseLockedBy.lineNb   = 0; \
+      } \
+      while (0)
+  #else
+    #define DATABASE_HANDLE_LOCK_INFO_SET(databaseHandle) \
+      do \
+      { \
+        databaseLockedBy.threadId = Thread_getCurrentId(); \
+      } \
+      while (0)
+    #define DATABASE_HANDLE_LOCK_INFO_CLEAR(databaseHandle) \
+      do \
+      { \
+        databaseLockedBy.threadId = THREAD_ID_NONE; \
+      } \
+      while (0)
+  #endif
+  #define DATABASE_HANDLE_LOCK_INFO_SAVE(databaseHandle,_lockedBy) \
+    do \
+    { \
+      _lockedBy = databaseLockedBy; \
+      DATABASE_HANDLE_LOCK_INFO_CLEAR(databaseHandle); \
+    } \
+    while (0)
+  #define DATABASE_HANDLE_LOCK_INFO_RESTORE(databaseHandle,_lockedBy) \
+    do \
+    { \
+      databaseLockedBy = _lockedBy; \
+    } \
+    while (0)
+#endif /* DATABASE_LOCK_PER_INSTANCE */
+
+#ifdef DATABASE_LOCK_PER_INSTANCE
   #define DATABASE_HANDLE_LOCKED_DO(databaseHandle,block) \
     do \
     { \
@@ -456,17 +544,11 @@ LOCAL DatabaseList databaseList;
       __result = pthread_mutex_lock(&databaseLock); \
       if (__result == 0) \
       { \
-        databaseLockBy.threadId = Thread_getCurrentId(); \
-        databaseLockBy.fileName = __FILE__; \
-        databaseLockBy.lineNb   = __LINE__; \
         ({ \
           auto void __closure__(void); \
           \
           void __closure__(void)block; __closure__; \
         })(); \
-        databaseLockBy.threadId = THREAD_ID_NONE; \
-        databaseLockBy.fileName = NULL; \
-        databaseLockBy.lineNb   = 0; \
         __result = pthread_mutex_unlock(&databaseLock); \
         assert(__result == 0); \
       } \
@@ -487,17 +569,11 @@ LOCAL DatabaseList databaseList;
       __result = pthread_mutex_lock(&databaseLock); \
       if (__result == 0) \
       { \
-        databaseLockBy.threadId = Thread_getCurrentId(); \
-        databaseLockBy.fileName = __FILE__; \
-        databaseLockBy.lineNb   = __LINE__; \
         result = ({ \
                    auto typeof(result) __closure__(void); \
                    \
                    typeof(result) __closure__(void)block; __closure__; \
                  })(); \
-        databaseLockBy.threadId = THREAD_ID_NONE; \
-        databaseLockBy.fileName = NULL; \
-        databaseLockBy.lineNb   = 0; \
         __result = pthread_mutex_unlock(&databaseLock); \
         assert(__result == 0); \
       } \
@@ -4619,7 +4695,10 @@ LOCAL_INLINE bool __waitTriggerRead(const char     *__fileName__,
     if (timeout != WAIT_FOREVER)
     {
       initTimeSpec(&timespec,timeout);
-      if (pthread_cond_timedwait(&databaseHandle->databaseNode->readTrigger,databaseHandle->databaseNode->lock,&timespec) == ETIMEDOUT)
+      if (pthread_cond_timedwait(&databaseHandle->databaseNode->readTrigger,
+                                 databaseHandle->databaseNode->lock,
+                                 &timespec
+                                ) == ETIMEDOUT)
       {
         #ifdef DATABASE_DEBUG_TIMEOUT
           HALT_INTERNAL_ERROR("database timeout %ums",timeout);
@@ -4635,7 +4714,10 @@ LOCAL_INLINE bool __waitTriggerRead(const char     *__fileName__,
     if (timeout != WAIT_FOREVER)
     {
       initTimeSpec(&timespec,timeout);
-      if (pthread_cond_timedwait(&databaseHandle->databaseNode->readTrigger,&databaseLock,&timespec) == ETIMEDOUT)
+      if (pthread_cond_timedwait(&databaseHandle->databaseNode->readTrigger,
+                                 &databaseLock,
+                                 &timespec
+                                ) == ETIMEDOUT)
       {
 //TODO
 if (pthread_cond_timedwait(&databaseHandle->databaseNode->readTrigger,&databaseLock,&timespec) == 0)
@@ -4703,7 +4785,10 @@ LOCAL_INLINE bool __waitTriggerReadWrite(const char     *__fileName__,
     if (timeout != WAIT_FOREVER)
     {
       initTimeSpec(&timespec,timeout);
-      if (pthread_cond_timedwait(&databaseHandle->databaseNode->readWriteTrigger,databaseHandle->databaseNode->lock,&timespec) == ETIMEDOUT)
+      if (pthread_cond_timedwait(&databaseHandle->databaseNode->readWriteTrigger,
+                                 databaseHandle->databaseNode->lock,
+                                 &timespec
+                                ) == ETIMEDOUT)
       {
         #ifdef DATABASE_DEBUG_TIMEOUT
           HALT_INTERNAL_ERROR("database timeout %lums",timeout);
@@ -4719,7 +4804,10 @@ LOCAL_INLINE bool __waitTriggerReadWrite(const char     *__fileName__,
     if (timeout != WAIT_FOREVER)
     {
       initTimeSpec(&timespec,timeout);
-      if (pthread_cond_timedwait(&databaseHandle->databaseNode->readWriteTrigger,&databaseLock,&timespec) == ETIMEDOUT)
+      if (pthread_cond_timedwait(&databaseHandle->databaseNode->readWriteTrigger,
+                                 &databaseLock,
+                                 &timespec
+                                ) == ETIMEDOUT)
       {
 //TODO
 if (pthread_cond_timedwait(&databaseHandle->databaseNode->readWriteTrigger,&databaseLock,&timespec) == 0)
@@ -4771,7 +4859,8 @@ LOCAL_INLINE bool __waitTriggerTransaction(const char     *__fileName__,
                                           )
 #endif /* NDEBUG */
 {
-  struct timespec timespec;
+  struct timespec  timespec;
+  DatabaseLockedBy lockedBySave;
 
   assert(databaseHandle != NULL);
   DEBUG_CHECK_RESOURCE_TRACE(databaseHandle);
@@ -4788,7 +4877,10 @@ LOCAL_INLINE bool __waitTriggerTransaction(const char     *__fileName__,
     if (timeout != WAIT_FOREVER)
     {
       getTime(&timespec,timeout);
-      if (pthread_cond_timedwait(&databaseHandle->databaseNode->transactionTrigger,databaseHandle->databaseNode->lock,&timespec) == ETIMEDOUT)
+      if (pthread_cond_timedwait(&databaseHandle->databaseNode->transactionTrigger,
+                                 databaseHandle->databaseNode->lock,
+                                 &timespec
+                                ) == ETIMEDOUT)
       {
         #ifdef DATABASE_DEBUG_TIMEOUT
           HALT_INTERNAL_ERROR("database timeout %lums",timeout);
@@ -4804,7 +4896,10 @@ LOCAL_INLINE bool __waitTriggerTransaction(const char     *__fileName__,
     if (timeout != WAIT_FOREVER)
     {
       getTime(&timespec,timeout);
-      if (pthread_cond_timedwait(&databaseHandle->databaseNode->transactionTrigger,&databaseLock,&timespec) == ETIMEDOUT)
+      if (pthread_cond_timedwait(&databaseHandle->databaseNode->transactionTrigger,
+                                 &databaseLock,
+                                 &timespec
+                                ) == ETIMEDOUT)
       {
         #ifdef DATABASE_DEBUG_TIMEOUT
           HALT_INTERNAL_ERROR("database timeout %lums",timeout);
@@ -8560,7 +8655,7 @@ LOCAL Errors executePreparedQuery(DatabaseStatementHandle *databaseStatementHand
   retryCount    = 0;
   do
   {
-//fprintf(stderr,"%s:%d: %s\n",__FILE__,__LINE__,String_cString(databaseStatementHandle->sqlString));
+//fprintf(stderr,"%s:%d: %s\n",__FILE__,__LINE__,String_cString(databaseStatementHandle->debug.sqlString));
 // TODO: reactivate when each thread has his own index handle
 #if 0
     assert(Thread_isCurrentThread(databaseHandle->databaseNode->readWriteLockedBy));
@@ -9575,9 +9670,11 @@ Errors Database_initAll(void)
       pthread_mutexattr_destroy(&databaseLockAttribute);
       return ERRORX_(DATABASE,0,"init locking");
     }
-    databaseLockBy.threadId = THREAD_ID_NONE;
-    databaseLockBy.fileName = NULL;
-    databaseLockBy.lineNb   = 0;
+    databaseLockedBy.threadId = THREAD_ID_NONE;
+    #ifndef NDEBUG
+      databaseLockedBy.fileName = NULL;
+      databaseLockedBy.lineNb   = 0;
+    #endif
   #endif /* not DATABASE_LOCK_PER_INSTANCE */
 
   // init database list
@@ -10695,11 +10792,25 @@ void Database_interrupt(DatabaseHandle *databaseHandle)
         break;
       case DATABASE_TYPE_MARIADB:
         #if defined(HAVE_MARIADB)
+// TODO:
         #else /* HAVE_MARIADB */
         #endif /* HAVE_MARIADB */
         break;
       case DATABASE_TYPE_POSTGRESQL:
         #if defined(HAVE_POSTGRESQL)
+        {
+// TODO: called to often -> no progress?
+#if 0
+          PGcancel *pgCancel;
+
+          pgCancel = PQgetCancel(databaseHandle->postgresql.handle);
+          if (pgCancel != NULL)
+          {
+            (void)PQcancel(pgCancel,NULL,0);
+            PQfreeCancel(pgCancel);
+          }
+#endif
+        }
         #else /* HAVE_POSTGRESQL */
         #endif /* HAVE_POSTGRESQL */
         break;
@@ -11325,7 +11436,6 @@ Errors Database_getTriggerList(StringList     *triggerList,
 //TODO: how to handle lost triggers?
 #ifdef DATABASE_WAIT_TRIGGER_WORK_AROUND
   TimeoutInfo timeoutInfo;
-  ulong       t;
 #endif
 
   assert(databaseHandle != NULL);
@@ -11382,9 +11492,7 @@ Errors Database_getTriggerList(StringList     *triggerList,
             {
               do
               {
-                t = Misc_getRestTimeout(&timeoutInfo,DT);
-
-                waitTriggerReadWrite(databaseHandle,t);
+                waitTriggerReadWrite(databaseHandle,Misc_getRestTimeout(&timeoutInfo,DT));
               }
               while (   isReadWriteLock(databaseHandle)
                      && !Misc_isTimeout(&timeoutInfo)
@@ -11515,10 +11623,7 @@ Errors Database_getTriggerList(StringList     *triggerList,
             {
               do
               {
-                t = Misc_getRestTimeout(&timeoutInfo,DT);
-//fprintf(stderr,"%s, %d: b %ld %lu %u\n",__FILE__,__LINE__,timeout,Misc_getRestTimeout(&timeoutInfo,MAX_ULONG),t);
-
-                waitTriggerRead(databaseHandle,t);
+                waitTriggerRead(databaseHandle,Misc_getRestTimeout(&timeoutInfo,DT));
               }
               while (   isReadLock(databaseHandle)
                      && !Misc_isTimeout(&timeoutInfo)
@@ -11571,9 +11676,7 @@ Errors Database_getTriggerList(StringList     *triggerList,
             {
               do
               {
-                t = Misc_getRestTimeout(&timeoutInfo,DT);
-
-                waitTriggerReadWrite(databaseHandle,t);
+                waitTriggerReadWrite(databaseHandle,Misc_getRestTimeout(&timeoutInfo,DT));
               }
               while (   isReadWriteLock(databaseHandle)
                      && !Misc_isTimeout(&timeoutInfo)
@@ -16457,7 +16560,7 @@ Errors Database_get(DatabaseHandle       *databaseHandle,
   DATABASE_DOX(error,
                ERRORX_(DATABASE_TIMEOUT,0,"%s",String_cString(sqlString)),
                databaseHandle,
-               DATABASE_LOCK_TYPE_READ_WRITE,
+               DATABASE_LOCK_TYPE_READ,
                Misc_getRestTimeout(&timeoutInfo,MAX_ULONG),
   {
     return executePreparedStatement(&databaseStatementHandle,
