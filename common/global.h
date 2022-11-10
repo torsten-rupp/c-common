@@ -1947,6 +1947,9 @@ static inline uint getStackTrace(void const * stackTrace[], uint maxStackTraceSi
       stackTrace[i] = (void const **)((const byte*)stackTrace[i]-1);
     }
   #else
+    UNUSED_VARIABLE(stackTrace);
+    UNUSED_VARIABLE(maxStackTraceSize);
+
     stackTraceSize = 0;
   #endif
 
