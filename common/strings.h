@@ -228,9 +228,9 @@ typedef bool(*StringDumpInfoFunction)(ConstString string,
 \***********************************************************************/
 
 #define STRING_CHAR_ITERATE_UTF8(string,stringIterator,variable) \
-  for (stringIterator = 0, variable = stringAtUTF8(string->data,0,NULL); \
+  for (stringIterator = 0, variable = String_atUTF8(string,0,NULL); \
        (stringIterator) < String_length(string); \
-       (stringIterator) = stringNextUTF8(string->data,stringIterator), variable = stringAtUTF8(string->data,stringIterator,NULL) \
+       (stringIterator) = stringNextUTF8(string->data,stringIterator), variable = String_atUTF8(string,stringIterator,NULL) \
       )
 
 // debugging
@@ -552,7 +552,7 @@ String String_appendCharUTF8(String string, Codepoint codepoint);
 String String_appendBuffer(String string, const char *buffer, ulong bufferLength);
 
 /***********************************************************************\
-* Name   : String_appendFormat, String String_appendVformat
+* Name   : String_appendVFormat, String String_appendformat
 * Purpose: format string and append
 * Input  : string - string
 *          format - printf-like format string
@@ -566,8 +566,8 @@ String String_appendBuffer(String string, const char *buffer, ulong bufferLength
 *           %y   bool value
 \***********************************************************************/
 
-String String_appendFormat(String string, const char *format, ...);
 String String_appendVFormat(String string, const char *format, va_list arguments);
+String String_appendFormat(String string, const char *format, ...);
 
 /***********************************************************************\
 * Name   : String_insert, String_insertSub, String_insertCString,
@@ -827,12 +827,12 @@ INLINE char String_index(ConstString string, ulong index)
 #endif /* NDEBUG || __STRINGS_IMPLEMENTATION__ */
 
 /***********************************************************************\
-* Name   : String_isValidUTF8
-* Purpose: check if string has valid UTF8 encoding
+* Name   : String_isValidUTF8Codepoint
+* Purpose: check if valid UTF codepoint in string
 * Input  : string - string
 *          index  - index [0..n-1]
 * Output : -
-* Return : TRUE iff encoding is valid
+* Return : TRUE iff codepoint is valid
 * Notes  : -
 \***********************************************************************/
 
@@ -932,7 +932,7 @@ INLINE Codepoint String_atUTF8(ConstString string, ulong index, ulong *nextIndex
 
   if (string != NULL)
   {
-    codepoint = stringAtUTF8(string->data,index,nextIndex);
+    codepoint = stringAtUTF8n(string->data,string->length,index,nextIndex);
   }
   else
   {
@@ -1420,7 +1420,7 @@ bool String_scanCString(const char *s, const char *format, ...);
 *                      STRING_END if string completely parsed (can be
 *                      NULL)
 * Return : TRUE is fully parsed or nextIndex != NULL , FALSE on error
-* Notes  : extended scan-function:
+* Notes  : extended parse-function:
 *            - match also specified text
 *            - %<n>s will return max. <n-1> characters and always add
 *              a \0 at the end of the string
@@ -1430,6 +1430,7 @@ bool String_scanCString(const char *s, const char *format, ...);
 *            - % [<c>]s and % [<c>]S are parse rest of string as
 *              string which could be enclosed in "..." or '...'
 *            - %y boolean
+*            - %* value is skipped
 *            - if a value is NULL, skip value
 \***********************************************************************/
 

@@ -122,12 +122,12 @@ LOCAL void vformat(String s, char *format, ...)
   va_end(arguments);
 }
 
-LOCAL void vformatAppend(String s, char *format, ...)
+LOCAL void appendVFormat(String s, char *format, ...)
 {
   va_list arguments;
 
   va_start(arguments,format);
-  String_vformatAppend(s,format,arguments);
+  String_appendVFormat(s,format,arguments);
   va_end(arguments);
 }
 
@@ -141,13 +141,13 @@ CTEST(strings,format)
   String_format(s,"test %02d %2.2lf %s",12,34.56,"test");
   ASSERT_STR("test 12 34.56 test",String_cString(s));
 
-  String_formatAppend(s,"test %02d %2.2lf %s",12,34.56,"test");
+  String_appendFormat(s,"test %02d %2.2lf %s",12,34.56,"test");
   ASSERT_STR("test 12 34.56 testtest 12 34.56 test",String_cString(s));
 
   vformat(s,"test %02d %2.2lf %s",12,34.56,"test");
   ASSERT_STR("test 12 34.56 test",String_cString(s));
 
-  vformatAppend(s,"test %02d %2.2lf %s",12,34.56,"test");
+  appendVFormat(s,"test %02d %2.2lf %s",12,34.56,"test");
   ASSERT_STR("test 12 34.56 testtest 12 34.56 test",String_cString(s));
 
   String_delete(s);

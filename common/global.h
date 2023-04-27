@@ -14,6 +14,9 @@
 #if (defined DEBUG)
  #warning DEBUG option set - no LOCAL and no -O2 (optimizer) will be used!
 #endif
+#ifndef _GNU_SOURCE
+  #define _GNU_SOURCE
+#endif
 
 /****************************** Includes *******************************/
 #include <config.h>  // use <...> to support separated build directory
@@ -285,7 +288,7 @@ typedef uint32_t Codepoint;
 // string tokenizer
 typedef struct
 {
-  char       *s;
+  char       *string;
   const char *delimiters;
   const char *nextToken;
   char       *p;
@@ -896,6 +899,18 @@ typedef byte* BitSet;
 //#endif
 
 /***********************************************************************\
+* Name   : IS_IN_RANGE
+* Purpose: check if value is in range
+* Input  : l,h - lower/upper bound
+*          x   - number
+* Output : -
+* Return : TRUE if l <= x <= h
+* Notes  : -
+\***********************************************************************/
+
+#define IS_IN_RANGE(l,x,h) (((l) <= (x)) && ((x) <= (h)))
+
+/***********************************************************************\
 * Name   : IN_RANGE
 * Purpose: get value in range
 * Input  : l,h - lower/upper bound
@@ -1155,9 +1170,9 @@ typedef byte* BitSet;
 \***********************************************************************/
 
 #define CSTRING_CHAR_ITERATE(string,iteratorVariable,variable) \
-  for (stringIteratorInit(&iteratorVariable,string), variable = stringIteratorAt(&iteratorVariable); \
+  for (stringIteratorInit(&iteratorVariable,string), variable = stringIteratorGet(&iteratorVariable); \
        !stringIteratorEnd(&iteratorVariable); \
-       stringIteratorNext(&iteratorVariable), variable = stringIteratorAt(&iteratorVariable) \
+       stringIteratorNext(&iteratorVariable), variable = stringIteratorGet(&iteratorVariable) \
       )
 
 /***********************************************************************\
@@ -1384,7 +1399,7 @@ typedef byte* BitSet;
 
 /***********************************************************************\
 * Name   : __B
-* Purpose: braakpoint
+* Purpose: breakpoint
 * Input  : -
 * Output : -
 * Return : -
@@ -1392,7 +1407,12 @@ typedef byte* BitSet;
 \***********************************************************************/
 
 #if defined(__x86_64__) || defined(__i386)
-  #define __B() do { fprintf(stderr,"%s, %d: \n",__FILE__,__LINE__); asm(" int3"); } while (0)
+  #define __B() \
+    do \
+    { \
+      fprintf(stderr,"%s, %d: \n",__FILE__,__LINE__); asm(" int3"); \
+    } \
+    while (0)
 #else
   #define __B() do { } while (0)
 #endif
@@ -2641,87 +2661,87 @@ static inline bool stringEqualsPrefixIgnoreCase(const char *s1, const char *s2, 
 /***********************************************************************\
 * Name   : stringStartsWith
 * Purpose: check if string starts with prefix
-* Input  : s      - string
+* Input  : string - string
 *          prefix - prefix
 * Output : -
 * Return : TRUE iff s start with prefix
 * Notes  : -
 \***********************************************************************/
 
-static inline bool stringStartsWith(const char *s, const char *prefix)
+static inline bool stringStartsWith(const char *string, const char *prefix)
 {
-  return strncmp(s,prefix,strlen(prefix)) == 0;
+  return strncmp(string,prefix,strlen(prefix)) == 0;
 }
 
 /***********************************************************************\
 * Name   : stringStartsWithIgnoreCase
 * Purpose: check if string starts with prefix
-* Input  : s      - string
+* Input  : string - string
 *          prefix - prefix
 * Output : -
 * Return : TRUE iff s start with prefix
 * Notes  : -
 \***********************************************************************/
 
-static inline bool stringStartsWithIgnoreCase(const char *s, const char *prefix)
+static inline bool stringStartsWithIgnoreCase(const char *string, const char *prefix)
 {
-  return strncasecmp(s,prefix,strlen(prefix)) == 0;
+  return strncasecmp(string,prefix,strlen(prefix)) == 0;
 }
 
 /***********************************************************************\
 * Name   : stringEndsWith
 * Purpose: check if string ends with suffix
-* Input  : s      - string
+* Input  : string - string
 *          suffix - suffix
 * Output : -
 * Return : TRUE iff s start with suffix
 * Notes  : -
 \***********************************************************************/
 
-static inline bool stringEndsWith(const char *s, const char *suffix)
+static inline bool stringEndsWith(const char *string, const char *suffix)
 {
   size_t n,m;
 
-  n = strlen(s);
+  n = strlen(string);
   m = strlen(suffix);
 
   return    (n >= m)
-         && strncmp(s+n-m,suffix,m) == 0;
+         && strncmp(string+n-m,suffix,m) == 0;
 }
 
 /***********************************************************************\
 * Name   : stringEndsWithIgnoreCase
 * Purpose: check if string ends with suffix
-* Input  : s      - string
+* Input  : string - string
 *          suffix - suffix
 * Output : -
 * Return : TRUE iff s start with suffix
 * Notes  : -
 \***********************************************************************/
 
-static inline bool stringEndsWithIgnoreCase(const char *s, const char *suffix)
+static inline bool stringEndsWithIgnoreCase(const char *string, const char *suffix)
 {
   size_t n,m;
 
-  n = strlen(s);
+  n = strlen(string);
   m = strlen(suffix);
 
   return    (n >= m)
-         && strncasecmp(s+n-m,suffix,m) == 0;
+         && strncasecmp(string+n-m,suffix,m) == 0;
 }
 
 /***********************************************************************\
 * Name   : stringIsEmpty
 * Purpose: check if string is NULL or empty
-* Input  : s - string
+* Input  : string - string
 * Output : -
 * Return : TRUE iff empty
 * Notes  : -
 \***********************************************************************/
 
-static inline bool stringIsEmpty(const char *s)
+static inline bool stringIsEmpty(const char *string)
 {
-  return (s == NULL) || (s[0] == NUL);
+  return (string == NULL) || (string[0] == NUL);
 }
 
 /***********************************************************************\
@@ -2891,52 +2911,6 @@ static inline char* stringFormat(char *string, ulong stringSize, const char *for
 }
 
 /***********************************************************************\
-* Name   : stringVFormatAppend, stringFormatAppend
-* Purpose: format string and append
-* Input  : string     - string
-*          stringSize - size of destination string (including terminating
-*                       NUL)
-*          format     - format string
-*          ...        - optional arguments
-*          arguments  - arguments
-* Output : -
-* Return : destination string
-* Notes  : string is always NULL or NUL-terminated
-\***********************************************************************/
-
-static inline char* stringVFormatAppend(char *string, ulong stringSize, const char *format, va_list arguments)
-{
-  ulong n;
-
-  assert(string != NULL);
-  assert(stringSize > 0);
-  assert(format != NULL);
-
-  n = strlen(string);
-  if (n < stringSize)
-  {
-    vsnprintf(&string[n],stringSize-n,format,arguments);
-  }
-
-  return string;
-}
-
-static inline char* stringFormatAppend(char *string, ulong stringSize, const char *format, ...)
-{
-  va_list arguments;
-
-  assert(string != NULL);
-  assert(stringSize > 0);
-  assert(format != NULL);
-
-  va_start(arguments,format);
-  stringVFormatAppend(string,stringSize,format,arguments);
-  va_end(arguments);
-
-  return string;
-}
-
-/***********************************************************************\
 * Name   : stringVFormatLength, stringFormatLength
 * Purpose: get length of formated string
 * Input  : format    - format string
@@ -3037,6 +3011,52 @@ static inline char* stringAppendChar(char *string, ulong stringSize, char ch)
       string[n+1] = NUL;
     }
   }
+
+  return string;
+}
+
+/***********************************************************************\
+* Name   : stringAppendVFormat, stringAppendFormat
+* Purpose: format string and append
+* Input  : string     - string
+*          stringSize - size of destination string (including terminating
+*                       NUL)
+*          format     - format string
+*          ...        - optional arguments
+*          arguments  - arguments
+* Output : -
+* Return : destination string
+* Notes  : string is always NULL or NUL-terminated
+\***********************************************************************/
+
+static inline char* stringAppendVFormat(char *string, ulong stringSize, const char *format, va_list arguments)
+{
+  ulong n;
+
+  assert(string != NULL);
+  assert(stringSize > 0);
+  assert(format != NULL);
+
+  n = strlen(string);
+  if (n < stringSize)
+  {
+    vsnprintf(&string[n],stringSize-n,format,arguments);
+  }
+
+  return string;
+}
+
+static inline char* stringAppendFormat(char *string, ulong stringSize, const char *format, ...)
+{
+  va_list arguments;
+
+  assert(string != NULL);
+  assert(stringSize > 0);
+  assert(format != NULL);
+
+  va_start(arguments,format);
+  stringAppendVFormat(string,stringSize,format,arguments);
+  va_end(arguments);
 
   return string;
 }
@@ -3271,9 +3291,9 @@ static inline void stringDelete(char *string)
 }
 
 /***********************************************************************\
-* Name   : stringAt, stringAtUTF8
+* Name   : stringAt
 * Purpose: get character in string
-* Input  : s         - string
+* Input  : string    - string
 *          index     - index (0..n-1)
 *          nextIndex - next index variable or NULL
 * Output : nextIndex - next index
@@ -3281,17 +3301,18 @@ static inline void stringDelete(char *string)
 * Notes  : -
 \***********************************************************************/
 
-static inline char stringAt(const char *s, ulong index)
+static inline char stringAt(const char *string, ulong index)
 {
-  assert(s != NULL);
+  assert(string != NULL);
 
-  return s[index];
+  return string[index];
 }
 
 /***********************************************************************\
-* Name   : stringIsValidUTF8Codepoint
+* Name   : stringIsValidUTF8Codepointn
 * Purpose: check if valid UTF8 codepoint
-* Input  : s         - string
+* Input  : string    - string
+*          length    - string length
 *          index     - index [0..n-1]
 *          nextIndex - next index variable (can be NULL)
 * Output : nextIndex - next index [0..n-1]
@@ -3299,39 +3320,45 @@ static inline char stringAt(const char *s, ulong index)
 * Notes  : -
 \***********************************************************************/
 
-static inline bool stringIsValidUTF8Codepoint(const char *s, ulong index, ulong *nextIndex)
+static inline bool stringIsValidUTF8Codepointn(const char *string, size_t length, ulong index, ulong *nextIndex)
 {
-  if (s != NULL)
+  assert(index < length);
+
+  if (string != NULL)
   {
-    assert(index < stringLength(s));
-    if      (   ((s[index] & 0xF8) == 0xF0)
-             && ((s[index+1] & 0xC0) == 0x80)
-             && (s[index+2] != 0x00)
-             && (s[index+3] != 0x00)
+    if      (   ((index+4) <= length)
+             && ((string[index] & 0xF8) == 0xF0)
+             && ((string[index+1] & 0xC0) == 0x80)
+             && (string[index+2] != 0x00)
+             && (string[index+3] != 0x00)
             )
     {
       // 4 byte UTF8 codepoint
       if (nextIndex != NULL) (*nextIndex) = index+4;
       return TRUE;
     }
-    else if (   ((s[index] & 0xF0) == 0xE0)
-             && ((s[index+1] & 0xC0) == 0x80)
-             && (s[index+2] != 0x00)
+    else if (   ((index+3) <= length)
+             && ((string[index] & 0xF0) == 0xE0)
+             && ((string[index+1] & 0xC0) == 0x80)
+             && (string[index+2] != 0x00)
             )
     {
       // 3 byte UTF8 codepoint
       if (nextIndex != NULL) (*nextIndex) = index+3;
       return TRUE;
     }
-    else if (   ((s[index] & 0xE0) == 0xC0)
-             && ((s[index+1] & 0xC0) == 0x80)
+    else if (   ((index+2) <= length)
+             && ((string[index] & 0xE0) == 0xC0)
+             && ((string[index+1] & 0xC0) == 0x80)
             )
     {
       // 2 byte UTF8 codepoint
       if (nextIndex != NULL) (*nextIndex) = index+2;
       return TRUE;
     }
-    else if ((uchar)s[index] <= 0x7F)
+    else if (   ((index+1) <= length)
+             && ((uchar)string[index] <= 0x7F)
+            )
     {
       // 1 byte UTF8 codepoint
       if (nextIndex != NULL) (*nextIndex) = index+1;
@@ -3350,6 +3377,29 @@ static inline bool stringIsValidUTF8Codepoint(const char *s, ulong index, ulong 
 }
 
 /***********************************************************************\
+* Name   : stringIsValidUTF8Codepoint
+* Purpose: check if valid UTF8 codepoint
+* Input  : string    - string
+*          index     - index [0..n-1]
+*          nextIndex - next index variable (can be NULL)
+* Output : nextIndex - next index [0..n-1]
+* Return : TRUE iff valid codepoint
+* Notes  : -
+\***********************************************************************/
+
+static inline bool stringIsValidUTF8Codepoint(const char *string, ulong index, ulong *nextIndex)
+{
+  if (string != NULL)
+  {
+    return stringIsValidUTF8Codepointn(string,stringLength(string),index,nextIndex);
+  }
+  else
+  {
+    return FALSE;
+  }
+}
+
+/***********************************************************************\
 * Name   : stringIsValidUTF8
 * Purpose: check if string has valid UTF8 encoding
 * Input  : s         - string
@@ -3359,16 +3409,16 @@ static inline bool stringIsValidUTF8Codepoint(const char *s, ulong index, ulong 
 * Notes  : -
 \***********************************************************************/
 
-static inline bool stringIsValidUTF8(const char *s, ulong index)
+static inline bool stringIsValidUTF8(const char *string, ulong index)
 {
   ulong nextIndex;
 
-  if (s != NULL)
+  if (string != NULL)
   {
-    assert(index <= stringLength(s));
-    while (s[index] != NUL)
+    assert(index <= stringLength(string));
+    while (string[index] != NUL)
     {
-      if (stringIsValidUTF8Codepoint(s,index,&nextIndex))
+      if (stringIsValidUTF8Codepoint(string,index,&nextIndex))
       {
         index = nextIndex;
       }
@@ -3379,7 +3429,7 @@ static inline bool stringIsValidUTF8(const char *s, ulong index)
       }
     }
 
-    return s[index] == NUL;
+    return string[index] == NUL;
   }
   else
   {
@@ -3397,21 +3447,21 @@ static inline bool stringIsValidUTF8(const char *s, ulong index)
 * Notes  : -
 \***********************************************************************/
 
-static inline char *stringMakeValidUTF8(char *s, ulong index)
+static inline char *stringMakeValidUTF8(char *string, ulong index)
 {
   ulong nextIndex;
   ulong toIndex;
 
-  if (s != NULL)
+  if (string != NULL)
   {
     toIndex = index;
-    while (s[index] != NUL)
+    while (string[index] != NUL)
     {
-      if (stringIsValidUTF8Codepoint(s,index,&nextIndex))
+      if (stringIsValidUTF8Codepoint(string,index,&nextIndex))
       {
         while (index < nextIndex)
         {
-          s[toIndex] = s[index];
+          string[toIndex] = string[index];
           index++;
           toIndex++;
         }
@@ -3421,49 +3471,67 @@ static inline char *stringMakeValidUTF8(char *s, ulong index)
         index++;
       }
     }
-    s[toIndex] = NUL;
+    string[toIndex] = NUL;
   }
 
-  return s;
+  return string;
 }
 
 /***********************************************************************\
-* Name   : stringNextUTF8
+* Name   : stringNextUTF8n
 * Purpose: get next UTF8 character index
-* Input  : s     - string
-*          index - index (0..n-1)
+* Input  : string - string
+*          length - string length
+*          index  - index (0..n-1)
 * Output : -
 * Return : next index
 * Notes  : -
 \***********************************************************************/
 
-static inline size_t stringNextUTF8(const char *s, ulong index)
+static inline size_t stringNextUTF8n(const char *string, size_t length, ulong index)
 {
-  assert(s != NULL);
-  assert(index <= stringLength(s));
+  assert(string != NULL);
+  assert(index <= length);
 
-  if      ((s[index] & 0xF8) == 0xF0)
+  if      (((index+4) <= length) && ((string[index] & 0xF8) == 0xF0))
   {
     // 4 byte UTF8 codepoint
     index += 4;
   }
-  else if ((s[index] & 0xF0) == 0xE0)
+  else if (((index+3) <= length) && ((string[index] & 0xF0) == 0xE0))
   {
     // 3 byte UTF8 codepoint
     index += 3;
   }
-  else if ((s[index] & 0xE0) == 0xC0)
+  else if (((index+2) <= length) && ((string[index] & 0xE0) == 0xC0))
   {
     // 2 byte UTF8 codepoint
     index += 2;
   }
-  else
+  else if ((index+1) <= length)
   {
     // 1 byte UTF8 codepoint
     index += 1;
   }
 
   return index;
+}
+
+/***********************************************************************\
+* Name   : stringNextUTF8
+* Purpose: get next UTF8 character index
+* Input  : string - string
+*          index  - index (0..n-1)
+* Output : -
+* Return : next index
+* Notes  : -
+\***********************************************************************/
+
+static inline size_t stringNextUTF8(const char *string, ulong index)
+{
+  assert(string != NULL);
+
+  return stringNextUTF8n(string,stringLength(string),index);
 }
 
 /***********************************************************************\
@@ -3553,29 +3621,86 @@ static inline const char *charUTF8(Codepoint codepoint)
 /***********************************************************************\
 * Name   : stringLengthCodepointsUTF8
 * Purpose: get number of UTF8 codepoints in string
-* Input  : s - string
+* Input  : string - string
 * Output : -
 * Return : number of codepoints
 * Notes  : -
 \***********************************************************************/
 
-static inline size_t stringLengthCodepointsUTF8(const char *s)
+static inline size_t stringLengthCodepointsUTF8(const char *string)
 {
   size_t n;
   size_t index;
 
   n = 0;
-  if (s != NULL)
+  if (string != NULL)
   {
     index = 0;
-    while (s[index] != NUL)
+    while (string[index] != NUL)
     {
       n++;
-      index = stringNextUTF8(s,index);
+      index = stringNextUTF8(string,index);
     }
   }
 
   return n;
+}
+
+/***********************************************************************\
+* Name   : stringAtUTF8n
+* Purpose: get codepoint
+* Input  : string    - string
+*          length    - string length
+*          index     - index (0..n-1)
+*          nextIndex - next index variable (can be NULL)
+* Output : nextIndex - next index [0..n-1]
+* Return : codepoint
+* Notes  : -
+\***********************************************************************/
+
+static inline Codepoint stringAtUTF8n(const char *string, size_t length, ulong index, ulong *nextIndex)
+{
+  Codepoint codepoint;
+
+  assert(string != NULL);
+  assert(index <= length);
+
+  if      (((index+4) <= length) && ((string[index] & 0xF8) == 0xF0))
+  {
+    // 4 byte UTF8 codepoint
+    codepoint =   (Codepoint)((string[index+0] & 0x07) << 18)
+                | (Codepoint)((string[index+1] & 0x3F) << 12)
+                | (Codepoint)((string[index+2] & 0x3F) <<  6)
+                | (Codepoint)((string[index+3] & 0x3F) <<  0);
+    if (nextIndex != NULL) (*nextIndex) = index+4;
+  }
+  else if (((index+3) <= length) && ((string[index] & 0xF0) == 0xE0))
+  {
+    // 3 byte UTF8 codepoint
+    codepoint =   (Codepoint)((string[index+0] & 0x0F) << 12)
+                | (Codepoint)((string[index+1] & 0x3F) <<  6)
+                | (Codepoint)((string[index+2] & 0x3F) <<  0);
+    if (nextIndex != NULL) (*nextIndex) = index+3;
+  }
+  else if (((index+2) <= length) && ((string[index] & 0xE0) == 0xC0))
+  {
+    // 2 byte UTF8 codepoint
+    codepoint =   (Codepoint)((string[index+0] & 0x1F) << 6)
+                | (Codepoint)((string[index+1] & 0x3F) << 0);
+    if (nextIndex != NULL) (*nextIndex) = index+2;
+  }
+  else if ((index+1) <= length)
+  {
+    // 1 byte UTF8 codepoint
+    codepoint = (Codepoint)string[index];
+    if (nextIndex != NULL) (*nextIndex) = index+1;
+  }
+  else
+  {
+    codepoint = 0x00000000;
+  }
+
+  return codepoint;
 }
 
 /***********************************************************************\
@@ -3589,45 +3714,11 @@ static inline size_t stringLengthCodepointsUTF8(const char *s)
 * Notes  : -
 \***********************************************************************/
 
-static inline Codepoint stringAtUTF8(const char *s, ulong index, ulong *nextIndex)
+static inline Codepoint stringAtUTF8(const char *string, ulong index, ulong *nextIndex)
 {
-  Codepoint ch;
+  assert(string != NULL);
 
-  assert(s != NULL);
-  assert(index <= stringLength(s));
-
-  if      ((s[index] & 0xF8) == 0xF0)
-  {
-    // 4 byte UTF8 codepoint
-    ch =   (Codepoint)((s[index+0] & 0x07) << 18)
-         | (Codepoint)((s[index+1] & 0x3F) << 12)
-         | (Codepoint)((s[index+2] & 0x3F) <<  6)
-         | (Codepoint)((s[index+3] & 0x3F) <<  0);
-    if (nextIndex != NULL) (*nextIndex) = index+4;
-  }
-  else if ((s[index] & 0xF0) == 0xE0)
-  {
-    // 3 byte UTF8 codepoint
-    ch =   (Codepoint)((s[index+0] & 0x0F) << 12)
-         | (Codepoint)((s[index+1] & 0x3F) <<  6)
-         | (Codepoint)((s[index+2] & 0x3F) <<  0);
-    if (nextIndex != NULL) (*nextIndex) = index+3;
-  }
-  else if ((s[index] & 0xE0) == 0xC0)
-  {
-    // 2 byte UTF8 codepoint
-    ch =   (Codepoint)((s[index+0] & 0x1F) << 6)
-         | (Codepoint)((s[index+1] & 0x3F) << 0);
-    if (nextIndex != NULL) (*nextIndex) = index+2;
-  }
-  else
-  {
-    // 1 byte UTF8 codepoint
-    ch = (Codepoint)s[index];
-    if (nextIndex != NULL) (*nextIndex) = index+1;
-  }
-
-  return ch;
+  return stringAtUTF8n(string,stringLength(string),index,nextIndex);
 }
 
 /***********************************************************************\
@@ -3677,35 +3768,35 @@ static inline size_t stringFormatLengthCodepointsUTF8(const char *format, ...)
 /***********************************************************************\
 * Name   : stringFind, stringFindChar stringFindReverseChar
 * Purpose: find string/character in string
-* Input  : s                   - string
+* Input  : string              - string
 *          findString,findChar - string/character to find
 * Output : -
 * Return : index or -1
 * Notes  : -
 \***********************************************************************/
 
-static inline long stringFind(const char *s, const char *findString)
+static inline long stringFind(const char *string, const char *findString)
 {
   const char *t;
 
-  t = strstr(s,findString);
-  return (t != NULL) ? (long)(t-s) : -1L;
+  t = strstr(string,findString);
+  return (t != NULL) ? (long)(t-string) : -1L;
 }
 
-static inline long stringFindChar(const char *s, char findChar)
+static inline long stringFindChar(const char *string, char findChar)
 {
   const char *t;
 
-  t = strchr(s,findChar);
-  return (t != NULL) ? (long)(t-s) : -1L;
+  t = strchr(string,findChar);
+  return (t != NULL) ? (long)(t-string) : -1L;
 }
 
-static inline long stringFindReverseChar(const char *s, char findChar)
+static inline long stringFindReverseChar(const char *string, char findChar)
 {
   const char *t;
 
-  t = strrchr(s,findChar);
-  return (t != NULL) ? (long)(t-s) : -1L;
+  t = strrchr(string,findChar);
+  return (t != NULL) ? (long)(t-string) : -1L;
 }
 
 /***********************************************************************\
@@ -3785,7 +3876,7 @@ static inline void stringIteratorDone(CStringIterator *cStringIterator)
 }
 
 /***********************************************************************\
-* Name   : stringIteratorAt
+* Name   : stringIteratorGet
 * Purpose: get character (codepoint) from string iterator
 * Input  : cStringIterator - string iterator
 * Output : -
@@ -3793,7 +3884,7 @@ static inline void stringIteratorDone(CStringIterator *cStringIterator)
 * Notes  : -
 \***********************************************************************/
 
-static inline Codepoint stringIteratorAt(CStringIterator *cStringIterator)
+static inline Codepoint stringIteratorGet(CStringIterator *cStringIterator)
 {
   assert(cStringIterator != NULL);
 
@@ -3804,13 +3895,13 @@ static inline Codepoint stringIteratorAt(CStringIterator *cStringIterator)
 * Name   : stringIteratorAtX
 * Purpose: get character (codepoint) from string iterator
 * Input  : cStringIterator - string iterator
-*          i               - index (0..n-1)
+*          index           - index (0..n-1)
 * Output : -
 * Return : character
 * Notes  : -
 \***********************************************************************/
 
-static inline Codepoint stringIteratorAtX(CStringIterator *cStringIterator, ulong n)
+static inline Codepoint stringIteratorAtX(CStringIterator *cStringIterator, ulong index)
 {
   Codepoint codepoint;
   ulong     nextIndex;
@@ -3819,10 +3910,10 @@ static inline Codepoint stringIteratorAtX(CStringIterator *cStringIterator, ulon
 
   codepoint = cStringIterator->codepoint;
   nextIndex = cStringIterator->nextIndex;
-  while ((n > 0) && (cStringIterator->s[nextIndex] != NUL))
+  while ((index > 0) && (cStringIterator->s[nextIndex] != NUL))
   {
     codepoint = stringAtUTF8(cStringIterator->s,nextIndex,&nextIndex);
-    n--;
+    index--;
   }
 
   return codepoint;
@@ -3871,7 +3962,7 @@ static inline void stringIteratorNext(CStringIterator *cStringIterator)
 * Name   : stringIteratorNextX
 * Purpose: increment string iterator
 * Input  : cStringIterator - string iterator
-*          n               - number of chracters
+*          n               - number of chracters to increment
 * Output : -
 * Return : -
 * Notes  : -
@@ -3889,15 +3980,15 @@ static inline void stringIteratorNextX(CStringIterator *cStringIterator, ulong n
 }
 
 /***********************************************************************\
-* Name   : stringIteratorGet
-* Purpose: get character (codepoint) from string iterator
+* Name   : stringIteratorGetNext
+* Purpose: get next character (codepoint) from string iterator
 * Input  : cStringIterator - string iterator
-* Output : -
+* Output : cStringIterator - incremented string iterator
 * Return : character
 * Notes  : -
 \***********************************************************************/
 
-static inline Codepoint stringIteratorGet(CStringIterator *cStringIterator)
+static inline Codepoint stringIteratorGetNext(CStringIterator *cStringIterator)
 {
   Codepoint codepoint;
 
@@ -3920,13 +4011,13 @@ static inline Codepoint stringIteratorGet(CStringIterator *cStringIterator)
 * Notes  : -
 \***********************************************************************/
 
-static inline void stringTokenizerInit(CStringTokenizer *cStringTokenizer, const char *s, const char *delimiters)
+static inline void stringTokenizerInit(CStringTokenizer *cStringTokenizer, const char *string, const char *delimiters)
 {
   assert(cStringTokenizer != NULL);
-  assert(s != NULL);
+  assert(string != NULL);
 
-  cStringTokenizer->s          = strdup(s);
-  cStringTokenizer->nextToken  = strtok_r(cStringTokenizer->s,delimiters,&cStringTokenizer->p);
+  cStringTokenizer->string     = strdup(string);
+  cStringTokenizer->nextToken  = strtok_r(cStringTokenizer->string,delimiters,&cStringTokenizer->p);
   cStringTokenizer->delimiters = delimiters;
 }
 
@@ -3943,7 +4034,7 @@ static inline void stringTokenizerDone(CStringTokenizer *cStringTokenizer)
 {
   assert(cStringTokenizer != NULL);
 
-  free(cStringTokenizer->s);
+  free(cStringTokenizer->string);
 }
 
 /***********************************************************************\
