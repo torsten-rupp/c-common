@@ -66,7 +66,8 @@ ERROR NOT_A_DIRECTORY
 ERROR IO
   strncpy(errorText,strerror(ERROR_CODE),sizeof(errorText)-1); errorText[sizeof(errorText)-1] = '\0';
 
-ERROR OPEN_DEVICE
+ERROR NOT_A_DEVICE                   "not a device"
+ERROR OPEN_DEVICE                    "open device fail"
 
 ERROR PARSE_DEVICE_LIST              "error parsing device list"
 ERROR FILE_EXITS                     "file already exists"
