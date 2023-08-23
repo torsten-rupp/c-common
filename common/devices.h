@@ -33,13 +33,15 @@ typedef enum
   DEVICE_OPEN_WRITE
 } DeviceModes;
 
+#define DEVICE_DEBUG_EMULATE_BLOCK_DEVICE "DEBUG_EMULATE_BLOCK_DEVICE"
+
 /***************************** Datatypes *******************************/
 
 // device i/o handle
 typedef struct
 {
   String name;
-  FILE   *file;
+  int    handle;
   uint64 index;
   uint64 size;
 } DeviceHandle;
@@ -140,7 +142,16 @@ Errors Device_close(DeviceHandle *deviceHandle);
 * Notes  : -
 \***********************************************************************/
 
-bool Device_eof(DeviceHandle *deviceHandle);
+INLINE bool Device_eof(DeviceHandle *deviceHandle);
+#if defined(NDEBUG) || defined(__FILES_IMPLEMENTATION__)
+INLINE bool Device_eof(DeviceHandle *deviceHandle)
+{
+  assert(deviceHandle != NULL);
+  assert(deviceHandle->handle != -1);
+
+  return deviceHandle->index >= deviceHandle->size;
+}
+#endif /* NDEBUG || __FILES_IMPLEMENTATION__ */
 
 /***********************************************************************\
 * Name   : Device_read
@@ -324,6 +335,18 @@ Errors Device_readDeviceList(DeviceListHandle *deviceListHandle,
                             );
 
 /*---------------------------------------------------------------------*/
+
+/***********************************************************************\
+* Name   : Device_exists, Device_existsCString
+* Purpose: check device exists
+* Input  : deviceName - device name
+* Output : -
+* Return : TRUE iff device exists
+* Notes  : -
+\***********************************************************************/
+
+bool Device_exists(ConstString deviceName);
+bool Device_existsCString(const char *deviceName);
 
 /***********************************************************************\
 * Name   : Device_getInfo, Device_getInfoCString
