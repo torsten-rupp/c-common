@@ -46,15 +46,17 @@ CTEST(strings,duplicate)
 
 CTEST(strings,copy)
 {
-  String s1,s2;
+  String s1,s2,s3;
 
   s1 = String_new();
-  s2 = String_new();
+  s3 = String_new();
 
   s1 = String_newCString("test");
   ASSERT_STR("test",String_cString(s1));
-  s2 = String_copy(String_new(),s1);
+  s2 = String_copy(NULL,s1);
   ASSERT_STR("test",String_cString(s2));
+  s3 = String_copy(&s2,s1);
+  ASSERT_STR("test",String_cString(s3));
 
   String_delete(s2);
   String_delete(s1);
@@ -318,8 +320,8 @@ CTEST(strings,replaceAll)
 
 CTEST(strings,map)
 {
-  String s;
-  String t0[2],t1[2];
+  String      s;
+  ConstString t0[2],t1[2];
 
   s = String_new();
 
@@ -483,7 +485,7 @@ CTEST(strings,compare)
   ASSERT_EQUAL(String_compare(s,t,
                               CALLBACK_INLINE(int,(char ch1, char ch2, void *userData),
                                               {
-                                                ASSERT_EQUAL(userData,NULL);
+                                                ASSERT_TRUE(userData == NULL);
 
                                                 if      (ch1 < ch2) return -1;
                                                 else if (ch1 < ch2) return  1;
@@ -680,7 +682,7 @@ CTEST(strings,interate)
              String_cString(String_iterate(s,
                                            CALLBACK_INLINE(const char*,(char ch, void *userData),
                                                            {
-                                                             ASSERT_EQUAL(userData,NULL);
+                                                             ASSERT_TRUE(userData == NULL);
 
                                                              return (ch == 'e') ? "X" : "a";
                                                            },NULL
