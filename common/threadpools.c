@@ -31,6 +31,7 @@
 #endif /* PLATFORM_... */
 
 #include "common/global.h"
+#include "common/cstrings.h"
 #include "common/lists.h"
 #include "common/msgqueues.h"
 
@@ -228,7 +229,7 @@ LOCAL ThreadPoolNode *newThread(ThreadPool *threadPool)
   // init start info
   if (sem_init(&startInfo.started,0,0) != 0)
   {
-    HALT_INTERNAL_ERROR("cannot initialise start trigger");
+    HALT_INTERNAL_ERROR("cannot initialize start trigger");
   }
   startInfo.threadPool     = threadPool;
   startInfo.threadPoolNode = threadPoolNode;
