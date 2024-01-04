@@ -1,3 +1,6 @@
+2023-06-18 0.14
+  * new include folder structure
+
 2016-11-18 0.13
   * added ConstString
   * replaced exit() -> abort()
