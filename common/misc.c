@@ -1023,15 +1023,16 @@ uint32 Misc_getCurrentTime(void)
   return time;
 }
 
-void Misc_splitDateTime(uint64   dateTime,
-                        uint     *year,
-                        uint     *month,
-                        uint     *day,
-                        uint     *hour,
-                        uint     *minute,
-                        uint     *second,
-                        WeekDays *weekDay,
-                        bool     *isDayLightSaving
+void Misc_splitDateTime(uint64    dateTime,
+                        TimeTypes timeType,
+                        uint      *year,
+                        uint      *month,
+                        uint      *day,
+                        uint      *hour,
+                        uint      *minute,
+                        uint      *second,
+                        WeekDays  *weekDay,
+                        bool      *isDayLightSaving
                        )
 {
   time_t    n;
@@ -1040,11 +1041,21 @@ void Misc_splitDateTime(uint64   dateTime,
   #endif /* HAVE_LOCALTIME_R */
   struct tm *tm;
 
-  n = (time_t)dateTime;
+  n  = (time_t)dateTime;
+  tm = NULL;
   #ifdef HAVE_LOCALTIME_R
-    tm = localtime_r(&n,&tmBuffer);
+    switch (timeType)
+    {
+      case TIME_TYPE_GMT:   tm = gmtime_r(&n,&tmBuffer); break;
+      case TIME_TYPE_LOCAL: tm = localtime_r(&n,&tmBuffer); break;
+    }
   #else /* not HAVE_LOCALTIME_R */
-    tm = localtime(&n);
+    switch (timeType)
+    {
+      case TIME_TYPE_GMT:   tm = gmtime(&n);    break;
+      case TIME_TYPE_LOCAL: tm = localtime(&n); break;
+    }
+
   #endif /* HAVE_LOCALTIME_R */
   assert(tm != NULL);
 
@@ -1109,16 +1120,18 @@ bool Misc_isDayLightSaving(uint64 dateTime)
   return (tm->tm_isdst > 0);;
 }
 
-uint64 Misc_makeDateTime(uint year,
-                         uint month,
-                         uint day,
-                         uint hour,
-                         uint minute,
-                         uint second,
-                         bool isDayLightSaving
+uint64 Misc_makeDateTime(TimeTypes           timeType,
+                         uint                year,
+                         uint                month,
+                         uint                day,
+                         uint                hour,
+                         uint                minute,
+                         uint                second,
+                         DayLightSavingModes dayLightSavingMode
                         )
 {
   struct tm tm;
+  time_t    dateTime;
 
   assert(year >= 1900);
   assert(month >= 1);
@@ -1129,15 +1142,41 @@ uint64 Misc_makeDateTime(uint year,
   assert(minute <= 59);
   assert(second <= 59);
 
-  tm.tm_year  = year - 1900;
-  tm.tm_mon   = month - 1;
-  tm.tm_mday  = day;
-  tm.tm_hour  = hour;
-  tm.tm_min   = minute;
-  tm.tm_sec   = second;
-  tm.tm_isdst = isDayLightSaving ? 1 : 0;
+  memClear(&tm,sizeof(tm));
+  tm.tm_year = year - 1900;
+  tm.tm_mon  = month - 1;
+  tm.tm_mday = day;
+  tm.tm_hour = hour;
+  tm.tm_min  = minute;
+  tm.tm_sec  = second;
+  switch (dayLightSavingMode)
+  {
+    case DAY_LIGHT_SAVING_MODE_AUTO: tm.tm_isdst = -1; break;
+    case DAY_LIGHT_SAVING_MODE_OFF : tm.tm_isdst =  0; break;
+    case DAY_LIGHT_SAVING_MODE_ON  : tm.tm_isdst =  1; break;
+  }
 
-  return (uint64)mktime(&tm);
+  dateTime = 0LL;
+  switch (timeType)
+  {
+    case TIME_TYPE_GMT  :
+      #if   defined(PLATFORM_LINUX)
+        dateTime = timegm(&tm);
+      #elif defined(PLATFORM_WINDOWS)
+        dateTime = _mkgmtime(&tm);
+      #endif /* PLATFORM_... */
+      break;
+    case TIME_TYPE_LOCAL:
+      #if   defined(PLATFORM_LINUX)
+        dateTime = mktime(&tm);
+      #elif defined(PLATFORM_WINDOWS)
+        dateTime = mktime(&tm);
+      #endif /* PLATFORM_... */
+      break;
+  }
+  if (dateTime < (time_t)0) dateTime = 0LL;  // avoid negative/invalid date/time
+
+  return (uint64)dateTime;
 }
 
 void Misc_udelay(uint64 time)
@@ -1269,7 +1308,7 @@ UNUSED_VARIABLE(string);
   return dateTime;
 }
 
-String Misc_formatDateTime(String string, uint64 dateTime, bool utcFlag, const char *format)
+String Misc_formatDateTime(String string, uint64 dateTime, TimeTypes timeType, const char *format)
 {
   #define START_BUFFER_SIZE 256
   #define DELTA_BUFFER_SIZE 64
@@ -1285,22 +1324,24 @@ String Misc_formatDateTime(String string, uint64 dateTime, bool utcFlag, const c
 
   assert(string != NULL);
 
-  n = (time_t)dateTime;
-  if (utcFlag)
+  n  = (time_t)dateTime;
+  tm = NULL;
+  switch (timeType)
   {
-    #ifdef HAVE_LOCALTIME_R
-      tm = gmtime_r(&n,&tmBuffer);
-    #else /* not HAVE_LOCALTIME_R */
-      tm = gmtime(&n);
-    #endif /* HAVE_LOCALTIME_R */
-  }
-  else
-  {
-    #ifdef HAVE_LOCALTIME_R
-      tm = localtime_r(&n,&tmBuffer);
-    #else /* not HAVE_LOCALTIME_R */
-      tm = localtime(&n);
-    #endif /* HAVE_LOCALTIME_R */
+    case TIME_TYPE_GMT:
+      #ifdef HAVE_GMTIME_R
+        tm = gmtime_r(&n,&tmBuffer);
+      #else /* not HAVE_GMTIME_R */
+        tm = gmtime(&n);
+      #endif /* HAVE_GMTIME_R */
+      break;
+    case TIME_TYPE_LOCAL:
+      #ifdef HAVE_LOCALTIME_R
+        tm = localtime_r(&n,&tmBuffer);
+      #else /* not HAVE_LOCALTIME_R */
+        tm = localtime(&n);
+      #endif /* HAVE_LOCALTIME_R */
+      break;
   }
   assert(tm != NULL);
 
@@ -1334,7 +1375,7 @@ String Misc_formatDateTime(String string, uint64 dateTime, bool utcFlag, const c
   return string;
 }
 
-const char* Misc_formatDateTimeCString(char *buffer, uint bufferSize, uint64 dateTime, bool utcFlag, const char *format)
+const char* Misc_formatDateTimeCString(char *buffer, uint bufferSize, uint64 dateTime, TimeTypes timeType, const char *format)
 {
   time_t    n;
   #if defined(HAVE_LOCALTIME_R) || defined(HAVE_GMTIME_R)
@@ -1346,22 +1387,24 @@ const char* Misc_formatDateTimeCString(char *buffer, uint bufferSize, uint64 dat
   assert(buffer != NULL);
   assert(bufferSize > 0);
 
-  n = (time_t)dateTime;
-  if (utcFlag)
+  n  = (time_t)dateTime;
+  tm = NULL;
+  switch (timeType)
   {
-    #ifdef HAVE_GMTIME_R
-      tm = gmtime_r(&n,&tmBuffer);
-    #else /* not HAVE_GMTIME_R */
-      tm = gmtime(&n);
-    #endif /* HAVE_GMTIME_R */
-  }
-  else
-  {
+    case TIME_TYPE_GMT:
+      #ifdef HAVE_GMTIME_R
+        tm = gmtime_r(&n,&tmBuffer);
+      #else /* not HAVE_GMTIME_R */
+        tm = gmtime(&n);
+      #endif /* HAVE_GMTIME_R */
+      break;
+    case TIME_TYPE_LOCAL:
     #ifdef HAVE_LOCALTIME_R
       tm = localtime_r(&n,&tmBuffer);
     #else /* not HAVE_LOCALTIME_R */
       tm = localtime(&n);
     #endif /* HAVE_LOCALTIME_R */
+      break;
   }
   assert(tm != NULL);
 
@@ -2034,11 +2077,17 @@ String Misc_expandMacros(String           string,
               {
                 switch (macros[j].type)
                 {
-                  case TEXT_MACRO_TYPE_INTEGER:
+                  case TEXT_MACRO_TYPE_INT:
                     stringSet(format,sizeof(format),"%d");
                     break;
-                  case TEXT_MACRO_TYPE_INTEGER64:
+                  case TEXT_MACRO_TYPE_UINT:
+                    stringSet(format,sizeof(format),"%u");
+                    break;
+                  case TEXT_MACRO_TYPE_INT64:
                     stringSet(format,sizeof(format),"%"PRIi64);
+                    break;
+                  case TEXT_MACRO_TYPE_UINT64:
+                    stringSet(format,sizeof(format),"%"PRIu64);
                     break;
                   case TEXT_MACRO_TYPE_DOUBLE:
                     stringSet(format,sizeof(format),"%lf");
@@ -2060,11 +2109,17 @@ String Misc_expandMacros(String           string,
               // expand macro into string
               switch (macros[j].type)
               {
-                case TEXT_MACRO_TYPE_INTEGER:
+                case TEXT_MACRO_TYPE_INT:
                   String_appendFormat(expanded,format,macros[j].value.i);
                   break;
-                case TEXT_MACRO_TYPE_INTEGER64:
-                  String_appendFormat(expanded,format,macros[j].value.l);
+                case TEXT_MACRO_TYPE_UINT:
+                  String_appendFormat(expanded,format,macros[j].value.u);
+                  break;
+                case TEXT_MACRO_TYPE_INT64:
+                  String_appendFormat(expanded,format,macros[j].value.i64);
+                  break;
+                case TEXT_MACRO_TYPE_UINT64:
+                  String_appendFormat(expanded,format,macros[j].value.u64);
                   break;
                 case TEXT_MACRO_TYPE_DOUBLE:
                   String_appendFormat(expanded,format,macros[j].value.d);
@@ -3097,6 +3152,143 @@ bool Misc_getRegistryString(String string, HKEY parentKey, const char *subKey, c
   #undef BUFFER_SIZE
 }
 #endif /* PLATFORM_... */
+
+char *Misc_translate(const char *format, ...)
+{
+  // Note: cannot use ICU u_vformatMessage(), because string arguments have to be Unicode
+#if 1
+  #define MAX_TEXT_LENGTH 256
+  #define MAX_VALUES      16
+
+  #define APPEND(ch) \
+    do \
+    { \
+      if (i < (MAX_TEXT_LENGTH-1)) \
+      { \
+        text[i] = (ch); \
+        i++; \
+      } \
+    } \
+    while (0)
+
+  typedef union
+  {
+    int        i;
+    int64      i64;
+    uint       u;
+    uint64     u64;
+    const char *s;
+  } Argument;
+
+  static char text[MAX_TEXT_LENGTH];
+
+  va_list    arguments;
+  const char *s;
+  uint       i;
+  Argument        values[MAX_VALUES];
+  CStringIterator cStringIterator;
+  Codepoint       codepoint;
+  uint            index;
+
+  // get argument values
+  memClear(values,sizeof(values));
+  index = 0;
+  va_start(arguments,format);
+  CSTRING_CHAR_ITERATE(format,cStringIterator,codepoint)
+  {
+    switch (codepoint)
+    {
+      case '\\':
+        stringIteratorNext(&cStringIterator);
+        break;
+      case '{':
+        do
+        {
+          stringIteratorNext(&cStringIterator);
+          codepoint = stringIteratorGet(&cStringIterator);
+        }
+        while (codepoint != '}');
+        if (index < MAX_VALUES)
+        {
+          values[index].s = va_arg(arguments,char*);
+          index++;
+        }
+        break;
+      default:
+        break;
+    }
+  }
+  va_end(arguments);
+
+  // format
+  va_start(arguments,format);
+  i = 0;
+  CSTRING_CHAR_ITERATE(format,cStringIterator,codepoint)
+  {
+    switch (codepoint)
+    {
+      case '\\':
+        stringIteratorNext(&cStringIterator);
+        APPEND(stringIteratorGet(&cStringIterator));
+        break;
+      case '{':
+        index = 0;
+        do
+        {
+          stringIteratorNext(&cStringIterator);
+          codepoint = stringIteratorGet(&cStringIterator);
+          if (IS_IN_RANGE('0',codepoint,'9'))
+          {
+            index = index*10+(uint)(codepoint-'0');
+          }
+        }
+        while (codepoint != '}');
+        if (index < MAX_VALUES)
+        {
+          s = values[index].s;
+          if (s != NULL)
+          {
+            while ((*s) != NUL)
+            {
+              APPEND(*s); s++;
+            }
+          }
+        }
+        break;
+      default:
+        APPEND(codepoint);
+        break;
+    }
+  }
+  va_end(arguments);
+  text[i] = NUL;
+
+  return text;
+#else
+/*
+#define U_CHARSET_IS_UTF8 1
+#include "unicode/utypes.h"
+#include "unicode/umsg.h"
+#include "unicode/ustring.h"
+*/
+  static char text[256];
+
+  UChar pattern[256];
+  UChar result[256];
+  int32_t resultLength;
+  UErrorCode errorCode;
+  va_list    arguments;
+
+  va_start(arguments,format);
+  u_uastrncpy(pattern, format, 256);
+  resultLength = u_vformatMessage( "en_US", pattern,u_strlen(pattern),result,100,arguments,&errorCode);
+  va_end(arguments);
+
+  u_austrncpy(text, result, 256);
+
+  return text;
+#endif
+}
 
 #ifdef __cplusplus
   }

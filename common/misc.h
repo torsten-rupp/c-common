@@ -68,6 +68,19 @@ typedef enum
   WEEKDAY_SUN = 6,
 } WeekDays;
 
+typedef enum
+{
+  TIME_TYPE_GMT,
+  TIME_TYPE_LOCAL
+} TimeTypes;
+
+typedef enum
+{
+  DAY_LIGHT_SAVING_MODE_AUTO,
+  DAY_LIGHT_SAVING_MODE_OFF,
+  DAY_LIGHT_SAVING_MODE_ON
+} DayLightSavingModes;
+
 // length of UUID string (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
 #define MISC_UUID_STRING_LENGTH 36
 #define MISC_UUID_NONE "00000000-0000-0000-0000-000000000000"
@@ -78,11 +91,13 @@ typedef enum
 #define MISC_ID_NONE 0
 
 // text macro patterns
-#define TEXT_MACRO_PATTERN_INTEGER   "[+-]{0,1}\\d+"
-#define TEXT_MACRO_PATTERN_INTEGER64 "[+-]{0,1}\\d+"
-#define TEXT_MACRO_PATTERN_DOUBLE    "[+-]{0,1}(\\d+|\\d+\.\\d*|\\d*\.\\d+)"
-#define TEXT_MACRO_PATTERN_CSTRING   "\\S+"
-#define TEXT_MACRO_PATTERN_STRING    "\\S+"
+#define TEXT_MACRO_PATTERN_INT     "[+-]{0,1}\\d+"
+#define TEXT_MACRO_PATTERN_UINT    "[+]{0,1}\\d+"
+#define TEXT_MACRO_PATTERN_INT64   "[+-]{0,1}\\d+"
+#define TEXT_MACRO_PATTERN_UINT64  "[+]{0,1}\\d+"
+#define TEXT_MACRO_PATTERN_DOUBLE  "[+-]{0,1}(\\d+|\\d+\.\\d*|\\d*\.\\d+)"
+#define TEXT_MACRO_PATTERN_CSTRING "\\S+"
+#define TEXT_MACRO_PATTERN_STRING  "\\S+"
 
 // file/socket handle events
 #if   defined(PLATFORM_LINUX)
@@ -146,8 +161,10 @@ typedef const byte* MachineId;
 // text macros
 typedef enum
 {
-  TEXT_MACRO_TYPE_INTEGER,
-  TEXT_MACRO_TYPE_INTEGER64,
+  TEXT_MACRO_TYPE_INT,
+  TEXT_MACRO_TYPE_UINT,
+  TEXT_MACRO_TYPE_INT64,
+  TEXT_MACRO_TYPE_UINT64,
   TEXT_MACRO_TYPE_DOUBLE,
   TEXT_MACRO_TYPE_CSTRING,
   TEXT_MACRO_TYPE_STRING,
@@ -160,7 +177,9 @@ typedef struct
   struct
   {
     int            i;
-    int64          l;
+    uint           u;
+    int64          i64;
+    uint64         u64;
     double         d;
     const char     *s;
     String         string;
@@ -279,7 +298,7 @@ typedef struct
 *
 *          TEXT_MACROS_INIT(textMacros)
 *          {
-*            TEXT_MACRO_INTEGER(name,value,pattern);
+*            TEXT_MACRO_INT(name,value,pattern);
 *            TEXT_MACRO_CSTRING(name,value,pattern);
 *            TEXT_MACRO_STRING (name,value,pattern);
 *          }
@@ -315,39 +334,53 @@ typedef struct
 * Notes  : -
 \***********************************************************************/
 
-#define TEXT_MACRO_INTEGER(name,value,pattern) \
+#define TEXT_MACRO_INT(name,value,pattern) \
   { \
-    TEXT_MACRO_TYPE_INTEGER, \
+    TEXT_MACRO_TYPE_INT, \
     name, \
-    {value,0LL,0.0,NULL,NULL}, \
+    {value,0,0LL,0UL,0.0,NULL,NULL}, \
     pattern \
   }
-#define TEXT_MACRO_INTEGER64(name,value,pattern) \
+#define TEXT_MACRO_UINT(name,value,pattern) \
   { \
-    TEXT_MACRO_TYPE_INTEGER64, \
+    TEXT_MACRO_TYPE_UINT, \
     name, \
-    {0,value,0.0,NULL,NULL}, \
+    {0,value,0LL,0UL,0.0,NULL,NULL}, \
+    pattern \
+  }
+#define TEXT_MACRO_INT64(name,value,pattern) \
+  { \
+    TEXT_MACRO_TYPE_INT64, \
+    name, \
+    {0,0,value,0UL,0.0,NULL,NULL}, \
+    pattern \
+  }
+#define TEXT_MACRO_UINT64(name,value,pattern) \
+  { \
+    TEXT_MACRO_TYPE_UINT64, \
+    name, \
+    {0,0,0LL,value,0.0,NULL,NULL}, \
     pattern \
   }
 #define TEXT_MACRO_DOUBLE(name,value,pattern) \
   { \
     TEXT_MACRO_TYPE_DOUBLE, \
     name, \
-    {0,0LL,value,NULL,NULL}, \
+    {0,0,0LL,0UL,value,NULL,NULL}, \
     pattern \
   }
 #define TEXT_MACRO_CSTRING(name,value,pattern) \
   { \
     TEXT_MACRO_TYPE_CSTRING, \
     name, \
-    {0,0LL,0.0,value,NULL}, \
+    {0,0,0LL,0UL,0.0,value,NULL}, \
     pattern \
   }
 #define TEXT_MACRO_STRING(name,value,pattern) \
   { \
     TEXT_MACRO_TYPE_STRING, \
     name, \
-    {0,0LL,0.0,NULL,value}, \
+    {0,0,0LL,0UL,0.0,NULL,value}, \
     pattern \ \
   }
 
@@ -363,19 +396,33 @@ typedef struct
 * Notes  : -
 \***********************************************************************/
 
-#define TEXT_MACRO_N_INTEGER(textMacro,_name,_value,_pattern) \
+#define TEXT_MACRO_N_INT(textMacro,_name,_value,_pattern) \
   do { \
-    textMacro.type    = TEXT_MACRO_TYPE_INTEGER; \
+    textMacro.type    = TEXT_MACRO_TYPE_INT; \
     textMacro.name    = _name; \
     textMacro.value.i = _value; \
     textMacro.pattern = _pattern; \
   } while (0)
-#define TEXT_MACRO_N_INTEGER64(textMacro,_name,_value,_pattern) \
+#define TEXT_MACRO_N_UINT(textMacro,_name,_value,_pattern) \
   do { \
-    textMacro.type    = TEXT_MACRO_TYPE_INTEGER64; \
+    textMacro.type    = TEXT_MACRO_TYPE_UINT; \
     textMacro.name    = _name; \
-    textMacro.value.l = _value; \
+    textMacro.value.u = _value; \
     textMacro.pattern = _pattern; \
+  } while (0)
+#define TEXT_MACRO_N_INT64(textMacro,_name,_value,_pattern) \
+  do { \
+    textMacro.type      = TEXT_MACRO_TYPE_INT64; \
+    textMacro.name      = _name; \
+    textMacro.value.i64 = _value; \
+    textMacro.pattern   = _pattern; \
+  } while (0)
+#define TEXT_MACRO_N_UINT64(textMacro,_name,_value,_pattern) \
+  do { \
+    textMacro.type      = TEXT_MACRO_TYPE_UINT64; \
+    textMacro.name      = _name; \
+    textMacro.value.u64 = _value; \
+    textMacro.pattern   = _pattern; \
   } while (0)
 #define TEXT_MACRO_N_DOUBLE(textMacro,_name,_value,_pattern) \
   do { \
@@ -410,22 +457,40 @@ typedef struct
 * Notes  : -
 \***********************************************************************/
 
-#define TEXT_MACRO_X_INTEGER(_name,_value,_pattern) \
+#define TEXT_MACRO_X_INT(_name,_value,_pattern) \
   do { \
     assert(__textMacro < __textMacroEnd); \
-    __textMacro->type    = TEXT_MACRO_TYPE_INTEGER; \
+    __textMacro->type    = TEXT_MACRO_TYPE_INT; \
     __textMacro->name    = _name; \
     __textMacro->value.i = _value; \
     __textMacro->pattern = _pattern; \
     __textMacro++; \
   } while (0)
-#define TEXT_MACRO_X_INTEGER64(_name,_value,_pattern) \
+#define TEXT_MACRO_X_UINT(_name,_value,_pattern) \
   do { \
     assert(__textMacro < __textMacroEnd); \
-    __textMacro->type    = TEXT_MACRO_TYPE_INTEGER64; \
+    __textMacro->type    = TEXT_MACRO_TYPE_UINT; \
     __textMacro->name    = _name; \
-    __textMacro->value.l = _value; \
+    __textMacro->value.u = _value; \
     __textMacro->pattern = _pattern; \
+    __textMacro++; \
+  } while (0)
+#define TEXT_MACRO_X_INT64(_name,_value,_pattern) \
+  do { \
+    assert(__textMacro < __textMacroEnd); \
+    __textMacro->type      = TEXT_MACRO_TYPE_INT64; \
+    __textMacro->name      = _name; \
+    __textMacro->value.i64 = _value; \
+    __textMacro->pattern   = _pattern; \
+    __textMacro++; \
+  } while (0)
+#define TEXT_MACRO_X_UINT64(_name,_value,_pattern) \
+  do { \
+    assert(__textMacro < __textMacroEnd); \
+    __textMacro->type      = TEXT_MACRO_TYPE_UINT64; \
+    __textMacro->name      = _name; \
+    __textMacro->value.u64 = _value; \
+    __textMacro->pattern   = _pattern; \
     __textMacro++; \
   } while (0)
 #define TEXT_MACRO_X_DOUBLE(_name,_value,_pattern) \
@@ -710,7 +775,7 @@ INLINE bool Misc_isTimeout(const TimeoutInfo *timeoutInfo)
 * Purpose: get current date/time
 * Input  : -
 * Output : -
-* Return : date/time (seconds since 1970-01-01 00:00:00)
+* Return : date/time (seconds since 1970-01-01 00:00:00 UTC)
 * Notes  : -
 \***********************************************************************/
 
@@ -742,6 +807,7 @@ uint32 Misc_getCurrentTime(void);
 * Name   : Misc_splitDateTime
 * Purpose: split date/time into parts
 * Input  : dateTime - date/time (seconds since 1970-1-1 00:00:00)
+*          timeType - time type; see TimeTypes
 * Output : year             - year, YYYY (could be NULL)
 *          month            - month, 1..12 (could be NULL)
 *          day              - day, 1..31 (could be NULL)
@@ -755,15 +821,16 @@ uint32 Misc_getCurrentTime(void);
 * Notes  : -
 \***********************************************************************/
 
-void Misc_splitDateTime(uint64   dateTime,
-                        uint     *year,
-                        uint     *month,
-                        uint     *day,
-                        uint     *hour,
-                        uint     *minute,
-                        uint     *second,
-                        WeekDays *weekDay,
-                        bool     *isDayLightSaving
+void Misc_splitDateTime(uint64    dateTime,
+                        TimeTypes timeType,
+                        uint      *year,
+                        uint      *month,
+                        uint      *day,
+                        uint      *hour,
+                        uint      *minute,
+                        uint      *second,
+                        WeekDays  *weekDay,
+                        bool      *isDayLightSaving
                        );
 
 /***********************************************************************\
@@ -856,25 +923,27 @@ INLINE uint32 Misc_extractTime(uint64 dateTime)
 /***********************************************************************\
 * Name   : Misc_makeDateTime
 * Purpose: create date/time from parts
-* Input  : year             - year, YYYY
-*          month            - month, 1..12
-*          day              - day, 1..31
-*          hour             - hour, 0..23
-*          minute           - minute, 0..59
-*          second           - second, 0..59
-*          isDayLightSaving - TRUE iff day light saving is active
-* Return : date/time (seconds since 1970-1-1 00:00:00)
-* Return : -
+* Input  : timeType           - time type; see TimeTypes
+*          year               - year [1970..]
+*          month              - month [1..12]
+*          day                - day [1..31]
+*          hour               - hour [0..23]
+*          minute             - minute [0..59]
+*          second             - second [0..59]
+*          dayLightSavingMode - day light saving mode; see
+*                               DayLightSavingModes
+* Return : date/time (seconds since 1970-1-1 00:00:00) or 0
 * Notes  : -
 \***********************************************************************/
 
-uint64 Misc_makeDateTime(uint year,
-                         uint month,
-                         uint day,
-                         uint hour,
-                         uint minute,
-                         uint second,
-                         bool isDayLightSaving
+uint64 Misc_makeDateTime(TimeTypes           timeType,
+                         uint                year,
+                         uint                month,
+                         uint                day,
+                         uint                hour,
+                         uint                minute,
+                         uint                second,
+                         DayLightSavingModes dayLightSavingMode
                         );
 
 /***********************************************************************\
@@ -894,16 +963,18 @@ uint64 Misc_parseDateTime(const char *string);
 * Input  : string     - string variable
 *          buffer     - buffer
 *          bufferSize - buffer size
-*          dateTime   - date/time (seconds since 1970-1-1 00:00:00)
-*          utcFlag    - TRUE to format date/time in UTC. FALSE otherwise
+*          dateTime   - date/time (seconds since 1970-1-1 00:00:00 UTC)
+*          timeType   - format time type; see TimeTypes
+*                         TIME_TYPE_GMT:   format as UTC date/time
+*                         TIME_TYPE_LOCAL: format as local date/time
 *          format     - format string (see strftime) or NULL for default
 * Output : -
 * Return : date/time string
 * Notes  : -
 \***********************************************************************/
 
-String Misc_formatDateTime(String string, uint64 dateTime, bool utcFlag, const char *format);
-const char* Misc_formatDateTimeCString(char *buffer, uint bufferSize, uint64 dateTime, bool utcFlag, const char *format);
+String Misc_formatDateTime(String string, uint64 dateTime, TimeTypes timeType, const char *format);
+const char* Misc_formatDateTimeCString(char *buffer, uint bufferSize, uint64 dateTime, TimeTypes timeType, const char *format);
 
 /***********************************************************************\
 * Name   : Misc_udelay
@@ -1635,6 +1706,17 @@ uint Misc_hexDecodeLengthCString(const char *s);
 
 bool Misc_getRegistryString(String string, HKEY parentKey, const char *subKey, const char *name);
 #endif /* PLATFORM_... */
+
+/***********************************************************************\
+* Name   : Misc_translate
+* Purpose: get translated text with arguments
+* Input  : format - text to translate with {n}
+* Output : -
+* Return : translated and formated text
+* Notes  : -
+\***********************************************************************/
+
+char *Misc_translate(const char *format, ...);
 
 #ifdef __cplusplus
   }
