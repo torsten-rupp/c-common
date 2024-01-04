@@ -33,7 +33,8 @@ CTEST(hashTables,new_delete)
 
 CTEST(hashTables,put)
 {
-  HashTable hashTable;
+  HashTable      hashTable;
+  HashTableEntry *hashTableEntry;
 
   HashTable_init(&hashTable,
                  100,
@@ -41,13 +42,14 @@ CTEST(hashTables,put)
                  CALLBACK_(NULL,NULL),
                  CALLBACK_(NULL,NULL)
                 );
-  HashTable_put(&hashTable,
-                "test",
-                4,
-                "data",
-                4
-               );
+  hashTableEntry = HashTable_put(&hashTable,
+                                 "test",
+                                 4,
+                                 "data",
+                                 4
+                               );
   ASSERT_FALSE(HashTable_isEmpty(&hashTable));
+  ASSERT_NOT_NULL(hashTableEntry);
   HashTable_done(&hashTable);
 }
 
@@ -235,30 +237,30 @@ CTEST(hashTables,iterator_init_get_next_done)
   HashTable_initIterator(&hashTableIterator,
                          &hashTable
                         );
-  ASSERT_TRUE(HashTable_getNext(&hashTableIterator,
+  ASSERT_NOT_NULL(HashTable_getNext(&hashTableIterator,
+                                    &keyData,
+                                    &keyLength,
+                                    &data,
+                                    &length
+                                  )
+                 );
+  if ((keyLength == 4) && (memcmp(keyData,"test",4) == 0)) foundFlags[0] = TRUE;
+  if ((keyLength == 5) && (memcmp(keyData,"test2",5) == 0)) foundFlags[1] = TRUE;
+  ASSERT_NOT_NULL(HashTable_getNext(&hashTableIterator,
+                                    &keyData,
+                                    &keyLength,
+                                    &data,
+                                    &length
+                                   )
+                );
+  if ((keyLength == 4) && (memcmp(keyData,"test",4) == 0)) foundFlags[0] = TRUE;
+  if ((keyLength == 5) && (memcmp(keyData,"test2",5) == 0)) foundFlags[1] = TRUE;
+  ASSERT_NULL(HashTable_getNext(&hashTableIterator,
                                 &keyData,
                                 &keyLength,
                                 &data,
                                 &length
                                )
-             );
-  if ((keyLength == 4) && (memcmp(keyData,"test",4) == 0)) foundFlags[0] = TRUE;
-  if ((keyLength == 5) && (memcmp(keyData,"test2",5) == 0)) foundFlags[1] = TRUE;
-  ASSERT_TRUE(HashTable_getNext(&hashTableIterator,
-                                &keyData,
-                                &keyLength,
-                                &data,
-                                &length
-                               )
-             );
-  if ((keyLength == 4) && (memcmp(keyData,"test",4) == 0)) foundFlags[0] = TRUE;
-  if ((keyLength == 5) && (memcmp(keyData,"test2",5) == 0)) foundFlags[1] = TRUE;
-  ASSERT_FALSE(HashTable_getNext(&hashTableIterator,
-                                 &keyData,
-                                 &keyLength,
-                                 &data,
-                                 &length
-                                )
              );
   ASSERT_TRUE(foundFlags[0]);
   ASSERT_TRUE(foundFlags[1]);
@@ -302,6 +304,53 @@ CTEST(hashTables,iterate)
 
                       if ((hashTableEntry->keyLength == 4) && (memcmp(hashTableEntry->keyData,"test",4) == 0)) foundFlags[0] = TRUE;
                       if ((hashTableEntry->keyLength == 5) && (memcmp(hashTableEntry->keyData,"test2",5) == 0)) foundFlags[1] = TRUE;
+
+                      return TRUE;
+                    },NULL)
+                   );
+  ASSERT_TRUE(foundFlags[0]);
+  ASSERT_TRUE(foundFlags[1]);
+
+  HashTable_done(&hashTable);
+}
+
+CTEST(hashTables,iterate_remove)
+{
+  HashTable hashTable;
+  bool      foundFlags[2];
+
+  HashTable_init(&hashTable,
+                 100,
+                 CALLBACK_(NULL,NULL),
+                 CALLBACK_(NULL,NULL),
+                 CALLBACK_(NULL,NULL)
+                );
+  HashTable_put(&hashTable,
+                "test",
+                4,
+                "data",
+                4
+               );
+  HashTable_put(&hashTable,
+                "test2",
+                5,
+                "data2222",
+                8
+               );
+
+  foundFlags[0] = FALSE;
+  foundFlags[1] = FALSE;
+  HashTable_iterate(&hashTable,
+                    CALLBACK_INLINE(bool,(const HashTableEntry *hashTableEntry, void *userData),
+                    {
+                      assert(hashTableEntry != NULL);
+
+                      UNUSED_VARIABLE(userData);
+
+                      if ((hashTableEntry->keyLength == 4) && (memcmp(hashTableEntry->keyData,"test",4) == 0)) foundFlags[0] = TRUE;
+                      if ((hashTableEntry->keyLength == 5) && (memcmp(hashTableEntry->keyData,"test2",5) == 0)) foundFlags[1] = TRUE;
+                                    
+                      HashTable_remove(&hashTable,hashTableEntry->keyData,hashTableEntry->keyLength);
 
                       return TRUE;
                     },NULL)
