@@ -1,8 +1,8 @@
 /***********************************************************************\
 *
-* $Revision: 9279 $
-* $Date: 2019-02-18 12:31:17 +0100 (Mon, 18 Feb 2019) $
-* $Author: torsten $
+* $Revision$
+* $Date$
+* $Author$
 * Contents:
 * Systems: all
 *
@@ -319,9 +319,13 @@ StringNode *__StringList_appendFormat(const char *__fileName__, ulong __lineNb__
   va_list    arguments;
 
   va_start(arguments,format);
-  stringNode = String_appendVFormat(String_new(),format,arguments);
+  #ifdef NDEBUG
+    stringNode = StringList_appendVFormat(stringList,format,arguments);
+  #else /* not NDEBUG */
+    stringNode = __StringList_appendVFormat(__fileName__,__lineNb__,stringList,format,arguments);
+  #endif /* NDEBUG */
   va_end(arguments);
-  
+
   return stringNode;
 }
 
