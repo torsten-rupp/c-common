@@ -98,6 +98,7 @@
   extern "C" {
 #endif
 
+#ifndef NDEBUG
 /***********************************************************************\
 * Name   : debugGetEmulateBlockDevice
 * Purpose: get emulated block device file name
@@ -111,6 +112,7 @@ LOCAL_INLINE char *debugGetEmulateBlockDevice(void)
 {
   return getenv(DEVICE_DEBUG_EMULATE_BLOCK_DEVICE);
 }
+#endif /* NDEBUG */
 
 #if 0
 //TODO: remove?
@@ -709,6 +711,7 @@ void Device_closeDeviceList(DeviceListHandle *deviceListHandle)
 
     fclose(deviceListHandle->file);
   #elif defined(PLATFORM_WINDOWS)
+    UNUSED_VARIABLE(deviceListHandle);
   #endif /* PLATFORM_... */
 }
 
@@ -1244,6 +1247,12 @@ Errors Device_getInfoCString(DeviceInfo *deviceInfo,
     }
   #elif defined(PLATFORM_WINDOWS)
 // TODO: NYI
+    #ifndef NDEBUG
+UNUSED_VARIABLE(debugEmulateBlockDevice);
+UNUSED_VARIABLE(stringTokenizer);
+UNUSED_VARIABLE(emulateDeviceName);
+UNUSED_VARIABLE(emulateFileName);
+    #endif
     deviceInfo->mounted = TRUE;
   #endif /* PLATFORM_... */
 
