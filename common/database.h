@@ -3,7 +3,7 @@
 * $Revision$
 * $Date$
 * $Author$
-* Contents: database functions (SQLite3)
+* Contents: database functions (SQLite3, MariaDB, PostgreSQL)
 * Systems: all
 *
 \***********************************************************************/
@@ -158,7 +158,8 @@ typedef enum
 #define DATABASE_FLAG_IGNORE       (1 <<  0)
 #define DATABASE_FLAG_REPLACE      (1 <<  1)
 #define DATABASE_FLAG_PLAIN        (1 <<  2)
-#define DATABASE_FLAG_COLUMN_NAMES (1 <<  3)
+#define DATABASE_FLAG_FETCH_ALL    (1 <<  3)
+#define DATABASE_FLAG_COLUMN_NAMES (1 <<  4)
 
 #define DATABASE_FLAG_DEBUG        (1 << 31)  // print SQL statement to console
 
@@ -485,7 +486,7 @@ typedef struct
   DatabaseDataTypes type;
 } DatabaseColumn;
 
-// database parameter
+// database parameter (value without name)
 typedef struct
 {
   DatabaseDataTypes type;
@@ -523,7 +524,7 @@ typedef struct
   };
 } DatabaseParameter;
 
-// database value
+// database value with name
 typedef struct
 {
   const char        *name;   // column name
@@ -604,8 +605,6 @@ typedef struct
   typedef struct
   {
     MYSQL_STMT        *statementHandle;
-// TODO:
-DatabaseDataTypes *dataTypes;
     struct
     {
       MYSQL_BIND      *bind;
@@ -639,6 +638,7 @@ DatabaseDataTypes *dataTypes;
 
   typedef struct
   {
+    HashTableEntry *hashTableEntry;
     char           name[1+16+1];
 
     PostgreSQLBind *bind;
@@ -667,8 +667,8 @@ typedef struct
   };
 
   // values+filters
-  uint           parameterIndex;
   uint           parameterCount;
+  uint           parameterIndex;
 
   // results
   char           **columnNames;
@@ -760,7 +760,7 @@ typedef void(*DatabaseCopyProgressCallbackFunction)(void *userData);
 #define DATABASE_PLAIN(sqlString) \
   (const char*[]){sqlString}, \
   1, \
-  DATABASE_FLAG_PLAIN
+  DATABASE_FLAG_PLAIN|DATABASE_FLAG_FETCH_ALL
 
 #define DATABASE_TABLES(...) \
   (const char*[]){__VA_ARGS__}, \
@@ -1132,7 +1132,6 @@ LOCAL_INLINE DatabaseFilterArray __DatabaseFilterArray(void *data, ulong length,
   #define Database_beginTransaction(...)    __Database_beginTransaction   (__FILE__,__LINE__, ## __VA_ARGS__)
   #define Database_endTransaction(...)      __Database_endTransaction     (__FILE__,__LINE__, ## __VA_ARGS__)
   #define Database_rollbackTransaction(...) __Database_rollbackTransaction(__FILE__,__LINE__, ## __VA_ARGS__)
-  #define Database_prepare(...)             __Database_prepare            (__FILE__,__LINE__, ## __VA_ARGS__)
   #define Database_finalize(...)            __Database_finalize           (__FILE__,__LINE__, ## __VA_ARGS__)
 
   #define Database_debugPrintQueryInfo(...) __Database_debugPrintQueryInfo(__FILE__,__LINE__, ## __VA_ARGS__)
@@ -2248,63 +2247,6 @@ Errors Database_execute(DatabaseHandle          *databaseHandle,
                        );
 
 /***********************************************************************\
-* Name   : Database_prepare
-* Purpose: prepare database query
-* Input  : databaseHandle - database handle
-*          columns     - columns
-*          columnCount - columns count
-*          sqlCommand  - SQL command
-*          values      - values
-*          valueCount  - values count
-*          filter      - filter string
-*          filters     - filter values
-*          filterCount - filter values count
-* Output : databaseStatementHandle - initialized database statement handle
-* Return : ERROR_NONE or error code
-* Notes  : Database is locked until Database_finalize() is called
-\***********************************************************************/
-
-// TODO: remove, use insert/update/select
-#ifdef NDEBUG
-  Errors Database_prepare(DatabaseStatementHandle *databaseStatementHandle,
-                          DatabaseHandle          *databaseHandle,
-                          const DatabaseColumn    *columns,
-                          uint                    columnCount,
-                          const char              *sqlCommand,
-                          const DatabaseValue     values[],
-                          uint                    valueCount,
-                          const DatabaseFilter    filters[],
-                          uint                    filterCount
-                         );
-#else /* not NDEBUG */
-  Errors __Database_prepare(const char              *__fileName__,
-                            ulong                   __lineNb__,
-                            DatabaseStatementHandle *databaseStatementHandle,
-                            DatabaseHandle          *databaseHandle,
-                            const DatabaseColumn    *columns,
-                            uint                    columnCount,
-                            const char              *sqlCommand,
-                            const DatabaseValue     values[],
-                            uint                    valueCount,
-                            const DatabaseFilter    filters[],
-                            uint                    filterCount
-                           );
-#endif /* NDEBUG */
-
-/***********************************************************************\
-* Name   : Database_getNextRow
-* Purpose: get next row from query result
-* Input  : databaseStatementHandle - database statment handle
-* Output : ... - values
-* Return : TRUE if row read, FALSE if not more rows
-* Notes  : -
-\***********************************************************************/
-
-bool Database_getNextRow(DatabaseStatementHandle *databaseStatementHandle,
-                         ...
-                        );
-
-/***********************************************************************\
 * Name   : Database_insert
 * Purpose: insert row into database table
 * Input  : databaseHandle      - database handle
@@ -2506,7 +2448,7 @@ Errors Database_deleteByIds(DatabaseHandle   *databaseHandle,
 *          limit               - limit or 0
 * Output : -
 * Return : ERROR_NONE or error code
-* Notes  : -
+* Notes  : Database is locked until Database_finalize() is called
 \***********************************************************************/
 
 Errors Database_select(DatabaseStatementHandle *databaseStatementHandle,
@@ -2523,6 +2465,19 @@ Errors Database_select(DatabaseStatementHandle *databaseStatementHandle,
                        uint64                  offset,
                        uint64                  limit
                       );
+
+/***********************************************************************\
+* Name   : Database_getNextRow
+* Purpose: get next row from query result
+* Input  : databaseStatementHandle - database statment handle
+* Output : ... - values
+* Return : TRUE if row read, FALSE if no more rows
+* Notes  : -
+\***********************************************************************/
+
+bool Database_getNextRow(DatabaseStatementHandle *databaseStatementHandle,
+                         ...
+                        );
 
 /***********************************************************************\
 * Name   : Database_finalize
