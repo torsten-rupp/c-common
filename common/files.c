@@ -57,6 +57,7 @@
   #include <shlobj.h>
   #include <combaseapi.h>
   #include <knownfolders.h>
+  #include <direct.h>
 #endif /* PLATFORM_... */
 
 #include "common/global.h"
@@ -260,6 +261,36 @@ LOCAL void debugFileInit(void)
   List_init(&debugOpenFileList,CALLBACK_(NULL,NULL),CALLBACK_(NULL,NULL));
   List_init(&debugClosedFileList,CALLBACK_(NULL,NULL),CALLBACK_(NULL,NULL));
 }
+
+/***********************************************************************\
+* Name   : debugGetEmulateBlockDevice
+* Purpose: get emulated block device file name
+* Input  : -
+* Output : -
+* Return : emulated block device file name or NULL
+* Notes  : -
+\***********************************************************************/
+
+LOCAL_INLINE char *debugGetEmulateBlockDevice(void)
+{
+  return getenv(DEVICE_DEBUG_EMULATE_BLOCK_DEVICE);
+}
+
+/***********************************************************************\
+* Name   : debugGetEmulateMknod
+* Purpose: check if emulated mknod
+* Input  : -
+* Output : -
+* Return : TRUE iff emulated mknod
+* Notes  : -
+\***********************************************************************/
+
+#ifdef HAVE_MKNOD
+LOCAL_INLINE bool debugIsEmulateMknod(void)
+{
+  return getenv(FILE_DEBUG_EMULATE_MKNOD) != NULL;
+}
+#endif
 #endif /* NDEBUG */
 
 /***********************************************************************\
@@ -572,9 +603,13 @@ LOCAL Errors initFileHandle(const char *__fileName__,
   }
   fileHandle->name        = String_newCString(fileName);;
   fileHandle->mode        = fileMode;
-  #ifndef NDEBUG
+  #if   defined(PLATFORM_LINUX)
+    #ifndef NDEBUG
+      fileHandle->deleteOnCloseFlag = FALSE;
+    #endif /* not NDEBUG */
+  #elif defined(PLATFORM_WINDOWS)
     fileHandle->deleteOnCloseFlag = FALSE;
-  #endif /* not NDEBUG */
+  #endif /* PLATFORM_... */
   StringList_init(&fileHandle->lineBufferList);
 
   #ifndef NDEBUG
@@ -689,7 +724,17 @@ LOCAL Errors doneFileHandle(const char  *__fileName__,
   (void)fclose(fileHandle->file);
 
   // delete on close
-  #ifndef NDEBUG
+  #if   defined(PLATFORM_LINUX)
+    #ifndef NDEBUG
+      if (fileHandle->deleteOnCloseFlag && (fileHandle->name != NULL))
+      {
+        if (unlink(String_cString(fileHandle->name)) != 0)
+        {
+          if (error == ERROR_NONE) error = getLastError(ERROR_CODE_IO,String_cString(fileHandle->name));
+        }
+      }
+    #endif /* not NDEBUG */
+  #elif defined(PLATFORM_WINDOWS)
     if (fileHandle->deleteOnCloseFlag && (fileHandle->name != NULL))
     {
       if (unlink(String_cString(fileHandle->name)) != 0)
@@ -697,7 +742,7 @@ LOCAL Errors doneFileHandle(const char  *__fileName__,
         if (error == ERROR_NONE) error = getLastError(ERROR_CODE_IO,String_cString(fileHandle->name));
       }
     }
-  #endif /* not NDEBUG */
+  #endif /* PLATFORM_... */
 
   // free resources
   StringList_done(&fileHandle->lineBufferList);
@@ -991,37 +1036,37 @@ String File_appendFileNameBuffer(String fileName, const char *buffer, ulong buff
   return fileName;
 }
 
-String File_getDirectoryName(String pathName, ConstString fileName)
+String File_getDirectoryName(String directoryPath, ConstString fileName)
 {
   long n;
 
-  assert(pathName != NULL);
+  assert(directoryPath != NULL);
 
   if (fileName != NULL)
   {
     n = String_findLastChar(fileName,STRING_END,FILE_PATH_SEPARATOR_CHAR);
     if (n >= 0)
     {
-      String_sub(pathName,fileName,STRING_BEGIN,n);
+      String_sub(directoryPath,fileName,STRING_BEGIN,n);
     }
     else
     {
-      String_clear(pathName);
+      String_clear(directoryPath);
     }
   }
   else
   {
-    String_clear(pathName);
+    String_clear(directoryPath);
   }
 
-  return pathName;
+  return directoryPath;
 }
 
-String File_getDirectoryNameCString(String pathName, const char *fileName)
+String File_getDirectoryNameCString(String directoryPath, const char *fileName)
 {
   long i;
 
-  assert(pathName != NULL);
+  assert(directoryPath != NULL);
 
   if (fileName != NULL)
   {
@@ -1031,19 +1076,19 @@ String File_getDirectoryNameCString(String pathName, const char *fileName)
     // get path
     if (i >= 0L)
     {
-      String_setBuffer(pathName,fileName,i);
+      String_setBuffer(directoryPath,fileName,i);
     }
     else
     {
-      String_clear(pathName);
+      String_clear(directoryPath);
     }
   }
   else
   {
-    String_clear(pathName);
+    String_clear(directoryPath);
   }
 
-  return pathName;
+  return directoryPath;
 }
 
 String File_getBaseName(String baseName, ConstString fileName)
@@ -1168,7 +1213,9 @@ String File_getDeviceNameCString(String deviceName, const char *fileName)
             n1 = stringLength(name);
             if (   (n0 > n1)
                 && stringEqualsPrefix(fileName,name,n1)
-                && (fileName[n1] == FILE_PATH_SEPARATOR_CHAR)
+                && (   (n1 == n0)
+                    || (fileName[n1] == FILE_PATH_SEPARATOR_CHAR)
+                   )
                )
             {
               String_setCString(deviceName,name);
@@ -1178,7 +1225,7 @@ String File_getDeviceNameCString(String deviceName, const char *fileName)
         }
         fclose(handle);
 
-        if (stringStartsWith(fileName,"/"))
+        if (stringStartsWith(fileName,"/") && String_isEmpty(deviceName))
         {
           String_setCString(deviceName,"/");
         }
@@ -1257,22 +1304,18 @@ String File_getAbsoluteFileNameCString(String absoluteFileName, const char *file
   #elif defined(PLATFORM_WINDOWS)
     buffer = _fullpath(NULL,fileName,0);
     String_setCString(absoluteFileName,buffer);
-    // replace brain dead '\'
-    String_replaceAllChar(absoluteFileName,STRING_BEGIN,'\\',FILE_PATH_SEPARATOR_CHAR);
     free(buffer);
   #endif /* PLATFORM_... */
 
   return absoluteFileName;
 }
 
-void File_splitFileName(ConstString fileName, String *pathName, String *baseName)
+void File_splitFileName(ConstString fileName, String directoryPath, String baseName)
 {
   assert(fileName != NULL);
-  assert(pathName != NULL);
-  assert(baseName != NULL);
 
-  (*pathName) = File_getDirectoryName(File_newFileName(),fileName);
-  (*baseName) = File_getBaseName(File_newFileName(),fileName);
+  if (directoryPath != NULL) File_getDirectoryName(directoryPath,fileName);
+  if (baseName      != NULL) File_getBaseName(baseName,fileName);
 }
 
 void File_initSplitFileName(StringTokenizer *stringTokenizer, ConstString fileName)
@@ -1309,6 +1352,7 @@ String File_getSystemDirectoryCString(String path, FileSystemPathTypes fileSyste
 {
   #if   defined(PLATFORM_LINUX)
   #elif defined(PLATFORM_WINDOWS)
+    int         driveNumber;
     WCHAR       *data;
     static char buffer[4*MAX_PATH+1];
     int         bufferLength;
@@ -1336,6 +1380,14 @@ String File_getSystemDirectoryCString(String path, FileSystemPathTypes fileSyste
       case FILE_SYSTEM_PATH_TLS:
         String_setCString(path,TLS_DIR);
         break;
+      case FILE_SYSTEM_PATH_LOG:
+        String_setCString(path,"/var/log");
+        break;
+      case FILE_SYSTEM_PATH_USER_CONFIGURATION:
+      case FILE_SYSTEM_PATH_USER_HOME:
+        String_setCString(path,getenv("HOME"));
+        if (String_isEmpty(path)) String_setCString(path,"~");
+        break;
       default:
         #ifndef NDEBUG
           HALT_INTERNAL_ERROR_UNHANDLED_SWITCH_CASE();
@@ -1343,34 +1395,65 @@ String File_getSystemDirectoryCString(String path, FileSystemPathTypes fileSyste
         break; /* not reached */
     }
   #elif defined(PLATFORM_WINDOWS)
-    bufferLength = 0;
     switch (fileSystemPathType)
     {
       case FILE_SYSTEM_PATH_ROOT:
-// TODO: current drive?
-        String_setCString(path,"C:/");
+        driveNumber = _getdrive();
+        if (driveNumber > 0)
+        {
+          String_format(path,"%c:"FILE_PATH_SEPARATOR_STRING,'A'+driveNumber-1);
+        }
+        else
+        {
+          String_setCString(path,"C:"FILE_PATH_SEPARATOR_STRING);
+        }
         break;
       case FILE_SYSTEM_PATH_TMP:
         bufferLength = GetTempPath(sizeof(buffer),buffer);
-        if (bufferLength == 0)
+        if (bufferLength != 0)
         {
-          String_setCString(path,"C:\\tmp");
+          String_setBuffer(path,buffer,bufferLength);
+          // discard trailing \ if Windows added it (Note: Windows should not try to be smart - it cannot...)
+          String_trimEnd(path,FILE_PATH_SEPARATOR_CHARS);
+        }
+        else
+        {
+          if (String_isEmpty(path)) String_setCString(path,getenv("TMP"));
+          if (String_isEmpty(path)) String_setCString(path,"C:"FILE_PATH_SEPARATOR_STRING"temp");
         }
         break;
       case FILE_SYSTEM_PATH_CONFIGURATION:
-        SHGetKnownFolderPath(&FOLDERID_LocalAppData, 0, NULL, &data);
-        bufferLength = WideCharToMultiByte(CP_UTF8,0,data,lstrlenW(data),buffer,sizeof(buffer),NULL,NULL);
-        CoTaskMemFree(data);
-        break;
       case FILE_SYSTEM_PATH_RUNTIME:
-        SHGetKnownFolderPath(&FOLDERID_LocalAppData, 0, NULL, &data);
-        bufferLength = WideCharToMultiByte(CP_UTF8,0,data,lstrlenW(data),buffer,sizeof(buffer),NULL,NULL);
-        CoTaskMemFree(data);
-        break;
       case FILE_SYSTEM_PATH_TLS:
-        SHGetKnownFolderPath(&FOLDERID_LocalAppData, 0, NULL, &data);
+      case FILE_SYSTEM_PATH_LOG:
+      case FILE_SYSTEM_PATH_USER_CONFIGURATION:
+        /* Note: for some reason SHGetKnownFolderPath() always return a 32bit path even on a 64bit
+                 Windows? Thus construct the path manually on 64bit system
+        */
+        #ifdef __x86_64
+          SHGetKnownFolderPath(&FOLDERID_Windows, 0, NULL, &data);
+          bufferLength = WideCharToMultiByte(CP_UTF8,0,data,lstrlenW(data),buffer,sizeof(buffer),NULL,NULL);
+          CoTaskMemFree(data);
+          String_setBuffer(path,buffer,bufferLength);
+          // discard trailing \ if Windows added it
+          String_trimEnd(path,FILE_PATH_SEPARATOR_CHARS);
+          String_appendCString(path,FILE_PATH_SEPARATOR_STRING"SysWOW64"FILE_PATH_SEPARATOR_STRING"config"FILE_PATH_SEPARATOR_STRING"systemprofile"FILE_PATH_SEPARATOR_STRING"AppData"FILE_PATH_SEPARATOR_STRING"Local");
+        #else
+          SHGetKnownFolderPath(&FOLDERID_LocalAppData, 0, NULL, &data);
+          bufferLength = WideCharToMultiByte(CP_UTF8,0,data,lstrlenW(data),buffer,sizeof(buffer),NULL,NULL);
+          CoTaskMemFree(data);
+          String_setBuffer(path,buffer,bufferLength);
+          // discard trailing \ if Windows added it
+          String_trimEnd(path,FILE_PATH_SEPARATOR_CHARS);
+        #endif
+        break;
+      case FILE_SYSTEM_PATH_USER_HOME:
+        SHGetKnownFolderPath(&FOLDERID_Profile, 0, NULL, &data);
         bufferLength = WideCharToMultiByte(CP_UTF8,0,data,lstrlenW(data),buffer,sizeof(buffer),NULL,NULL);
         CoTaskMemFree(data);
+        String_setBuffer(path,buffer,bufferLength);
+        // discard trailing \ if Windows added it
+        String_trimEnd(path,"\\");
         break;
       default:
         #ifndef NDEBUG
@@ -1378,14 +1461,6 @@ String File_getSystemDirectoryCString(String path, FileSystemPathTypes fileSyste
         #endif /* NDEBUG */
         break; /* not reached */
     }
-
-    // skip trailing \\ if Windows added it (Note: Windows should not try to be smart - it cannot...)
-    while ((bufferLength > 0) && buffer[bufferLength-1] == '\\')
-    {
-      bufferLength--;
-    }
-
-    String_setBuffer(path,buffer,bufferLength);
   #endif /* PLATFORM_... */
   if (subDirectory != NULL) File_appendFileNameCString(path,subDirectory);
 
@@ -1427,7 +1502,8 @@ Errors __File_getTmpFileCString(const char *__fileName__,
                                )
 #endif /* NDEBUG */
 {
-  String  name;
+  String  fileName;
+  char    *name;
   int     handle;
   Errors  error;
   #ifndef NDEBUG
@@ -1438,83 +1514,106 @@ Errors __File_getTmpFileCString(const char *__fileName__,
 
   if (prefix == NULL) prefix = "tmp";
 
-  // get directory
+  // get temporary directory
   if (!stringIsEmpty(directory))
   {
-    name = String_newCString(directory);
+    fileName = String_newCString(directory);
   }
   else
   {
-    name = File_getSystemDirectory(String_new(),FILE_SYSTEM_PATH_TMP,NULL);
+    fileName = File_getSystemDirectoryCString(String_new(),FILE_SYSTEM_PATH_TMP,NULL);
   }
-  if (!File_exists(name))
+  if (!File_exists(fileName))
   {
-    error = ERRORX_(DIRECTORY_NOT_FOUND_,0,"%s",String_cString(name));
-    String_delete(name);
-    return error;
+    String_delete(fileName);
+    return ERRORX_(DIRECTORY_NOT_FOUND_,0,"%s",String_cString(fileName));
   }
-  if (!String_isEmpty(name))
+
+  // get temporary file template name
+  if (!String_isEmpty(fileName))
   {
-    String_appendCString(name,FILE_PATH_SEPARATOR_STRING);
+    String_appendCString(fileName,FILE_PATH_SEPARATOR_STRING);
   }
-  String_appendCString(name,prefix);
-  String_appendCString(name,"-XXXXXX");
+  String_appendCString(fileName,prefix);
+  String_appendCString(fileName,"-XXXXXX");
 
   // create temporary file
+  name = String_toCString(fileName);
+  if (name == NULL)
+  {
+    HALT_INSUFFICIENT_MEMORY();
+  }
   #ifdef HAVE_MKSTEMP
-    handle = mkstemp((char*)String_cString(name));
+    handle = mkstemp(name);
     if (handle == -1)
     {
-      error = getLastError(ERROR_CODE_IO,String_cString(name));
-      String_delete(name);
+      error = getLastError(ERROR_CODE_IO,name);
+      free(name);
+      String_delete(fileName);
       return error;
     }
     fileHandle->file = fdopen(handle,"w+b");
     if (fileHandle->file == NULL)
     {
-      error = getLastError(ERROR_CODE_CREATE_FILE,String_cString(name));
+      error = getLastError(ERROR_CODE_CREATE_FILE,name);
       close(handle);
-      (void)unlink(String_cString(name));
-      String_delete(name);
+      (void)unlink(String_cString(fileName));
+      free(name);
+      String_delete(fileName);
       return error;
     }
   #elif HAVE_MKTEMP
     // Note: there is a race-condition when mktemp() and open() is used!
-    if (stringIsEmpty(mktemp(String_cString(name))))
+    if (stringIsEmpty(mktemp(name)))
     {
-      error = getLastError(ERROR_CODE_IO,String_cString(name));
-      String_delete(name);
+      error = getLastError(ERROR_CODE_IO,name);
+      free(name);
+      String_delete(fileName);
       return error;
     }
-    fileHandle->file = FOPEN(s,"w+b");
+    fileHandle->file = FOPEN(name,"w+b");
     if (fileHandle->file == NULL)
     {
-      error = getLastError(ERROR_CODE_CREATE_FILE,String_cString(name));
-      (void)unlink(String_cString(s))
-      String_delete(name);
+      error = getLastError(ERROR_CODE_CREATE_FILE,name);
+      (void)unlink(name)
+      free(name);
+      String_delete(fileName);
       return error;
     }
   #else /* not HAVE_MKSTEMP || HAVE_MKTEMP */
     #error mkstemp() nor mktemp() available
   #endif /* HAVE_MKSTEMP || HAVE_MKTEMP */
 
-  // remove file from directory (finally deleted on close)
-  #ifdef NDEBUG
-    if (unlink(String_cString(name)) != 0)
-    {
-      error = getLastError(ERROR_CODE_IO,String_cString(name));
-      String_delete(name);
-      return error;
-    }
-  #else /* not NDEBUG */
+  // delete file on close
+  #if   defined(PLATFORM_LINUX)
+    #ifdef NDEBUG
+      // Note: on Linux files can be deleted when still opened; it will be deleted on close
+      if (unlink(name) != 0)
+      {
+        error = getLastError(ERROR_CODE_IO,name);
+        free(name);
+        String_delete(fileName);
+        return error;
+      }
+    #else /* not NDEBUG */
+      fileHandle->deleteOnCloseFlag = TRUE;
+    #endif /* NDEBUG */
+  #elif defined(PLATFORM_WINDOWS)
     fileHandle->deleteOnCloseFlag = TRUE;
-  #endif /* NDEBUG */
+  #endif /* PLATFORM_... */
 
-  fileHandle->name  = name;
+  // get file name
+  String_setBuffer(fileName,name,stringLength(name));
+
+  // init file handle
+  fileHandle->name  = fileName;
   fileHandle->mode  = 0;
   fileHandle->index = 0LL;
   fileHandle->size  = 0LL;
   StringList_init(&fileHandle->lineBufferList);
+
+  // free resources
+  free(name);
 
   #ifndef NDEBUG
     pthread_once(&debugFileInitFlag,debugFileInit);
@@ -1608,8 +1707,7 @@ Errors File_getTmpFileNameCString(String     fileName,
                                   const char *directory
                                  )
 {
-  uint   n;
-  char   *s;
+  char   *name;
   int    handle;
   Errors error;
 
@@ -1617,32 +1715,40 @@ Errors File_getTmpFileNameCString(String     fileName,
 
   if (prefix == NULL) prefix = "tmp";
 
-  // get directory
-  if (stringIsEmpty(directory)) directory = "/tmp";
-  if (!File_existsCString(directory))
+  // get temporary directory
+  if (!stringIsEmpty(directory))
   {
-    return ERRORX_(DIRECTORY_NOT_FOUND_,0,"%s",directory);
+    String_setCString(fileName,directory);
+  }
+  else
+  {
+    File_getSystemDirectoryCString(fileName,FILE_SYSTEM_PATH_TMP,NULL);
+  }
+  if (!File_exists(fileName))
+  {
+    return ERRORX_(DIRECTORY_NOT_FOUND_,0,"%s",String_cString(fileName));
   }
 
-  // get template
-  n = stringLength(directory)+stringLength(FILE_PATH_SEPARATOR_STRING)+stringLength(prefix)+7+1;
-  s = (char*)malloc(n);
-  if (s == NULL)
+  // get temporary file template name
+  if (!String_isEmpty(fileName))
+  {
+    String_appendCString(fileName,FILE_PATH_SEPARATOR_STRING);
+  }
+  String_appendCString(fileName,prefix);
+  String_appendCString(fileName,"-XXXXXX");
+
+  // create temporary file
+  name = String_toCString(fileName);
+  if (name == NULL)
   {
     HALT_INSUFFICIENT_MEMORY();
   }
-  stringSet(s,n,directory);
-  stringAppend(s,n,FILE_PATH_SEPARATOR_STRING);
-  stringAppend(s,n,prefix);
-  stringAppend(s,n,"-XXXXXX");
-
-  // create temporary file
   #ifdef HAVE_MKSTEMP
-    handle = mkstemp(s);
+    handle = mkstemp(name);
     if (handle == -1)
     {
-      error = getLastError(ERROR_CODE_IO,s);
-      free(s);
+      error = getLastError(ERROR_CODE_IO,name);
+      free(name);
       return error;
     }
     close(handle);
@@ -1650,25 +1756,23 @@ Errors File_getTmpFileNameCString(String     fileName,
     // Note: there is a race-condition when mktemp() and open() is used!
     if (stringIsEmpty(mktemp(s)))
     {
-      error = getLastError(ERROR_CODE_IO,s);
-      free(s);
+      error = getLastError(ERROR_CODE_IO,name);
+      free(name);
       return error;
     }
     handle = open(s,O_CREAT|O_EXCL|O_BINARY);
     if (handle == -1)
     {
-      error = getLastError(ERROR_CODE_IO,s);
-      free(s);
+      error = getLastError(ERROR_CODE_IO,name);
+      free(name);
       return error;
     }
     close(handle);
   #else /* not HAVE_MKSTEMP || HAVE_MKTEMP */
     #error mkstemp() nor mktemp() available
   #endif /* HAVE_MKSTEMP || HAVE_MKTEMP */
-
-  String_setBuffer(fileName,s,stringLength(s));
-
-  free(s);
+  String_setBuffer(fileName,name,stringLength(name));
+  free(name);
 
   return ERROR_NONE;
 }
@@ -1687,7 +1791,6 @@ Errors File_getTmpDirectoryNameCString(String     directoryName,
                                       )
 {
   #if   defined(PLATFORM_LINUX)
-    String templateName;
     char   *name;
     #ifdef HAVE_MKDTEMP
     #elif HAVE_MKTEMP
@@ -1697,7 +1800,6 @@ Errors File_getTmpDirectoryNameCString(String     directoryName,
     #endif /* HAVE_MKSTEMP || HAVE_MKTEMP */
   #elif defined(PLATFORM_WINDOWS)
     char     name[MAX_PATH+1];
-    int      n;
     FileStat fileStat;
   #endif /* PLATFORM_... */
   Errors error;
@@ -1706,32 +1808,35 @@ Errors File_getTmpDirectoryNameCString(String     directoryName,
 
   if (prefix == NULL) prefix = "tmp";
 
-  // get directory
-  if (stringIsEmpty(directory)) directory = "/tmp";
-  if (!File_existsCString(directory))
+  // get temporary directory
+  if (!stringIsEmpty(directory))
   {
-    return ERRORX_(DIRECTORY_NOT_FOUND_,0,"%s",directory);
+    String_setCString(directoryName,directory);
+  }
+  else
+  {
+    File_getSystemDirectoryCString(directoryName,FILE_SYSTEM_PATH_TMP,NULL);
+  }
+  if (!File_exists(directoryName))
+  {
+    return ERRORX_(DIRECTORY_NOT_FOUND_,0,"%s",String_cString(directoryName));
   }
 
   #if   defined(PLATFORM_LINUX)
-    if (!stringIsEmpty(directory))
+    // get temporary directory template name
+    if (!String_isEmpty(directoryName))
     {
-      templateName = String_newCString(directory);
+      String_appendCString(directoryName,FILE_PATH_SEPARATOR_STRING);
     }
-    else
-    {
-      templateName = File_getSystemDirectory(String_new(),FILE_SYSTEM_PATH_TMP,NULL);
-    }
-    String_appendCString(templateName,FILE_PATH_SEPARATOR_STRING);
-    String_appendCString(templateName,prefix);
-    String_appendCString(templateName,"-XXXXXX");
+    String_appendCString(directoryName,prefix);
+    String_appendCString(directoryName,"-XXXXXX");
 
-    name = String_toCString(templateName);
+    // create directory
+    name = String_toCString(directoryName);
     if (name == NULL)
     {
       HALT_INSUFFICIENT_MEMORY();
     }
-
     #ifdef HAVE_MKDTEMP
       if (mkdtemp(name) == NULL)
       {
@@ -1774,39 +1879,35 @@ Errors File_getTmpDirectoryNameCString(String     directoryName,
     #else /* not HAVE_MKSTEMP || HAVE_MKTEMP */
       #error mkstemp() nor mktemp() available
     #endif /* HAVE_MKSTEMP || HAVE_MKTEMP */
-
     String_setBuffer(directoryName,name,stringLength(name));
-
     free(name);
-    String_delete(templateName);
   #elif defined(PLATFORM_WINDOWS)
-    UNUSED_VARIABLE(directory);
+    // get temporary directory template name
+    if (!String_isEmpty(directoryName))
+    {
+      String_appendCString(directoryName,FILE_PATH_SEPARATOR_STRING);
+    }
+    String_appendCString(directoryName,prefix);
+    String_appendCString(directoryName,"-%06d");
 
     // Note: there is no Win32 function to create a temporary directory? Poor Windows...
     do
     {
-      if (GetTempPath(sizeof(name),name) == 0)
-      {
-        return getLastError(ERROR_CODE_IO,name);
-      }
-      n = rand();
-      stringFormatAppend(name,sizeof(name),"%s-%06d",prefix,n);
+      stringFormat(name,sizeof(name),String_cString(directoryName),rand());
     }
     while (LSTAT(name,&fileStat) == 0);
 
+    // create directory
     #if   (MKDIR_ARGUMENTS_COUNT == 1)
-      // create directory
       if (mkdir(name) != 0)
       {
         error = getLastError(ERROR_CODE_IO,name);
         return error;
       }
     #elif (MKDIR_ARGUMENTS_COUNT == 2)
-      // get current umask (get and restore current value)
       currentCreationMask = umask(0);
       umask(currentCreationMask);
 
-      // create directory
       if (mkdir(name,0777 & ~currentCreationMask) != 0)
       {
         error = getLastError(ERROR_CODE_IO,name);
@@ -1889,6 +1990,48 @@ bool File_parseFileSpecialType(const char *name, FileSpecialTypes *fileSpecialTy
 }
 
 /*---------------------------------------------------------------------*/
+
+FilePermissions File_getDefaultFilePermissions(void)
+{
+  FilePermissions filePermissions;
+
+  #if   defined(PLATFORM_LINUX)
+    mode_t mask;
+  #elif defined(PLATFORM_WINDOWS)
+  #endif /* PLATFORM_... */
+
+  #if   defined(PLATFORM_LINUX)
+    mask = umask(0);
+    umask(mask);
+
+    filePermissions = (FilePermissions)(0666 & ~mask);
+  #elif defined(PLATFORM_WINDOWS)
+    filePermissions = (FilePermissions)0;
+  #endif /* PLATFORM_... */
+
+  return filePermissions;
+}
+
+FilePermissions File_getDefaultDirectoryPermissions(void)
+{
+  FilePermissions filePermissions;
+
+  #if   defined(PLATFORM_LINUX)
+    mode_t mask;
+  #elif defined(PLATFORM_WINDOWS)
+  #endif /* PLATFORM_... */
+
+  #if   defined(PLATFORM_LINUX)
+    mask = umask(0);
+    umask(mask);
+
+    filePermissions = (FilePermissions)(0777 & ~mask);
+  #elif defined(PLATFORM_WINDOWS)
+    filePermissions = (FilePermissions)0;
+  #endif /* PLATFORM_... */
+
+  return filePermissions;
+}
 
 #ifdef NDEBUG
 Errors File_open(FileHandle   *fileHandle,
@@ -3082,7 +3225,7 @@ Errors File_openDirectoryListCString(DirectoryListHandle *directoryListHandle,
     #endif /* HAVE_FDOPENDIR && HAVE_O_DIRECTORY */
   #elif defined(PLATFORM_WINDOWS)
     // Note: on Windows <drive>: and <drive>:/ are different, but <path> and <path>/ are the same...
-    s = String_newCString(directoryName);
+    s = !stringIsEmpty(directoryName) ? String_newCString(directoryName) : String_newCString(".");
     if (!String_endsWithChar(s,FILE_PATH_SEPARATOR_CHAR)) String_appendChar(s,FILE_PATH_SEPARATOR_CHAR);
     directoryListHandle->dir = opendir(String_cString(s));
     String_delete(s);
@@ -3499,13 +3642,14 @@ Errors File_renameCString(const char *oldFileName,
     else
     {
       // create temporary file
-      fileName = (char*)malloc(stringLength(newFileName)+7+1);
+      uint n = stringLength(newFileName)+7+1;
+      fileName = (char*)malloc(n);
       if (fileName == NULL)
       {
         return ERROR_INSUFFICIENT_MEMORY;
       }
-      stringSet(fileName,stringLength(newFileName)+7+1,newFileName);
-      stringAppend(fileName,stringLength(newFileName)+7+1,"-XXXXXX");
+      stringSet(fileName,n,newFileName);
+      stringAppend(fileName,n,"-XXXXXX");
 
       #ifdef HAVE_MKSTEMP
         handle = mkstemp(fileName);
@@ -3798,8 +3942,7 @@ bool File_isDeviceCString(const char *fileName)
   assert(fileName != NULL);
 
   #ifndef NDEBUG
-    debugEmulateBlockDevice = getenv("DEBUG_EMULATE_BLOCK_DEVICE");
-
+    debugEmulateBlockDevice = debugGetEmulateBlockDevice();
     if (debugEmulateBlockDevice != NULL)
     {
       stringTokenizerInit(&stringTokenizer,debugEmulateBlockDevice,",");
@@ -3967,10 +4110,18 @@ bool File_isNetworkFileSystemCString(const char *fileName)
   #if   defined(PLATFORM_LINUX)
     if (statfs(fileName,&fileSystemStat) == 0)
     {
-      isNetworkFileSystem =    (fileSystemStat.f_type == AFS_SUPER_MAGIC)
-                            || (fileSystemStat.f_type == CODA_SUPER_MAGIC)
-                            || (fileSystemStat.f_type == NFS_SUPER_MAGIC)
-                            || (fileSystemStat.f_type == SMB_SUPER_MAGIC);
+      #ifdef HAVE_AFS_SUPER_MAGIC
+        isNetworkFileSystem |= (fileSystemStat.f_type == AFS_SUPER_MAGIC);
+      #endif
+      #ifdef HAVE_CODA_SUPER_MAGIC
+        isNetworkFileSystem |= (fileSystemStat.f_type == CODA_SUPER_MAGIC);
+      #endif
+      #ifdef HAVE_NFS_SUPER_MAGIC
+        isNetworkFileSystem |= (fileSystemStat.f_type == NFS_SUPER_MAGIC);
+      #endif
+      #ifdef HAVE_SMB_SUPER_MAGIC
+        isNetworkFileSystem |= (fileSystemStat.f_type == SMB_SUPER_MAGIC);
+      #endif
     }
   #elif defined(PLATFORM_WINDOWS)
     UNUSED_VARIABLE(fileName);
@@ -3999,7 +4150,7 @@ Errors File_getInfoCString(FileInfo   *fileInfo,
   #ifndef NDEBUG
     const char       *debugEmulateBlockDevice;
     CStringTokenizer stringTokenizer;
-    const char       *emulateDeviceName;
+    const char       *emulateDeviceName,*emulateFileName;
   #endif /* not NDEBUG */
 
   assert(fileInfo != NULL);
@@ -4007,10 +4158,55 @@ Errors File_getInfoCString(FileInfo   *fileInfo,
   assert(!stringIsEmpty(fileName));
 
   // get file meta data
-  if (LSTAT(fileName,&fileStat) != 0)
-  {
-    return getLastError(ERROR_CODE_IO,fileName);
-  }
+  #ifndef NDEBUG
+    debugEmulateBlockDevice = debugGetEmulateBlockDevice();
+    if (debugEmulateBlockDevice != NULL)
+    {
+      stringTokenizerInit(&stringTokenizer,debugEmulateBlockDevice,",");
+      if (   stringGetNextToken(&stringTokenizer,&emulateDeviceName)
+          && stringEquals(fileName,emulateDeviceName)
+         )
+      {
+        // emulate block device
+        if (stringGetNextToken(&stringTokenizer,&emulateFileName))
+        {
+          if (LSTAT(emulateFileName,&fileStat) != 0)
+          {
+            return getLastError(ERROR_CODE_IO,emulateFileName);
+          }
+        }
+        else
+        {
+          if (LSTAT(emulateDeviceName,&fileStat) != 0)
+          {
+            return getLastError(ERROR_CODE_IO,emulateDeviceName);
+          }
+        }
+      }
+      else
+      {
+        // use block device
+        if (LSTAT(fileName,&fileStat) != 0)
+        {
+          return getLastError(ERROR_CODE_IO,fileName);
+        }
+      }
+      stringTokenizerDone(&stringTokenizer);
+    }
+    else
+    {
+      // use block device
+      if (LSTAT(fileName,&fileStat) != 0)
+      {
+        return getLastError(ERROR_CODE_IO,fileName);
+      }
+    }
+  #else /* NDEBUG */
+    if (LSTAT(fileName,&fileStat) != 0)
+    {
+      return getLastError(ERROR_CODE_IO,fileName);
+    }
+  #endif /* not NDEBUG */
   fileInfo->timeLastAccess  = fileStat.st_atime;
   fileInfo->timeModified    = fileStat.st_mtime;
   fileInfo->timeLastChanged = fileStat.st_ctime;
@@ -4037,8 +4233,7 @@ Errors File_getInfoCString(FileInfo   *fileInfo,
   if      (S_ISREG(fileStat.st_mode))
   {
     #ifndef NDEBUG
-      debugEmulateBlockDevice = getenv("DEBUG_EMULATE_BLOCK_DEVICE");
-
+      debugEmulateBlockDevice = debugGetEmulateBlockDevice();
       if (debugEmulateBlockDevice != NULL)
       {
         stringTokenizerInit(&stringTokenizer,debugEmulateBlockDevice,",");
@@ -4725,8 +4920,9 @@ Errors File_makeDirectory(ConstString     pathName,
   currentCreationMask = umask(0);
   umask(currentCreationMask);
 
-  // create directory including parent directories
   File_initSplitFileName(&pathNameTokenizer,pathName);
+
+  // get root directory
   if (File_getNextSplitFileName(&pathNameTokenizer,&token))
   {
     if (!String_isEmpty(token))
@@ -4738,35 +4934,11 @@ Errors File_makeDirectory(ConstString     pathName,
       File_getSystemDirectory(directoryName,FILE_SYSTEM_PATH_ROOT,NULL);
     }
   }
+
+  // create/check root directory
   if      (!File_exists(directoryName))
   {
     // create root-directory
-    #if   (MKDIR_ARGUMENTS_COUNT == 1)
-      if (mkdir(String_cString(directoryName)) != 0)
-      {
-        error = getLastError(ERROR_CODE_IO,String_cString(directoryName));
-        if (!ignoreExistingFlag && !File_isDirectory(directoryName))
-        {
-          File_doneSplitFileName(&pathNameTokenizer);
-          File_deleteFileName(parentDirectoryName);
-          File_deleteFileName(directoryName);
-          return error;
-        }
-      }
-    #elif (MKDIR_ARGUMENTS_COUNT == 2)
-      if (mkdir(String_cString(directoryName),0777 & ~currentCreationMask) != 0)
-      {
-        error = getLastError(ERROR_CODE_IO,String_cString(directoryName));
-        if (!ignoreExistingFlag && !File_isDirectory(directoryName))
-        {
-          File_doneSplitFileName(&pathNameTokenizer);
-          File_deleteFileName(parentDirectoryName);
-          File_deleteFileName(directoryName);
-          return error;
-        }
-      }
-    #endif /* MKDIR_ARGUMENTS_COUNT == ... */
-
     // set owner/group
     if (   (userId  != FILE_DEFAULT_USER_ID)
         || (groupId != FILE_DEFAULT_GROUP_ID)
@@ -4811,13 +4983,14 @@ Errors File_makeDirectory(ConstString     pathName,
   }
   else if (!File_isDirectory(directoryName))
   {
-    error = ERRORX_(NOT_A_DIRECTORY,0,"not a directory");
+    error = ERRORX_(NOT_A_DIRECTORY,0,"%s",String_cString(directoryName));
     File_doneSplitFileName(&pathNameTokenizer);
     File_deleteFileName(parentDirectoryName);
     File_deleteFileName(directoryName);
     return error;
   }
 
+  // create/check sub-directories
   while (File_getNextSplitFileName(&pathNameTokenizer,&token))
   {
     if (!String_isEmpty(token))
@@ -4825,7 +4998,7 @@ Errors File_makeDirectory(ConstString     pathName,
       // get new parent directory
       File_setFileName(parentDirectoryName,directoryName);
 
-      // get sub-directory
+      // add sub-directory
       File_appendFileName(directoryName,token);
 
       if      (!File_exists(directoryName))
@@ -4926,7 +5099,7 @@ Errors File_makeDirectory(ConstString     pathName,
       }
       else if (!File_isDirectory(directoryName))
       {
-        error = ERRORX_(NOT_A_DIRECTORY,0,"not a directory");
+        error = ERRORX_(NOT_A_DIRECTORY,0,"%s",String_cString(directoryName));
         File_doneSplitFileName(&pathNameTokenizer);
         File_deleteFileName(parentDirectoryName);
         File_deleteFileName(directoryName);
@@ -5151,24 +5324,90 @@ Errors File_makeSpecial(ConstString      name,
                         ulong            minor
                        )
 {
+  #ifdef HAVE_MKNOD
+    Errors error;
+    String directoryName;
+    #ifndef NDEBUG
+      int fileDescriptor;
+    #endif
+  #endif /* HAVE_MKNOD */
+
   assert(name != NULL);
   assert(!String_isEmpty(name));
 
   #ifdef HAVE_MKNOD
+    // create directory if needed
+    directoryName = File_getDirectoryName(File_newFileName(),name);
+    if (!String_isEmpty(directoryName) && !File_exists(directoryName))
+    {
+      error = File_makeDirectory(directoryName,
+                                 FILE_DEFAULT_USER_ID,
+                                 FILE_DEFAULT_GROUP_ID,
+                                 FILE_DEFAULT_PERMISSIONS,
+                                 TRUE
+                                );
+      if (error != ERROR_NONE)
+      {
+        File_deleteFileName(directoryName);
+        return error;
+      }
+    }
+    File_deleteFileName(directoryName);
+
     unlink(String_cString(name));
     switch (type)
     {
       case FILE_SPECIAL_TYPE_CHARACTER_DEVICE:
-        if (mknod(String_cString(name),S_IFCHR|0600,makedev(major,minor)) != 0)
-        {
-          return getLastError(ERROR_CODE_IO,String_cString(name));
-        }
+        #ifndef NDEBUG
+          if (debugIsEmulateMknod())
+          {
+            // create simple file
+            fileDescriptor = open(String_cString(name),O_RDWR|O_CREAT|O_TRUNC|O_BINARY,0666);
+            if (fileDescriptor == -1)
+            {
+              return getLastError(ERROR_CODE_IO,String_cString(name));
+            }
+            close(fileDescriptor);
+          }
+          else
+          {
+            if (mknod(String_cString(name),S_IFCHR|0600,makedev(major,minor)) != 0)
+            {
+              return getLastError(ERROR_CODE_IO,String_cString(name));
+            }
+          }
+        #else /* NDEBUG */
+          if (mknod(String_cString(name),S_IFCHR|0600,makedev(major,minor)) != 0)
+          {
+            return getLastError(ERROR_CODE_IO,String_cString(name));
+          }
+        #endif /* not NDEBUG */
         break;
       case FILE_SPECIAL_TYPE_BLOCK_DEVICE:
-        if (mknod(String_cString(name),S_IFBLK|0600,makedev(major,minor)) != 0)
-        {
-          return getLastError(ERROR_CODE_IO,String_cString(name));
-        }
+        #ifndef NDEBUG
+          if (debugIsEmulateMknod())
+          {
+            // create simple file
+            fileDescriptor = open(String_cString(name),O_RDWR|O_CREAT|O_TRUNC|O_BINARY,0666);
+            if (fileDescriptor == -1)
+            {
+              return getLastError(ERROR_CODE_IO,String_cString(name));
+            }
+            close(fileDescriptor);
+          }
+          else
+          {
+            if (mknod(String_cString(name),S_IFBLK|0600,makedev(major,minor)) != 0)
+            {
+              return getLastError(ERROR_CODE_IO,String_cString(name));
+            }
+          }
+        #else /* NDEBUG */
+          if (mknod(String_cString(name),S_IFBLK|0600,makedev(major,minor)) != 0)
+          {
+            return getLastError(ERROR_CODE_IO,String_cString(name));
+          }
+        #endif /* not NDEBUG */
         break;
       case FILE_SPECIAL_TYPE_FIFO:
         if (mknod(String_cString(name),S_IFIFO|0666,0) != 0)

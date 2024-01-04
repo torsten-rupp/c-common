@@ -40,13 +40,17 @@
 // max. length of a path
 #define FILE_MAX_PATH_LENGTH PATH_MAX
 
-// temporary directory
-#define FILE_TMP_DIRECTORY File_getSystemTmpDirectory()
-
+// TODO:
 // Note: always use '/' and never brain dead '\'
-#define FILE_PATH_SEPARATOR_CHAR   '/'
-#define FILE_PATH_SEPARATOR_CHARS  "/"
-#define FILE_PATH_SEPARATOR_STRING "/"
+#if   defined(PLATFORM_LINUX)
+  #define FILE_PATH_SEPARATOR_CHAR   '/'
+  #define FILE_PATH_SEPARATOR_CHARS  "/"
+  #define FILE_PATH_SEPARATOR_STRING "/"
+#elif defined(PLATFORM_WINDOWS)
+  #define FILE_PATH_SEPARATOR_CHAR   '\\'
+  #define FILE_PATH_SEPARATOR_CHARS  "\\"
+  #define FILE_PATH_SEPARATOR_STRING "\\"
+#endif /* PLATFORM_... */
 
 // system directories
 typedef enum
@@ -55,7 +59,10 @@ typedef enum
   FILE_SYSTEM_PATH_TMP,
   FILE_SYSTEM_PATH_CONFIGURATION,
   FILE_SYSTEM_PATH_RUNTIME,
-  FILE_SYSTEM_PATH_TLS
+  FILE_SYSTEM_PATH_TLS,
+  FILE_SYSTEM_PATH_LOG,
+  FILE_SYSTEM_PATH_USER_CONFIGURATION,
+  FILE_SYSTEM_PATH_USER_HOME
 } FileSystemPathTypes;
 
 #define FILE_CAST_SIZE (sizeof(time_t)+sizeof(time_t))
@@ -237,6 +244,10 @@ typedef enum
   #define FILE_ATTRIBUTE_NO_DUMP     0LL
 #endif
 
+#ifndef NDEBUG
+  #define FILE_DEBUG_EMULATE_MKNOD "DEBUG_EMULATE_MKNOD"
+#endif
+
 /***************************** Datatypes *******************************/
 
 // file i/o handle
@@ -247,9 +258,13 @@ typedef struct
   FILE       *file;
   uint64     index;
   uint64     size;
-  #ifndef NDEBUG
+  #if   defined(PLATFORM_LINUX)
+    #ifndef NDEBUG
+      bool deleteOnCloseFlag;
+    #endif /* not NDEBUG */
+  #elif defined(PLATFORM_WINDOWS)
     bool deleteOnCloseFlag;
-  #endif /* not NDEBUG */
+  #endif /* PLATFORM_... */
 
   StringList lineBufferList;
   #ifndef HAVE_O_NOATIME
@@ -557,13 +572,13 @@ String File_getAbsoluteFileNameCString(String absoluteFileName, const char *file
 * Name   : File_splitFileName
 * Purpose: split file name into path name and base name
 * Input  : fileName - file name
-* Output : directoryName - directory name (allocated string)
-*          baseName      - base name (allocated string)
+* Output : directoryPath - directory path (can be NULL)
+*          baseName      - base name (can be NULL)
 * Return : -
 * Notes  : -
 \***********************************************************************/
 
-void File_splitFileName(ConstString fileName, String *directoryName, String *baseName);
+void File_splitFileName(ConstString fileName, String directoryPath, String baseName);
 
 /***********************************************************************\
 * Name   : File_initSplitFileName, File_doneSplitFileName
@@ -739,6 +754,28 @@ const char *File_fileSpecialTypeToString(FileSpecialTypes fileSpecialType, const
 bool File_parseFileSpecialType(const char *name, FileSpecialTypes *fileSpecialType);
 
 /*---------------------------------------------------------------------*/
+
+/***********************************************************************\
+* Name   : File_getDefaultFilePermissions
+* Purpose: get default file permissions
+* Input  : -
+* Output : -
+* Return : default file permissions
+* Notes  : -
+\***********************************************************************/
+
+FilePermissions File_getDefaultFilePermissions(void);
+
+/***********************************************************************\
+* Name   : File_getDefaultDirectoryPermissions
+* Purpose: get default directory permissions
+* Input  : -
+* Output : -
+* Return : default directory permissions
+* Notes  : -
+\***********************************************************************/
+
+FilePermissions File_getDefaultDirectoryPermissions(void);
 
 /***********************************************************************\
 * Name   : File_open, File_openCString
@@ -1279,7 +1316,7 @@ Errors File_copyCString(const char *sourceFileName,
 * Purpose: check if file/directory/link/device exists
 * Input  : fileName - file name
 * Output : -
-* Return : TRUE if file/directory exists, FALSE otherweise
+* Return : TRUE iff file/directory/link/device exists
 * Notes  : -
 \***********************************************************************/
 
