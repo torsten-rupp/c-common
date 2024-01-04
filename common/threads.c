@@ -1,8 +1,8 @@
 /***********************************************************************\
 *
-* $Revision: 9501 $
-* $Date: 2019-05-30 15:17:37 +0200 (Thu, 30 May 2019) $
-* $Author: torsten $
+* $Revision$
+* $Date$
+* $Author$
 * Contents: thread functions
 * Systems: all
 *
@@ -30,11 +30,13 @@
 #endif /* PLATFORM_... */
 
 #include "common/global.h"
+#include "common/cstrings.h"
 #include "common/lists.h"
 
 #include "threads.h"
 
 /****************** Conditional compilation switches *******************/
+#define _STACKTRACE_ON_SIGNAL
 
 /***************************** Constants *******************************/
 const uint THREAD_LOCAL_STORAGE_HASHTABLE_SIZE      = 15;
@@ -84,13 +86,15 @@ typedef struct
 
   LOCAL pthread_once_t       debugThreadInitFlag                = PTHREAD_ONCE_INIT;
 
-  LOCAL pthread_mutex_t      debugThreadSignalLock              = PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP;
+  #ifdef STACKTRACE_ON_SIGNAL
+    LOCAL pthread_mutex_t      debugThreadSignalLock              = PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP;
+  #endif
 
   LOCAL pthread_mutex_t      debugThreadStackTraceThreadLock    = PTHREAD_MUTEX_INITIALIZER;
   LOCAL StackTraceThreadInfo debugThreadStackTraceThreads[256];
   LOCAL uint                 debugThreadStackTraceThreadCount   = 0;
 
-  #ifdef HAVE_SIGQUIT
+  #if defined(STACKTRACE_ON_SIGNAL) && defined(HAVE_SIGQUIT)
     LOCAL pthread_mutex_t      debugThreadStackTraceLock          = PTHREAD_MUTEX_INITIALIZER;
     LOCAL pthread_cond_t       debugThreadStackTraceDone          = PTHREAD_COND_INITIALIZER;
     LOCAL bool                 debugThreadStackTraceRun           = FALSE;
@@ -333,6 +337,7 @@ int __wrap_pthread_create(pthread_t *thread,
 * Notes  : -
 \***********************************************************************/
 
+#if STACKTRACE_ON_SIGNAL
 LOCAL void debugThreadDumpStackTrace(ThreadId                       threadId,
                                      DebugDumpStackTraceOutputTypes type,
                                      uint                           skipFrameCount,
@@ -361,6 +366,7 @@ LOCAL void debugThreadDumpStackTrace(ThreadId                       threadId,
   }
   pthread_mutex_unlock(&debugConsoleLock);
 }
+#endif // STACKTRACE_ON_SIGNAL
 
 /***********************************************************************\
 * Name   : debugThreadDumpAllStackTraces
@@ -373,7 +379,7 @@ LOCAL void debugThreadDumpStackTrace(ThreadId                       threadId,
 * Notes  : -
 \***********************************************************************/
 
-#ifdef HAVE_SIGQUIT
+#if defined(STACKTRACE_ON_SIGNAL) && defined(HAVE_SIGQUIT)
 LOCAL void debugThreadDumpAllStackTraces(DebugDumpStackTraceOutputTypes type,
                                          uint                           skipFrameCount,
                                          const char                     *reason
@@ -453,12 +459,12 @@ LOCAL void debugThreadDumpAllStackTraces(DebugDumpStackTraceOutputTypes type,
                 }
                 else
                 {
-                  HALT_INTERNAL_ERROR("Process signal QUIT for thread %s == %s failed (error %d: %s)",
-                                      Thread_getIdString(debugThreadStackTraceThreads[debugThreadStackTraceThreadIndex].id),
-                                      Thread_getCurrentIdString(),
-                                      errno,
-                                      strerror(errno)
-                                     );
+                  fprintf(stderr,
+                          "Warning: process signal QUIT by thread %s failed (error %d: %s)",
+                          Thread_getIdString(debugThreadStackTraceThreads[debugThreadStackTraceThreadIndex].id),
+                          errno,
+                          strerror(errno)
+                         );
                 }
               }
               else
@@ -533,6 +539,7 @@ LOCAL void debugThreadDumpAllStackTraces(DebugDumpStackTraceOutputTypes type,
 * Notes  : -
 \***********************************************************************/
 
+#if defined(ENABLE_DEBUG_THREAD_CRASH_HANDLERS) && defined(HAVE_SIGSEGV) && defined(HAVE_SIGACTION)
 #ifdef HAVE_SIGACTION
 LOCAL void debugThreadSignalSegVHandler(int signalNumber, siginfo_t *siginfo, void *context)
 #else /* not HAVE_SIGACTION */
@@ -541,13 +548,15 @@ LOCAL void debugThreadSignalSegVHandler(int signalNumber)
 {
   if (signalNumber == SIGSEGV)
   {
-    #ifdef HAVE_SIGQUIT
-      pthread_mutex_lock(&debugThreadSignalLock);
-      {
-        debugThreadDumpAllStackTraces(DEBUG_DUMP_STACKTRACE_OUTPUT_TYPE_FATAL,1," *** CRASHED ***");
-      }
-      pthread_mutex_unlock(&debugThreadSignalLock);
-    #endif /* HAVE_BACKTRACE */
+    #ifdef STACKTRACE_ON_SIGNAL
+      #ifdef HAVE_SIGQUIT
+        pthread_mutex_lock(&debugThreadSignalLock);
+        {
+          debugThreadDumpAllStackTraces(DEBUG_DUMP_STACKTRACE_OUTPUT_TYPE_FATAL,1," *** CRASHED ***");
+        }
+        pthread_mutex_unlock(&debugThreadSignalLock);
+      #endif /* HAVE_SIGQUIT */
+    #endif
   }
 
   #ifdef HAVE_SIGACTION
@@ -558,6 +567,7 @@ LOCAL void debugThreadSignalSegVHandler(int signalNumber)
     }
   #endif /* HAVE_SIGACTION */
 }
+#endif // defined(ENABLE_DEBUG_THREAD_CRASH_HANDLERS) && defined(HAVE_SIGABRT) && defined(HAVE_SIGACTION)
 
 /***********************************************************************\
 * Name   : debugThreadSignalAbortHandler
@@ -570,6 +580,7 @@ LOCAL void debugThreadSignalSegVHandler(int signalNumber)
 * Notes  : -
 \***********************************************************************/
 
+#if defined(ENABLE_DEBUG_THREAD_CRASH_HANDLERS) && defined(HAVE_SIGABRT) && defined(HAVE_SIGACTION)
 #ifdef HAVE_SIGACTION
 LOCAL void debugThreadSignalAbortHandler(int signalNumber, siginfo_t *siginfo, void *context)
 #else /* not HAVE_SIGACTION */
@@ -578,16 +589,18 @@ LOCAL void debugThreadSignalAbortHandler(int signalNumber)
 {
   if (signalNumber == SIGABRT)
   {
-    pthread_mutex_lock(&debugThreadSignalLock);
-    {
-      #ifndef NDEBUG
-        // Note: in debug mode only dump current stack trace
-        debugThreadDumpStackTrace(pthread_self(),DEBUG_DUMP_STACKTRACE_OUTPUT_TYPE_FATAL,1," *** ABORTED ***");
-      #else /* not NDEBUG */
-        debugThreadDumpAllStackTraces(DEBUG_DUMP_STACKTRACE_OUTPUT_TYPE_FATAL," *** ABORTED ***");
-      #endif /* NDEBUG */
-    }
-    pthread_mutex_unlock(&debugThreadSignalLock);
+    #ifdef STACKTRACE_ON_SIGNAL
+      pthread_mutex_lock(&debugThreadSignalLock);
+      {
+        #ifndef NDEBUG
+          // Note: in debug mode only dump current stack trace
+          debugThreadDumpStackTrace(pthread_self(),DEBUG_DUMP_STACKTRACE_OUTPUT_TYPE_FATAL,1," *** ABORTED ***");
+        #else /* not NDEBUG */
+          debugThreadDumpAllStackTraces(DEBUG_DUMP_STACKTRACE_OUTPUT_TYPE_FATAL," *** ABORTED ***");
+        #endif /* NDEBUG */
+      }
+      pthread_mutex_unlock(&debugThreadSignalLock);
+    #endif
   }
 
   #ifdef HAVE_SIGACTION
@@ -598,6 +611,7 @@ LOCAL void debugThreadSignalAbortHandler(int signalNumber)
     }
   #endif /* HAVE_SIGACTION */
 }
+#endif // defined(ENABLE_DEBUG_THREAD_CRASH_HANDLERS) && defined(HAVE_SIGABRT) && defined(HAVE_SIGACTION)
 
 /***********************************************************************\
 * Name   : debugThreadSignalQuitHandler
@@ -611,7 +625,7 @@ LOCAL void debugThreadSignalAbortHandler(int signalNumber)
 \***********************************************************************/
 
 #if defined(ENABLE_DEBUG_THREAD_CRASH_HANDLERS) && defined(HAVE_SIGQUIT) && defined(HAVE_SIGACTION)
-#if defined(HAVE_SIGQUIT) && defined(HAVE_SIGACTION)
+#if defined(HAVE_SIGACTION)
 LOCAL void debugThreadSignalQuitHandler(int signalNumber, siginfo_t *siginfo, void *context)
 #else /* not defined(HAVE_SIGQUIT) && defined(HAVE_SIGACTION) */
 LOCAL void debugThreadSignalQuitHandler(int signalNumber)
@@ -622,8 +636,10 @@ LOCAL void debugThreadSignalQuitHandler(int signalNumber)
 
   if (signalNumber == SIGQUIT)
   {
-    // Note: do not lock; signal handler is called for every thread
-    debugThreadDumpAllStackTraces(DEBUG_DUMP_STACKTRACE_OUTPUT_TYPE_NONE,1,NULL);
+    #ifdef STACKTRACE_ON_SIGNAL
+      // Note: do not lock; signal handler is called for every thread
+      debugThreadDumpAllStackTraces(DEBUG_DUMP_STACKTRACE_OUTPUT_TYPE_NONE,1,NULL);
+    #endif
   }
 
   #ifdef HAVE_SIGACTION
@@ -634,7 +650,7 @@ LOCAL void debugThreadSignalQuitHandler(int signalNumber)
     }
   #endif /* HAVE_SIGACTION */
 }
-#endif /* defined(ENABLE_DEBUG_THREAD_CRASH_HANDLERS) && defined(HAVE_SIGQUIT) && defined(HAVE_SIGACTION) */
+#endif // defined(ENABLE_DEBUG_THREAD_CRASH_HANDLERS) && defined(HAVE_SIGQUIT) && defined(HAVE_SIGACTION)
 
 /***********************************************************************\
 * Name   : debugThreadInit
@@ -648,39 +664,42 @@ LOCAL void debugThreadSignalQuitHandler(int signalNumber)
 LOCAL void debugThreadInit(void)
 {
   #ifdef ENABLE_DEBUG_THREAD_CRASH_HANDLERS
-    #ifdef HAVE_SIGACTION
-      struct sigaction signalAction;
-    #endif /* HAVE_SIGACTION */
-
     // add main thread
     debugThreadStackTraceAddThread(pthread_self());
 
     // install signal handlers for printing stack traces
     #ifdef HAVE_SIGACTION
-      sigfillset(&signalAction.sa_mask);
-      signalAction.sa_flags     = SA_SIGINFO;
-      signalAction.sa_sigaction = debugThreadSignalSegVHandler;
-      sigaction(SIGSEGV,&signalAction,&debugThreadSignalSegVPrevHandler);
-
-      sigfillset(&signalAction.sa_mask);
-      signalAction.sa_flags     = SA_SIGINFO;
-      signalAction.sa_sigaction = debugThreadSignalAbortHandler;
-      sigaction(SIGABRT,&signalAction,&debugThreadSignalAbortPrevHandler);
-
+      struct sigaction signalAction;
+      #ifdef HAVE_SIGSEGV
+        sigfillset(&signalAction.sa_mask);
+        signalAction.sa_flags     = SA_SIGINFO;
+        signalAction.sa_sigaction = debugThreadSignalSegVHandler;
+        sigaction(SIGSEGV,&signalAction,&debugThreadSignalSegVPrevHandler);
+      #endif
+      #ifdef HAVE_SIGABRT
+        sigfillset(&signalAction.sa_mask);
+        signalAction.sa_flags     = SA_SIGINFO;
+        signalAction.sa_sigaction = debugThreadSignalAbortHandler;
+        sigaction(SIGABRT,&signalAction,&debugThreadSignalAbortPrevHandler);
+      #endif
       #ifdef HAVE_SIGQUIT
         sigfillset(&signalAction.sa_mask);
         signalAction.sa_flags     = SA_SIGINFO;
         signalAction.sa_sigaction = debugThreadSignalQuitHandler;
         sigaction(SIGQUIT,&signalAction,&debugThreadSignalQuitPrevHandler);
-      #endif /* HAVE_SIGQUIT */
-    #else /* not HAVE_SIGACTION */
-      signal(SIGSEGV,debugThreadSignalSegVHandler);
-      signal(SIGABRT,debugThreadSignalAbortHandler);
+      #endif
+    #else // not HAVE_SIGACTION
+      #ifdef HAVE_SIGSEGV
+        signal(SIGSEGV,debugThreadSignalSegVHandler);
+      #endif
+      #ifdef HAVE_SIGABRT
+        signal(SIGABRT,debugThreadSignalAbortHandler);
+      #endif
       #ifdef HAVE_SIGQUIT
         signal(SIGQUIT,debugThreadSignalQuitHandler);
-      #endif /* HAVE_SIGQUIT */
-    #endif /* HAVE_SIGACTION */
-  #endif /* not ENABLE_DEBUG_THREAD_CRASH_HANDLERS */
+      #endif
+    #endif // HAVE_SIGACTION
+  #endif // not ENABLE_DEBUG_THREAD_CRASH_HANDLERS
 }
 #endif /* NDEBUG */
 
@@ -830,7 +849,7 @@ bool __Thread_init(const char *__fileName__,
   result = sem_init(&startInfo.started,0,0);
   if (result != 0)
   {
-    HALT_INTERNAL_ERROR("cannot initialise start lock");
+    HALT_INTERNAL_ERROR("cannot initialize thread start lock (error: %s)", strerror(errno));
   }
 
   // init thread attributes
@@ -877,7 +896,7 @@ bool __Thread_init(const char *__fileName__,
   while ((result != 0) && (errno == EINTR));
   if (result != 0)
   {
-    HALT_INTERNAL_ERROR("wait for start lock failed");
+    HALT_INTERNAL_ERROR("wait for thread start lock failed");
   }
 
   // free resources
@@ -1013,7 +1032,7 @@ const char *Thread_getIdString(const ThreadId threadId)
   stringSet(idStrings[i%16],sizeof(idStrings[i%16]),"0x");
   for (j = (int)sizeof(ThreadId)-1; j >= 0; j--)
   {
-    stringFormatAppend(idStrings[i%16],sizeof(idStrings[i%16]),"%02x",p[j]);
+    stringAppendFormat(idStrings[i%16],sizeof(idStrings[i%16]),"%02x",p[j]);
   }
 
   return idStrings[i%16];
