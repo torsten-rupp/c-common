@@ -58,6 +58,7 @@
 
 // definition of some character names
 #define NUL '\000'
+#define CODE_POINT_NUL 0x00000000
 
 #define STRING_NO_ASSIGN (void*)(-1)
 
@@ -154,7 +155,7 @@ static inline size_t stringLength(const char *s)
 * Purpose: compare strings
 * Input  : s1, s2 - strings (can be NULL)
 * Output : -
-* Return : -1/0/-1 if s1 </=/> s2
+* Return : <0/=0/>0 if s1 </=/> s2
 * Notes  : -
 \***********************************************************************/
 
@@ -266,10 +267,8 @@ static inline bool stringStartsWithIgnoreCase(const char *string, const char *pr
 
 static inline bool stringEndsWith(const char *string, const char *suffix)
 {
-  size_t n,m;
-
-  n = strlen(string);
-  m = strlen(suffix);
+  size_t n = strlen(string);
+  size_t m = strlen(suffix);
 
   return    (n >= m)
          && strncmp(string+n-m,suffix,m) == 0;
@@ -287,10 +286,8 @@ static inline bool stringEndsWith(const char *string, const char *suffix)
 
 static inline bool stringEndsWithIgnoreCase(const char *string, const char *suffix)
 {
-  size_t n,m;
-
-  n = strlen(string);
-  m = strlen(suffix);
+  size_t n = strlen(string);
+  size_t m = strlen(suffix);
 
   return    (n >= m)
          && strncasecmp(string+n-m,suffix,m) == 0;
@@ -382,6 +379,48 @@ static inline char* stringSetBuffer(char *string, size_t stringSize, const char 
   return string;
 }
 
+/***********************************************************************\
+* Name   : stringReplace
+* Purpose: replace string
+* Input  : string        - destination string
+*          stringSize    - size of string (including terminating NUL)
+*          index         - replace index
+*          length        - replace length
+*          replaceString - replace string
+* Output : -
+* Return : modified string
+* Notes  : string is always NULL or NUL-terminated
+\***********************************************************************/
+
+static inline char* stringReplace(char *string, size_t stringSize, size_t index, size_t length, const char *replaceString)
+{
+  assert(stringSize > 0);
+
+  if (string != NULL)
+  {
+    size_t n = strlen(string);
+    if (index < n)
+    {
+      if (replaceString != NULL)
+      {
+        size_t m = strlen(replaceString);
+        if (m > (stringSize-index-1)) m = stringSize-index-1;
+        if ((index+length) < n)
+        {
+          memmove(string+index+m,string+index+length,n-(index+length));
+        }
+        memcpy(string+index,replaceString,m);
+        string[n-length+m] = NUL;
+      }
+      else
+      {
+        string[0] = NUL;
+      }
+    }
+  }
+
+  return string;
+}
 
 /***********************************************************************\
 * Name   : stringIntLength
@@ -394,25 +433,7 @@ static inline char* stringSetBuffer(char *string, size_t stringSize, const char 
 
 static inline size_t stringIntLength(int n)
 {
-  #ifdef __GNUC__
-    // log10 of 64-bit numbers 1..2^64
-    static const uint8_t DIGITS_COUNT[64] = { 1, 1, 1, 1, 2, 2, 2, 3,
-                                              3, 3, 4, 4, 4, 4, 5, 5,
-                                              5, 6, 6, 6, 7, 7, 7, 7,
-                                              8, 8, 8, 9, 9, 9,10,10,
-                                             10,10,11,11,11,12,12,12,
-                                             13,13,13,13,14,14,14,15,
-                                             15,15,16,16,16,16,17,17,
-                                             17,18,18,18,19,19,19,19
-                                            };
-    assert(__builtin_clz(0) <= sizeof(DIGITS_COUNT));
-    assert((sizeof(n)*8) <= sizeof(DIGITS_COUNT));
-//fprintf(stderr,"%s, %d: %d -> %d -> %d\n",__FILE__,__LINE__,n,sizeof(n)*8-((n >= 0) ? __builtin_clz(n) : __builtin_clz(-n)),(n >= 0) ? DIGITS_COUNT[sizeof(n)*8-__builtin_clz(n)] : 1+DIGITS_COUNT[sizeof(n)*8-__builtin_clz(-n)]);
-
-    return (n >= 0) ? DIGITS_COUNT[sizeof(n)*8-__builtin_clz(n)] : 1+DIGITS_COUNT[sizeof(n)*8-__builtin_clz(-n)];
-  #else /* not GCC */
-    #error stringIntLength() still not implemented
-  #endif /* GCC */
+  return snprintf(NULL,0,"%d",n);
 }
 
 /***********************************************************************\
@@ -426,25 +447,7 @@ static inline size_t stringIntLength(int n)
 
 static inline size_t stringInt64Length(int64 n)
 {
-  #ifdef __GNUC__
-    // log10 of 64-bit numbers 1..2^64
-    static const uint8_t DIGITS_COUNT[64] = { 1, 1, 1, 1, 2, 2, 2, 3,
-                                              3, 3, 4, 4, 4, 4, 5, 5,
-                                              5, 6, 6, 6, 7, 7, 7, 7,
-                                              8, 8, 8, 9, 9, 9,10,10,
-                                             10,10,11,11,11,12,12,12,
-                                             13,13,13,13,14,14,14,15,
-                                             15,15,16,16,16,16,17,17,
-                                             17,18,18,18,19,19,19,19
-                                            };
-    assert(__builtin_clz(0) <= sizeof(DIGITS_COUNT));
-    assert((sizeof(n)*8) <= sizeof(DIGITS_COUNT));
-//fprintf(stderr,"%s, %d: %d %d -> %d -> %d\n",__FILE__,__LINE__,sizeof(n),n,sizeof(n)*8-((n >= 0) ? __builtin_clzll(n) : __builtin_clzll(-n)),(n >= 0) ? DIGITS_COUNT[sizeof(n)*8-__builtin_clzll(n)] : 1+DIGITS_COUNT[sizeof(n)*8-__builtin_clzll(-n)]);
-
-    return (n >= 0) ? DIGITS_COUNT[sizeof(n)*8-__builtin_clzll(n)] : 1+DIGITS_COUNT[sizeof(n)*8-__builtin_clzll(-n)];
-  #else /* not GCC */
-    #error stringIntLength() still not implemented
-  #endif /* GCC */
+  return snprintf(NULL,0,"%"PRIi64,n);
 }
 
 /***********************************************************************\
@@ -474,12 +477,11 @@ static inline char* stringVFormat(char *string, size_t stringSize, const char *f
 
 static inline char* stringFormat(char *string, size_t stringSize, const char *format, ...)
 {
-  va_list arguments;
-
   assert(string != NULL);
   assert(stringSize > 0);
   assert(format != NULL);
 
+  va_list arguments;
   va_start(arguments,format);
   string = stringVFormat(string,stringSize,format,arguments);
   va_end(arguments);
@@ -500,32 +502,17 @@ static inline char* stringFormat(char *string, size_t stringSize, const char *fo
 
 static inline size_t stringVFormatLength(const char *format, va_list arguments)
 {
-  int  n;
-  char *s;
-
   assert(format != NULL);
 
-  n = vasprintf(&s,format,arguments);
-  if (n != -1)
-  {
-    free(s);
-  }
-  else
-  {
-    n = 0;
-  }
-
-  return (size_t)n;
+  return vsnprintf(NULL,0,format,arguments);
 }
 static inline size_t stringFormatLength(const char *format, ...)
 {
-  va_list arguments;
-  size_t  n;
-
   assert(format != NULL);
 
+  va_list arguments;
   va_start(arguments,format);
-  n = stringVFormatLength(format,arguments);
+  size_t n = stringVFormatLength(format,arguments);
   va_end(arguments);
 
   return n;
@@ -533,7 +520,7 @@ static inline size_t stringFormatLength(const char *format, ...)
 
 /***********************************************************************\
 * Name   : stringAppend
-* Purpose: append string
+* Purpose: append string to string
 * Input  : string     - destination string
 *          stringSize - size of destination string (including
 *                       terminating NUL)
@@ -545,13 +532,11 @@ static inline size_t stringFormatLength(const char *format, ...)
 
 static inline char* stringAppend(char *string, size_t stringSize, const char *source)
 {
-  size_t n;
-
   assert(stringSize > 0);
 
   if ((string != NULL) && (source != NULL))
   {
-    n = strlen(string);
+    size_t n = strlen(string);
     if (stringSize > (n+1))
     {
       strncat(string,source,stringSize-(n+1));
@@ -563,7 +548,7 @@ static inline char* stringAppend(char *string, size_t stringSize, const char *so
 
 /***********************************************************************\
 * Name   : stringAppendChar
-* Purpose: append chararacter
+* Purpose: append chararacter to string
 * Input  : string     - destination string
 *          stringSize - size of destination string (including
 *                       terminating NUL)
@@ -575,13 +560,11 @@ static inline char* stringAppend(char *string, size_t stringSize, const char *so
 
 static inline char* stringAppendChar(char *string, size_t stringSize, char ch)
 {
-  size_t n;
-
   assert(stringSize > 0);
 
   if (string != NULL)
   {
-    n = strlen(string);
+    size_t n = strlen(string);
     if (stringSize > (n+1))
     {
       string[n]   = ch;
@@ -593,8 +576,38 @@ static inline char* stringAppendChar(char *string, size_t stringSize, char ch)
 }
 
 /***********************************************************************\
+* Name   : stringAppendBuffer
+* Purpose: append buffer to string
+* Input  : string       - destination string
+*          stringSize   - size of destination string (including
+*                         terminating NUL)
+*          buffer       - buffer
+*          bufferLength - buffer length
+* Output : -
+* Return : string
+* Notes  : string is always NULL or NUL-terminated
+\***********************************************************************/
+
+static inline char* stringAppendBuffer(char *string, size_t stringSize, const char *buffer, size_t bufferLength)
+{
+  assert(stringSize > 0);
+
+  if ((string != NULL) && (buffer != NULL))
+  {
+    size_t n = strlen(string);
+    if (stringSize >= (n+bufferLength+1))
+    {
+      memcpy(&string[n],buffer,stringSize-(bufferLength+1));
+      string[n+bufferLength] = NUL;
+    }
+  }
+
+  return string;
+}
+
+/***********************************************************************\
 * Name   : stringAppendVFormat, stringAppendFormat
-* Purpose: format string and append
+* Purpose: format string and append to string
 * Input  : string     - string
 *          stringSize - size of destination string (including terminating
 *                       NUL)
@@ -608,13 +621,11 @@ static inline char* stringAppendChar(char *string, size_t stringSize, char ch)
 
 static inline char* stringAppendVFormat(char *string, size_t stringSize, const char *format, va_list arguments)
 {
-  size_t n;
-
   assert(string != NULL);
   assert(stringSize > 0);
   assert(format != NULL);
 
-  n = strlen(string);
+  size_t n = strlen(string);
   if (n < stringSize)
   {
     vsnprintf(&string[n],stringSize-n,format,arguments);
@@ -668,8 +679,8 @@ static inline char* stringFill(char *string, size_t stringSize, size_t length, c
 }
 
 /***********************************************************************\
-* Name   : stringFill
-* Purpose: fill string
+* Name   : stringFillAppend
+* Purpose: append to string
 * Input  : string     - destination string
 *          stringSize - size of destination string (including
 *                       terminating NUL)
@@ -689,7 +700,7 @@ static inline char* stringFillAppend(char *string, size_t stringSize, size_t len
   if (string != NULL)
   {
     n = strlen(string);
-    if (n < length)
+    if (n < stringSize)
     {
       m = MIN(stringSize-n-1,length);
       memset(&string[n],ch,m);
@@ -886,7 +897,7 @@ static inline char stringAt(const char *string, size_t index)
 }
 
 /***********************************************************************\
-* Name   : stringIsValidUTF8Codepointn
+* Name   : stringIsValidUTF8CodepointN
 * Purpose: check if valid UTF8 codepoint
 * Input  : string    - string
 *          length    - string length
@@ -897,7 +908,7 @@ static inline char stringAt(const char *string, size_t index)
 * Notes  : -
 \***********************************************************************/
 
-static inline bool stringIsValidUTF8Codepointn(const char *string, size_t length, size_t index, size_t *nextIndex)
+static inline bool stringIsValidUTF8CodepointN(const char *string, size_t length, size_t index, size_t *nextIndex)
 {
   assert(index < length);
 
@@ -1288,7 +1299,7 @@ static inline Codepoint stringAtUTF8n(const char *string, size_t length, size_t 
   }
   else
   {
-    codepoint = 0x00000000;
+    codepoint = CODE_POINT_NUL;
   }
 
   return codepoint;
@@ -1423,7 +1434,9 @@ static inline char* stringSub(char *string, size_t stringSize, const char *sourc
   {
     if (source != NULL)
     {
-      n = (length >= 0) ? MIN((long)stringSize-1,length) : MIN((long)stringSize-1,(long)strlen(source)-(long)index);
+      n = (length >= 0)
+            ? MIN((long)stringSize-1,length)
+            : MIN((long)stringSize-1,(long)strlen(source)-(long)index);
       if (n < 0) n = 0;
       strncpy(string,source+index,n); string[n] = NUL;
     }
@@ -1456,7 +1469,7 @@ static inline void stringIteratorInit(CStringIterator *cStringIterator, const ch
   else
   {
     cStringIterator->nextIndex = 0;
-    cStringIterator->codepoint = 0x00000000;
+    cStringIterator->codepoint = CODE_POINT_NUL;
   }
 }
 
@@ -1533,7 +1546,7 @@ static inline bool stringIteratorEnd(const CStringIterator *cStringIterator)
 {
   assert(cStringIterator != NULL);
 
-  return cStringIterator->codepoint == 0x00000000;
+  return cStringIterator->codepoint == CODE_POINT_NUL;
 }
 
 /***********************************************************************\
@@ -1549,13 +1562,9 @@ static inline void stringIteratorNext(CStringIterator *cStringIterator)
 {
   assert(cStringIterator != NULL);
 
-  if (cStringIterator->s[cStringIterator->nextIndex] != NUL)
+  if (cStringIterator->codepoint != CODE_POINT_NUL)
   {
     cStringIterator->codepoint = stringAtUTF8(cStringIterator->s,cStringIterator->nextIndex,&cStringIterator->nextIndex);
-  }
-  else
-  {
-    cStringIterator->codepoint = 0x00000000;
   }
 }
 
@@ -1573,7 +1582,7 @@ static inline void stringIteratorNextX(CStringIterator *cStringIterator, size_t 
 {
   assert(cStringIterator != NULL);
 
-  while ((n > 0) && (cStringIterator->s[cStringIterator->nextIndex] != NUL))
+  while ((n > 0) && (cStringIterator->codepoint != CODE_POINT_NUL))
   {
     cStringIterator->codepoint = stringAtUTF8(cStringIterator->s,cStringIterator->nextIndex,&cStringIterator->nextIndex);
     n--;
