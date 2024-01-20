@@ -24,6 +24,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <inttypes.h>
 #include <stdint.h>
 #ifdef HAVE_STDBOOL_H
   #include <stdbool.h>
@@ -910,9 +911,7 @@ static inline char stringAt(const char *string, size_t index)
 
 static inline bool stringIsValidUTF8CodepointN(const char *string, size_t length, size_t index, size_t *nextIndex)
 {
-  assert(index < length);
-
-  if (string != NULL)
+  if ((string != NULL) && (index < length))
   {
     if      (   ((index+4) <= length)
              && ((string[index] & 0xF8) == 0xF0)
@@ -979,7 +978,7 @@ static inline bool stringIsValidUTF8Codepoint(const char *string, size_t index, 
 {
   if (string != NULL)
   {
-    return stringIsValidUTF8Codepointn(string,stringLength(string),index,nextIndex);
+    return stringIsValidUTF8CodepointN(string,stringLength(string),index,nextIndex);
   }
   else
   {
@@ -1066,7 +1065,7 @@ static inline char *stringMakeValidUTF8(char *string, size_t index)
 }
 
 /***********************************************************************\
-* Name   : stringNextUTF8n
+* Name   : stringNextUTF8N
 * Purpose: get next UTF8 character index
 * Input  : string - string
 *          length - string length
@@ -1076,7 +1075,7 @@ static inline char *stringMakeValidUTF8(char *string, size_t index)
 * Notes  : -
 \***********************************************************************/
 
-static inline size_t stringNextUTF8n(const char *string, size_t length, size_t index)
+static inline size_t stringNextUTF8N(const char *string, size_t length, size_t index)
 {
   assert(string != NULL);
   assert(index <= length);
@@ -1119,7 +1118,7 @@ static inline size_t stringNextUTF8(const char *string, size_t index)
 {
   assert(string != NULL);
 
-  return stringNextUTF8n(string,stringLength(string),index);
+  return stringNextUTF8N(string,stringLength(string),index);
 }
 
 /***********************************************************************\
@@ -1249,7 +1248,7 @@ static inline size_t stringLengthCodepointsUTF8(const char *string)
 }
 
 /***********************************************************************\
-* Name   : stringAtUTF8n
+* Name   : stringAtUTF8N
 * Purpose: get codepoint
 * Input  : string    - string
 *          length    - string length
@@ -1260,7 +1259,7 @@ static inline size_t stringLengthCodepointsUTF8(const char *string)
 * Notes  : -
 \***********************************************************************/
 
-static inline Codepoint stringAtUTF8n(const char *string, size_t length, size_t index, size_t *nextIndex)
+static inline Codepoint stringAtUTF8N(const char *string, size_t length, size_t index, size_t *nextIndex)
 {
   Codepoint codepoint;
 
@@ -1320,7 +1319,7 @@ static inline Codepoint stringAtUTF8(const char *string, size_t index, size_t *n
 {
   assert(string != NULL);
 
-  return stringAtUTF8n(string,stringLength(string),index,nextIndex);
+  return stringAtUTF8N(string,stringLength(string),index,nextIndex);
 }
 
 /***********************************************************************\

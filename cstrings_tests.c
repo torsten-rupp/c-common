@@ -52,7 +52,7 @@ CTEST(cstrings,stringCompare)
   stringSet(s,sizeof(s),"0123456789");
   ASSERT_TRUE(stringCompare(s,"01234567890") < 0);
   ASSERT_TRUE(stringCompare(s,"0123456789") == 0);
-  ASSERT_TRUE(stringCompare(s,"012345678") > 1);
+  ASSERT_TRUE(stringCompare(s,"012345678") >= 1);
 }
 
 CTEST(cstrings,stringEquals)
@@ -218,16 +218,12 @@ CTEST(cstrings,stringVFormat)
 
 CTEST(cstrings,stringFormatLength)
 {
-  char s[16];
-
   ASSERT_EQUAL(6,stringFormatLength("abc%d",123));
   ASSERT_EQUAL(16,stringFormatLength("01234abcdeXXX%d",123));
 }
 
 static void test_stringVFormatLength(const char *format, ...)
 {
-  char s[16];
-
   va_list arguments;
 
   va_start(arguments,format);
@@ -411,6 +407,222 @@ CTEST(cstrings,stringAt)
   ASSERT_FALSE(stringAt(s,1) == '2');
 }
 
+CTEST(cstrings,stringIsValidUTF8CodepointN)
+{
+  size_t n;
+
+  ASSERT_TRUE(stringIsValidUTF8CodepointN("A",1,0,NULL));
+  ASSERT_TRUE(stringIsValidUTF8CodepointN("A",1,0,&n));
+  ASSERT_EQUAL(1,n);
+  ASSERT_TRUE(stringIsValidUTF8CodepointN("ä",2,0,NULL));
+  ASSERT_TRUE(stringIsValidUTF8CodepointN("ä",2,0,&n));
+  ASSERT_EQUAL(2,n);
+  ASSERT_TRUE(stringIsValidUTF8CodepointN("ää",4,0,NULL));
+  ASSERT_TRUE(stringIsValidUTF8CodepointN("ää",4,2,&n));
+  ASSERT_EQUAL(4,n);
+  ASSERT_TRUE(stringIsValidUTF8CodepointN("€",3,0,NULL));
+  ASSERT_TRUE(stringIsValidUTF8CodepointN("€",3,0,&n));
+  ASSERT_EQUAL(3,n);
+  ASSERT_TRUE(stringIsValidUTF8CodepointN("€€",6,3,NULL));
+  ASSERT_TRUE(stringIsValidUTF8CodepointN("€€",6,3,&n));
+  ASSERT_EQUAL(6,n);
+  ASSERT_TRUE(stringIsValidUTF8CodepointN("𝄞",4,0,NULL));
+  ASSERT_TRUE(stringIsValidUTF8CodepointN("𝄞",4,0,&n));
+  ASSERT_EQUAL(4,n);
+  ASSERT_TRUE(stringIsValidUTF8CodepointN("𝄞𝄞",8,4,NULL));
+  ASSERT_TRUE(stringIsValidUTF8CodepointN("𝄞𝄞",8,4,&n));
+  ASSERT_EQUAL(8,n);
+  ASSERT_FALSE(stringIsValidUTF8CodepointN("\xC3\xA4",2,2,NULL));
+  ASSERT_FALSE(stringIsValidUTF8CodepointN("\xB3\xA4",2,0,NULL));
+}
+
+CTEST(cstrings,stringIsValidUTF8Codepoint)
+{
+  size_t n;
+
+  ASSERT_TRUE(stringIsValidUTF8Codepoint("A",0,NULL));
+  ASSERT_TRUE(stringIsValidUTF8Codepoint("A",0,&n));
+  ASSERT_EQUAL(1,n);
+  ASSERT_TRUE(stringIsValidUTF8Codepoint("ä",0,NULL));
+  ASSERT_TRUE(stringIsValidUTF8Codepoint("ä",0,&n));
+  ASSERT_EQUAL(2,n);
+  ASSERT_TRUE(stringIsValidUTF8Codepoint("€",0,NULL));
+  ASSERT_TRUE(stringIsValidUTF8Codepoint("€",0,&n));
+  ASSERT_EQUAL(3,n);
+  ASSERT_TRUE(stringIsValidUTF8Codepoint("𝄞",0,NULL));
+  ASSERT_TRUE(stringIsValidUTF8Codepoint("𝄞",0,&n));
+  ASSERT_EQUAL(4,n);
+  ASSERT_FALSE(stringIsValidUTF8Codepoint("\xC3\xA4",2,NULL));
+  ASSERT_FALSE(stringIsValidUTF8Codepoint("\xB3\xA4",0,NULL));
+}
+
+CTEST(cstrings,stringIsValidUTF8)
+{
+  ASSERT_TRUE(stringIsValidUTF8("A",0));
+  ASSERT_TRUE(stringIsValidUTF8("AA",1));
+  ASSERT_TRUE(stringIsValidUTF8("ä",0));
+  ASSERT_TRUE(stringIsValidUTF8("ää",2));
+  ASSERT_TRUE(stringIsValidUTF8("€",0));
+  ASSERT_TRUE(stringIsValidUTF8("€€",3));
+  ASSERT_TRUE(stringIsValidUTF8("𝄞",0));
+  ASSERT_TRUE(stringIsValidUTF8("𝄞𝄞",4));
+  ASSERT_FALSE(stringIsValidUTF8("\xB3\xA4",0));
+  ASSERT_FALSE(stringIsValidUTF8("\xB3\xB3\xA4",1));
+}
+
+CTEST(cstrings,stringMakeValidUTF8)
+{
+  char s[16];
+
+  stringSet(s,sizeof(s),"A");
+  ASSERT_EQUAL(1,stringLengthCodepointsUTF8(s));
+  stringMakeValidUTF8(s,0);
+  ASSERT_TRUE(stringIsValidUTF8(s,0));
+  stringSet(s,sizeof(s),"AA");
+  ASSERT_EQUAL(2,stringLengthCodepointsUTF8(s));
+  stringMakeValidUTF8(s,1);
+  ASSERT_TRUE(stringIsValidUTF8(s,1));
+
+  stringSet(s,sizeof(s),"ä");
+  ASSERT_EQUAL(1,stringLengthCodepointsUTF8(s));
+  stringMakeValidUTF8(s,0);
+  ASSERT_TRUE(stringIsValidUTF8(s,0));
+  stringSet(s,sizeof(s),"ää");
+  ASSERT_EQUAL(2,stringLengthCodepointsUTF8(s));
+  stringMakeValidUTF8(s,2);
+  ASSERT_TRUE(stringIsValidUTF8(s,2));
+
+  stringSet(s,sizeof(s),"ä\xB3ä");
+  stringMakeValidUTF8(s,0);
+  ASSERT_EQUAL(2,stringLengthCodepointsUTF8(s));
+  ASSERT_TRUE(stringIsValidUTF8(s,0));
+
+  stringSet(s,sizeof(s),"€");
+  ASSERT_EQUAL(1,stringLengthCodepointsUTF8(s));
+  stringMakeValidUTF8(s,0);
+  ASSERT_TRUE(stringIsValidUTF8(s,0));
+  stringSet(s,sizeof(s),"€€");
+  ASSERT_EQUAL(2,stringLengthCodepointsUTF8(s));
+  stringMakeValidUTF8(s,3);
+  ASSERT_TRUE(stringIsValidUTF8(s,3));
+
+  stringSet(s,sizeof(s),"€\xB3€");
+  stringMakeValidUTF8(s,0);
+  ASSERT_EQUAL(2,stringLengthCodepointsUTF8(s));
+  ASSERT_TRUE(stringIsValidUTF8(s,0));
+
+  stringSet(s,sizeof(s),"𝄞");
+  ASSERT_EQUAL(1,stringLengthCodepointsUTF8(s));
+  stringMakeValidUTF8(s,0);
+  ASSERT_TRUE(stringIsValidUTF8(s,0));
+  stringSet(s,sizeof(s),"𝄞𝄞");
+  ASSERT_EQUAL(2,stringLengthCodepointsUTF8(s));
+  stringMakeValidUTF8(s,4);
+  ASSERT_TRUE(stringIsValidUTF8(s,4));
+
+  stringSet(s,sizeof(s),"𝄞\xB3𝄞");
+  stringMakeValidUTF8(s,0);
+  ASSERT_EQUAL(2,stringLengthCodepointsUTF8(s));
+  ASSERT_TRUE(stringIsValidUTF8(s,0));
+}
+
+CTEST(cstrings,stringNextUTF8N)
+{
+  size_t n = 0;
+  n = stringNextUTF8N("Aä€𝄞",1+2+3+4,n);
+  ASSERT_EQUAL(1,n);
+  n = stringNextUTF8N("Aä€𝄞",1+2+3+4,n);
+  ASSERT_EQUAL(3,n);
+  n = stringNextUTF8N("Aä€𝄞",1+2+3+4,n);
+  ASSERT_EQUAL(6,n);
+  n = stringNextUTF8N("Aä€𝄞",1+2+3+4,n);
+  ASSERT_EQUAL(10,n);
+}
+
+CTEST(cstrings,charUTF8Length)
+{
+  ASSERT_EQUAL(1,charUTF8Length(stringAtUTF8("A",0,NULL)));
+  ASSERT_EQUAL(2,charUTF8Length(stringAtUTF8("ä",0,NULL)));
+  ASSERT_EQUAL(3,charUTF8Length(stringAtUTF8("€",0,NULL)));
+  ASSERT_EQUAL(4,charUTF8Length(stringAtUTF8("𝄞",0,NULL)));
+}
+
+CTEST(cstrings,isCharUTF8)
+{
+  ASSERT_FALSE(isCharUTF8(stringAtUTF8("A",0,NULL)));
+  ASSERT_TRUE(isCharUTF8(stringAtUTF8("ä",0,NULL)));
+  ASSERT_TRUE(isCharUTF8(stringAtUTF8("€",0,NULL)));
+  ASSERT_TRUE(isCharUTF8(stringAtUTF8("𝄞",0,NULL)));
+}
+
+CTEST(cstrings,charUTF8)
+{
+  ASSERT_STR("A",charUTF8(stringAtUTF8("A",0,NULL)));
+  ASSERT_STR("ä",charUTF8(stringAtUTF8("ä",0,NULL)));
+  ASSERT_STR("€",charUTF8(stringAtUTF8("€",0,NULL)));
+  ASSERT_STR("𝄞",charUTF8(stringAtUTF8("𝄞",0,NULL)));
+}
+
+CTEST(cstrings,stringAtUTF8N)
+{
+  ASSERT_STR("A",charUTF8(stringAtUTF8N("A",1,0,NULL)));
+  ASSERT_STR("A",charUTF8(stringAtUTF8N("AA",2,1,NULL)));
+  ASSERT_STR("ä",charUTF8(stringAtUTF8N("ä",2,0,NULL)));
+  ASSERT_STR("ä",charUTF8(stringAtUTF8N("ää",4,2,NULL)));
+  ASSERT_STR("€",charUTF8(stringAtUTF8N("€",3,0,NULL)));
+  ASSERT_STR("€",charUTF8(stringAtUTF8N("€€",6,3,NULL)));
+  ASSERT_STR("𝄞",charUTF8(stringAtUTF8N("𝄞",4,0,NULL)));
+  ASSERT_STR("𝄞",charUTF8(stringAtUTF8N("𝄞𝄞",8,4,NULL)));
+}
+
+CTEST(cstrings,stringAtUTF8)
+{
+  ASSERT_STR("A",charUTF8(stringAtUTF8("A",0,NULL)));
+  ASSERT_STR("A",charUTF8(stringAtUTF8("AA",1,NULL)));
+  ASSERT_STR("ä",charUTF8(stringAtUTF8("ä",0,NULL)));
+  ASSERT_STR("ä",charUTF8(stringAtUTF8("ää",2,NULL)));
+  ASSERT_STR("€",charUTF8(stringAtUTF8("€",0,NULL)));
+  ASSERT_STR("€",charUTF8(stringAtUTF8("€€",3,NULL)));
+  ASSERT_STR("𝄞",charUTF8(stringAtUTF8("𝄞",0,NULL)));
+  ASSERT_STR("𝄞",charUTF8(stringAtUTF8("𝄞𝄞",4,NULL)));
+}
+
+static void test_stringVFormatLengthCodepointsUTF8(size_t n, const char *format, ...)
+{
+  va_list arguments;
+
+  va_start(arguments,format);
+  ASSERT_EQUAL(n,stringVFormatLengthCodepointsUTF8(format,arguments));
+  va_end(arguments);
+}
+
+CTEST(cstrings,stringVFormatLengthCodepointsUTF8)
+{
+  test_stringVFormatLengthCodepointsUTF8(4,"Aä€𝄞");
+  test_stringVFormatLengthCodepointsUTF8(8,"A%cä%c€%c𝄞%c",'x','x','x','x');
+}
+
+CTEST(cstrings,stringFormatLengthCodepointsUTF8)
+{
+  ASSERT_EQUAL(4,stringFormatLengthCodepointsUTF8("Aä€𝄞"));
+  ASSERT_EQUAL(8,stringFormatLengthCodepointsUTF8("A%cä%c€%c𝄞%c",'x','x','x','x'));
+}
+
+CTEST(cstrings,stringLengthCodepointsUTF8)
+{
+  ASSERT_EQUAL(1,stringLengthCodepointsUTF8("A"));
+  ASSERT_EQUAL(1,stringLengthCodepointsUTF8("ä"));
+  ASSERT_EQUAL(1,stringLengthCodepointsUTF8("€"));
+  ASSERT_EQUAL(1,stringLengthCodepointsUTF8("𝄞"));
+
+  ASSERT_EQUAL(2,stringLengthCodepointsUTF8("AA"));
+  ASSERT_EQUAL(2,stringLengthCodepointsUTF8("ää"));
+  ASSERT_EQUAL(2,stringLengthCodepointsUTF8("€€"));
+  ASSERT_EQUAL(2,stringLengthCodepointsUTF8("𝄞𝄞"));
+
+  ASSERT_EQUAL(4,stringLengthCodepointsUTF8("Aä€𝄞"));
+}
+
 CTEST(cstrings,stringFind)
 {
   char s[16];
@@ -453,7 +665,6 @@ CTEST(cstrings,stringSub)
 
 CTEST(cstrings,stringIterator)
 {
-  char            s[16];
   CStringIterator stringIterator;
 
   stringIteratorInit(&stringIterator,"01234abcde01234");
@@ -476,7 +687,6 @@ CTEST(cstrings,stringIterator)
 
 CTEST(cstrings,stringTokenizer)
 {
-  char             s[16];
   CStringTokenizer stringTokenizer;
   const char       *t;
 
@@ -661,7 +871,6 @@ CTEST(cstrings,stringVScan)
 
 CTEST(cstrings,stringMatch)
 {
-  char       s[16];
   const char *t;
   size_t     n;
 
@@ -675,7 +884,6 @@ CTEST(cstrings,stringMatch)
 
 static void test_stringVMatch(const char *format, ...)
 {
-  char       s[16];
   const char *t;
   size_t     n;
 
@@ -703,6 +911,11 @@ CTEST(cstrings,stringVMatch)
   size_t n;
 
   test_stringVMatch("",&t,&n,NULL);
+}
+
+CTEST(cstrings,stringSimpleHash)
+{
+  stringSimpleHash("012345");
 }
 
 int main(int argc, const char *argv[])
