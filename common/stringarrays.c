@@ -1,8 +1,5 @@
 /***********************************************************************\
 *
-* $Source: /home/torsten/cvs/bar/arrays.c,v $
-* $Revision: 1481 $
-* $Author: torsten $
 * Contents: dynamic string array functions
 * Systems: all
 *

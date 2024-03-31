@@ -1,8 +1,5 @@
 /***********************************************************************\
 *
-* $Revision: 8588 $
-* $Date: 2018-07-07 09:50:53 +0200 (Sat, 07 Jul 2018) $
-* $Author: torsten $
 * Contents: Backup ARchiver pattern functions
 * Systems: all
 *

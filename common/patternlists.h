@@ -1,8 +1,5 @@
 /***********************************************************************\
 *
-* $Revision: 9251 $
-* $Date: 2019-02-09 10:22:29 +0100 (Sat, 09 Feb 2019) $
-* $Author: torsten $
 * Contents: Backup ARchiver pattern list functions
 * Systems: all
 *

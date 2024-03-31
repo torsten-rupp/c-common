@@ -1,8 +1,5 @@
 /***********************************************************************\
 *
-* $Source$
-* $Revision$
-* $Author$
 * Contents: xdelta pack demo
 * Systems: Linux
 *

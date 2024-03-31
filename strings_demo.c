@@ -1,8 +1,5 @@
 /***********************************************************************\
 *
-* $Source$
-* $Revision$
-* $Author$
 * Contents: dynamic strings demo
 * Systems: *nix
 *

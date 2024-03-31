@@ -1,8 +1,5 @@
 /***********************************************************************\
 *
-* $Source: /home/torsten/cvs/bar/mailboxes.h,v $
-* $Revision$
-* $Author$
 * Contents: functions for inter-process mailboxes
 * Systems: all POSIX
 *

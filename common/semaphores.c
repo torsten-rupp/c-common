@@ -1,8 +1,5 @@
 /***********************************************************************\
 *
-* $Revision: 9109 $
-* $Date: 2018-12-23 11:34:35 +0100 (Sun, 23 Dec 2018) $
-* $Author: torsten $
 * Contents: functions for inter-process semaphores
 * Systems: all POSIX
 *

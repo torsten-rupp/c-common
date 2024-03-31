@@ -1,8 +1,5 @@
 /***********************************************************************\
 *
-* $Revision: 8551 $
-* $Date: 2018-07-05 22:11:55 +0200 (Thu, 05 Jul 2018) $
-* $Author: torsten $
 * Contents: Backup ARchiver ReiserFS file system plug in
 * Systems: all
 *

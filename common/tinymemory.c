@@ -1,8 +1,5 @@
 /***********************************************************************\
 *
-* $Source$
-* $Revision: 919 $
-* $Author: torsten $
 * Contents: tiny memory pool managment functions
 * Systems : all
 *

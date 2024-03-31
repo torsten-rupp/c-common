@@ -1,8 +1,5 @@
 /***********************************************************************\
 *
-* $Source: /home/torsten/cvs/bar/passwords.c,v $
-* $Revision$
-* $Author$
 * Contents: functions for base64
 * Systems: all
 *

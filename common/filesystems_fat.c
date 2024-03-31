@@ -1,8 +1,5 @@
 /***********************************************************************\
 *
-* $Revision: 9637 $
-* $Date: 2019-08-05 01:58:17 +0200 (Mon, 05 Aug 2019) $
-* $Author: torsten $
 * Contents: Backup ARchiver FAT file systems plug in
 * Systems: all
 *

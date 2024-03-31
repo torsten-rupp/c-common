@@ -1,8 +1,5 @@
 /***********************************************************************\
 *
-* $Revision: 10219 $
-* $Date: 2019-12-11 16:39:42 +0100 (Wed, 11 Dec 2019) $
-* $Author: torsten $
 * Contents: Fragment list functions
 * Systems: all
 *
@@ -66,7 +63,6 @@
 #endif
 
 #ifndef NDEBUG
-
 /***********************************************************************\
 * Name   : fragmentNodeValid
 * Purpose: check if fragment node is valid
@@ -93,6 +89,23 @@ LOCAL void fragmentNodeValid(const FragmentNode *fragmentNode)
   assert(size == fragmentNode->rangeListSum);
 }
 #endif /* NDEBUG */
+
+LOCAL void fragmentNodeDone(FragmentNode *fragmentNode, void *userData)
+{
+  assert(fragmentNode != NULL);
+  FRAGMENTNODE_VALID(fragmentNode);
+
+  UNUSED_VARIABLE(userData);
+
+  DEBUG_REMOVE_RESOURCE_TRACE(fragmentNode,FragmentNode);
+
+  List_done(&fragmentNode->rangeList);
+  if (fragmentNode->userData != NULL)
+  {
+    free(fragmentNode->userData);
+  }
+  String_delete(fragmentNode->name);
+}
 
 /***********************************************************************\
 * Name   : printSpaces
@@ -141,7 +154,7 @@ void __FragmentList_init(const char   *__fileName__,
 {
   assert(fragmentList != NULL);
 
-  List_init(fragmentList,CALLBACK_(NULL,NULL),CALLBACK_((ListNodeFreeFunction)FragmentList_doneNode,NULL));
+  List_init(fragmentList,CALLBACK_(NULL,NULL),CALLBACK_((ListNodeFreeFunction)fragmentNodeDone,NULL));
 
   #ifdef NDEBUG
     DEBUG_ADD_RESOURCE_TRACE(fragmentList,FragmentList);
@@ -215,14 +228,7 @@ void FragmentList_doneNode(FragmentNode *fragmentNode)
   assert(fragmentNode != NULL);
   FRAGMENTNODE_VALID(fragmentNode);
 
-  DEBUG_REMOVE_RESOURCE_TRACE(fragmentNode,FragmentNode);
-
-  List_done(&fragmentNode->rangeList);
-  if (fragmentNode->userData != NULL)
-  {
-    free(fragmentNode->userData);
-  }
-  String_delete(fragmentNode->name);
+  fragmentNodeDone(fragmentNode,NULL);
 }
 
 void FragmentList_lockNode(FragmentNode *fragmentNode)

@@ -1,8 +1,5 @@
 /***********************************************************************\
 *
-* $Revision: 8952 $
-* $Date: 2018-12-07 01:52:09 +0100 (Fri, 07 Dec 2018) $
-* $Author: torsten $
 * Contents: dynamic string functions
 * Systems: all
 *

@@ -1,8 +1,5 @@
 /***********************************************************************\
 *
-* $Source: /home/torsten/cvs/bar/bar/patterns.h,v $
-* $Revision$
-* $Author$
 * Contents: Backup ARchiver pattern functions
 * Systems: all
 *

@@ -1,8 +1,5 @@
 /***********************************************************************\
 *
-* $Source$
-* $Revision: 1102 $
-* $Author: torsten $
 * Contents: auto-free demo
 * Systems: all
 *

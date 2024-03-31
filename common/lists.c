@@ -1,8 +1,5 @@
 /***********************************************************************\
 *
-* $Revision: 9250 $
-* $Date: 2019-02-09 10:22:17 +0100 (Sat, 09 Feb 2019) $
-* $Author: torsten $
 * Contents: dynamic list functions
 * Systems: all
 *

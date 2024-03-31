@@ -1,8 +1,5 @@
 /***********************************************************************\
 *
-* $Source$
-* $Revision$
-* $Author$
 * Contents: crash minidump functions
 * Systems: Linux
 *

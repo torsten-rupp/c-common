@@ -1,8 +1,5 @@
 /***********************************************************************\
 *
-* $Source$
-* $Revision$
-* $Author$
 * Contents: dynamic list demo
 * Systems: all
 *

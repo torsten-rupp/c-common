@@ -1,8 +1,5 @@
 /**********************************************************************
 *
-* $Revision: 11192 $
-* $Date: 2020-11-26 12:20:31 +0100 (Thu, 26 Nov 2020) $
-* $Author: torsten $
 * Contents: config file entry parser
 * Systems: all
 *

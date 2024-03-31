@@ -1,8 +1,5 @@
 /***********************************************************************\
 *
-* $Revision: 9249 $
-* $Date: 2019-02-09 10:21:52 +0100 (Sat, 09 Feb 2019) $
-* $Author: torsten $
 * Contents: dictionary functions
 * Systems: all
 *

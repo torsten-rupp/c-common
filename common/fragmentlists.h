@@ -1,8 +1,5 @@
 /***********************************************************************\
 *
-* $Revision: 10219 $
-* $Date: 2019-12-11 16:39:42 +0100 (Wed, 11 Dec 2019) $
-* $Author: torsten $
 * Contents: Fragment list functions
 * Systems: all
 *

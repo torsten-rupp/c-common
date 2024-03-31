@@ -1,8 +1,5 @@
 /***********************************************************************\
 *
-* $Source$
-* $Revision$
-* $Author$
 * Contents: lzma pack demo
 * Systems: Linux
 *

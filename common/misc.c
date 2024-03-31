@@ -1,8 +1,5 @@
 /***********************************************************************\
 *
-* $Revision: 9123 $
-* $Date: 2018-12-25 10:25:11 +0100 (Tue, 25 Dec 2018) $
-* $Author: torsten $
 * Contents: miscellaneous functions
 * Systems: all
 *

@@ -1,8 +1,5 @@
 /***********************************************************************\
 *
-* $Source$
-* $Revision: 8583 $
-* $Author: torsten $
 * Contents: crash mini dump functions
 * Systems: Linux
 *

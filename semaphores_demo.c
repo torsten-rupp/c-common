@@ -1,8 +1,5 @@
 /***********************************************************************\
 *
-* $Source$
-* $Revision: 919 $
-* $Author: torsten $
 * Contents: semaphores demo
 * Systems: all
 *
@@ -68,8 +65,10 @@ LOCAL void demoThreadCode(void)
   Semaphore_unlock(&semaphore);
 }
 
-LOCAL void deadlockThreadCode(int n)
+LOCAL void* deadlockThreadCode(void *userData)
 {
+  int n = (intptr_t)userData;
+
   switch (n)
   {
     case 1:
@@ -109,7 +108,8 @@ LOCAL void deadlockThreadCode(int n)
       Semaphore_unlock(&semaphoreC);
       break;
   }
-fprintf(stderr,"%s, %d: done %d \n",__FILE__,__LINE__,n);
+
+  return NULL;
 }
 
 int main(int argc, char *argv[])
@@ -202,9 +202,9 @@ fprintf(stderr,"%s, %d: \n",__FILE__,__LINE__);
 
 #if 1
   printf("Dead lock detection...\n"); fflush(stdout);
-  pthread_create(&t1,NULL,(void*(*)(void*))deadlockThreadCode,(void*)1);
-  pthread_create(&t2,NULL,(void*(*)(void*))deadlockThreadCode,(void*)2);
-  pthread_create(&t3,NULL,(void*(*)(void*))deadlockThreadCode,(void*)3);
+  pthread_create(&t1,NULL,deadlockThreadCode,(void*)1);
+  pthread_create(&t2,NULL,deadlockThreadCode,(void*)2);
+  pthread_create(&t3,NULL,deadlockThreadCode,(void*)3);
   pthread_join(t3,NULL);
   pthread_join(t2,NULL);
   pthread_join(t1,NULL);

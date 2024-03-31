@@ -1,8 +1,5 @@
 /***********************************************************************\
 *
-* $Revision: 9241 $
-* $Date: 2019-02-07 22:09:09 +0100 (Thu, 07 Feb 2019) $
-* $Author: torsten $
 * Contents: functions for secure storage of passwords
 * Systems: all
 *

@@ -1,8 +1,5 @@
 /***********************************************************************\
 *
-* $Revision: 8999 $
-* $Date: 2018-12-14 15:00:39 +0100 (Fri, 14 Dec 2018) $
-* $Author: torsten $
 * Contents: Network functions
 * Systems: all
 *

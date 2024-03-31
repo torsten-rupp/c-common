@@ -1,9 +1,6 @@
 %{
 /***********************************************************************\
 *
-* $Source: /home/torsten/cvs/sc/sc_codeparser.y,v $
-* $Revision: 1.1 $
-* $Author: torsten $
 * Contents: code parser
 * Systems : all
 *

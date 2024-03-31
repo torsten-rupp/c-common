@@ -1,8 +1,5 @@
 /***********************************************************************\
 *
-* $Revision: 8782 $
-* $Date: 2018-10-26 03:23:38 +0200 (Fri, 26 Oct 2018) $
-* $Author: torsten $
 * Contents: thread functions
 * Systems: all
 *

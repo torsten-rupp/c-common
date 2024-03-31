@@ -1,8 +1,5 @@
 /***********************************************************************\
 *
-* $Revision: 9310 $
-* $Date: 2019-03-07 20:18:14 +0100 (Thu, 07 Mar 2019) $
-* $Author: torsten $
 * Contents: global definitions
 * Systems: Linux
 *
@@ -204,10 +201,10 @@
 
 // memory sizes
 #define KB 1024
-#define MB (1024*KB)
-#define GB (1024L*MB)
-#define TB (1024L*GB)
-#define PB (1024L*TB)
+#define MB (1024L*KB)
+#define GB (1024LL*MB)
+#define TB (1024LL*GB)
+#define PB (1024LL*TB)
 
 // special constants
 #define NO_WAIT      0L
@@ -1943,7 +1940,7 @@ static inline uint getStackTrace(void const * stackTrace[], uint maxStackTraceSi
   #endif
 
   #ifdef HAVE_BACKTRACE
-    stackTraceSize = (uint)backtrace((void*)stackTrace,maxStackTraceSize);
+    stackTraceSize = (uint)backtrace((void**)stackTrace,maxStackTraceSize);
     for (i = 0; i < stackTraceSize; i++)
     {
       stackTrace[i] = (void const **)((const byte*)stackTrace[i]-1);

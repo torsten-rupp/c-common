@@ -1,8 +1,5 @@
 /***********************************************************************\
 *
-* $Source: /home/torsten/cvs/bar/bar/dictionaries.c,v $
-* $Revision$
-* $Author$
 * Contents: hash table functions
 * Systems: all
 *

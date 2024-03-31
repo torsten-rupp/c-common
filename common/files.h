@@ -1,8 +1,5 @@
 /***********************************************************************\
 *
-* $Revision: 9279 $
-* $Date: 2019-02-18 12:31:17 +0100 (Mon, 18 Feb 2019) $
-* $Author: torsten $
 * Contents: Backup ARchiver files functions
 * Systems: all
 *

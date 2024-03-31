@@ -1,8 +1,5 @@
 /***********************************************************************\
 *
-* $Revision: 8576 $
-* $Date: 2018-07-05 22:34:54 +0200 (Thu, 05 Jul 2018) $
-* $Author: torsten $
 * Contents: Bitmap functions
 * Systems: all
 *

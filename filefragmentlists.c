@@ -1,8 +1,5 @@
 /***********************************************************************\
 *
-* $Source: /home/torsten/cvs/bar/filefragmentlists.c,v $
-* $Revision$
-* $Author$
 * Contents: Backup ARchiver file fragment list functions
 * Systems: all
 *

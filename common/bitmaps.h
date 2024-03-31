@@ -1,8 +1,5 @@
 /***********************************************************************\
 *
-* $Revision: 1462 $
-* $Date: 2012-01-28 10:07:14 +0100 (Sat, 28 Jan 2012) $
-* $Author: trupp $
 * Contents: Bitmap functions
 * Systems: all
 *

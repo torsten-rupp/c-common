@@ -1,8 +1,5 @@
 /***********************************************************************\
 *
-* $Source$
-* $Revision: 919 $
-* $Author: torsten $
 * Contents: semaphores demo
 * Systems: all
 *
@@ -45,8 +42,10 @@ typedef struct
 
 /***************************** Functions *******************************/
 
-static bool parseEnum(const char *name, Enum *value)
+static bool parseEnum(const char *name, Enum *value, void *userData)
 {
+  UNUSED_VARIABLE(userData);
+
   if      (strcmp(name,"A") == 0) { (*value) = A; return TRUE;  }
   else if (strcmp(name,"B") == 0) { (*value) = B; return TRUE;  }
   else if (strcmp(name,"C") == 0) { (*value) = C; return TRUE;  }

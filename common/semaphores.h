@@ -1,8 +1,5 @@
 /***********************************************************************\
 *
-* $Revision: 9233 $
-* $Date: 2019-02-02 12:27:08 +0100 (Sat, 02 Feb 2019) $
-* $Author: torsten $
 * Contents: functions for inter-process mutex semaphores
 * Systems: all POSIX
 *

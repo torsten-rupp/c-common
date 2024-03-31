@@ -1,8 +1,5 @@
 # ----------------------------------------------------------------------------
 #
-# $Source: /home/torsten/cvs/sc/Makefile,v $
-# $Revision: 1.3 $
-# $Author: torsten $
 # Contents: Makefile for
 # Systems :
 #			   

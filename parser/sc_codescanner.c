@@ -1,8 +1,5 @@
 /***********************************************************************\
 *
-* $Source: /home/torsten/cvs/sc/sc_codescanner.c,v $
-* $Revision$
-* $Author$
 * Contents: code scanner functions
 * Systems : all
 *

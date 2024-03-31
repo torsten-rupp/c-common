@@ -1,8 +1,5 @@
 /***********************************************************************\
 *
-* $Source: /home/torsten/cvs/sc/sc_codeparser.h,v $
-* $Revision$
-* $Author$
 * Contents: code parser functions
 * Systems : all
 *

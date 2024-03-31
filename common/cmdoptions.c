@@ -1,8 +1,5 @@
 /**********************************************************************
 *
-* $Revision: 9243 $
-* $Date: 2019-02-07 22:09:49 +0100 (Thu, 07 Feb 2019) $
-* $Author: torsten $
 * Contents: command line options parser
 * Systems: all
 *
