@@ -350,14 +350,14 @@ typedef struct DatabaseNode
     struct
     {
       // pending reads
-      DatabaseThreadInfo pendingReads[32];
+      DatabaseThreadInfo        pendingReads[32];
       // reads
-      DatabaseThreadInfo reads[32];
+      DatabaseThreadInfo        reads[32];
       // pending read/writes
-      DatabaseThreadInfo pendingReadWrites[32];
+      DatabaseThreadInfo        pendingReadWrites[32];
       // read/write
-      ThreadId           readWriteLockedBy;
-      DatabaseThreadInfo readWrites[32];
+      ThreadId                  readWriteLockedBy;
+      DatabaseThreadInfo        readWrites[32];
       struct
       {
         DatabaseThreadInfo threadInfo;
@@ -372,7 +372,7 @@ typedef struct DatabaseNode
           void const *stackTrace[16];
           uint       stackTraceSize;
         #endif /* HAVE_BACKTRACE */
-      }                     lastTrigger;
+      }                         lastTrigger;
       // running transaction
       struct
       {
@@ -383,7 +383,7 @@ typedef struct DatabaseNode
           void const *stackTrace[16];
           uint       stackTraceSize;
         #endif /* HAVE_BACKTRACE */
-      }                     transaction;
+      }                         transaction;
       // history
       DatabaseHistoryThreadInfo history[32];
       uint                      historyIndex;
@@ -433,7 +433,7 @@ typedef struct DatabaseHandle
   };
   uint                        readLockCount;
   uint                        readWriteLockCount;
-  uint                        transcationCount;
+  uint                        transactionCount;
   long                        timeout;                    // timeout [ms]
   void                        *busyHandlerUserData;
   bool                        enabledSync;
@@ -1019,7 +1019,13 @@ typedef void(*DatabaseCopyProgressCallbackFunction)(void *userData);
 
 // filter macros
 #define DATABASE_FILTERS(...) \
-  (DatabaseFilter[]){__VA_ARGS__}, \
+  _ITERATOR_IF_ELSE(_ITERATOR_HAS_ARGS(__VA_ARGS__)) \
+  ( \
+    (DatabaseFilter[]){__VA_ARGS__}, \
+  ) \
+  ( \
+    NULL, \
+  ) \
   ((_ITERATOR_EVAL(_ITERATOR_MAP_COUNT(__VA_ARGS__)) 0)/2)
 
 /***********************************************************************\
@@ -1077,22 +1083,22 @@ LOCAL_INLINE DatabaseFilterArray __DatabaseFilterArray(void *data, ulong length,
 /***********************************************************************\
 * Name   : DATABASE_LOCKED_DO
 * Purpose: execute block with database locked
-* Input  : databaseHandle    - database handle
-*          semaphoreLockType - lock type; see SemaphoreLockTypes
-*          timeout           - timeout [ms] or NO_WAIT, WAIT_FOREVER
+* Input  : databaseHandle - database handle
+*          lockType       - lock type; see DatabaseLockTypes
+*          timeout        - timeout [ms] or NO_WAIT, WAIT_FOREVER
 * Output : -
 * Return : -
 * Notes  : usage:
-*            DATABASE_LOCKED_DO(databaseHandle,SEMAPHORE_LOCK_TYPE_READ,1000)
+*            DATABASE_LOCKED_DO(databaseHandle,DATABASE_LOCK_TYPE_READ,1000)
 *            {
 *              ...
 *            }
 \***********************************************************************/
 
-#define DATABASE_LOCKED_DO(databaseHandle,semaphoreLockType,timeout) \
-  for (bool __databaseLock ## __COUNTER__ = Database_lock(databaseHandle,semaphoreLockType,timeout); \
+#define DATABASE_LOCKED_DO(databaseHandle,lockType,timeout) \
+  for (bool __databaseLock ## __COUNTER__ = Database_lock(databaseHandle,lockType,timeout); \
        __databaseLock ## __COUNTER__; \
-       Database_unlock(databaseHandle,semaphoreLockType), __databaseLock ## __COUNTER__ = FALSE \
+       Database_unlock(databaseHandle,lockType), __databaseLock ## __COUNTER__ = FALSE \
       )
 
 /***********************************************************************\
@@ -1129,6 +1135,7 @@ LOCAL_INLINE DatabaseFilterArray __DatabaseFilterArray(void *data, ulong length,
   #define Database_beginTransaction(...)    __Database_beginTransaction   (__FILE__,__LINE__, ## __VA_ARGS__)
   #define Database_endTransaction(...)      __Database_endTransaction     (__FILE__,__LINE__, ## __VA_ARGS__)
   #define Database_rollbackTransaction(...) __Database_rollbackTransaction(__FILE__,__LINE__, ## __VA_ARGS__)
+  #define Database_select(...)              __Database_select             (__FILE__,__LINE__, ## __VA_ARGS__)
   #define Database_finalize(...)            __Database_finalize           (__FILE__,__LINE__, ## __VA_ARGS__)
 
   #define Database_debugPrintQueryInfo(...) __Database_debugPrintQueryInfo(__FILE__,__LINE__, ## __VA_ARGS__)
@@ -1501,13 +1508,15 @@ void Database_interrupt(DatabaseHandle *databaseHandle);
 * Purpose: get table list
 * Input  : tableList      - table list variable
 *          databaseHandle - database handle
+*          databaseName   - database name
 * Output : tableList - table list
 * Return : ERROR_NONE or error code
 * Notes  : -
 \***********************************************************************/
 
 Errors Database_getTableList(StringList     *tableList,
-                             DatabaseHandle *databaseHandle
+                             DatabaseHandle *databaseHandle,
+                             const char     *databaseName
                             );
 
 /***********************************************************************\
@@ -1515,13 +1524,15 @@ Errors Database_getTableList(StringList     *tableList,
 * Purpose: get view list
 * Input  : viewList       - view list variable
 *          databaseHandle - database handle
+*          databaseName   - database name
 * Output : viewList - view list
 * Return : ERROR_NONE or error code
 * Notes  : -
 \***********************************************************************/
 
 Errors Database_getViewList(StringList     *viewList,
-                            DatabaseHandle *databaseHandle
+                            DatabaseHandle *databaseHandle,
+                             const char     *databaseName
                            );
 
 /***********************************************************************\
@@ -1545,13 +1556,15 @@ Errors Database_getIndexList(StringList     *indexList,
 * Purpose: get trigger list
 * Input  : triggerList    - trigger list variable
 *          databaseHandle - database handle
+*          databaseName   - database name
 * Output : triggerList - trigger list
 * Return : ERROR_NONE or error code
 * Notes  : -
 \***********************************************************************/
 
 Errors Database_getTriggerList(StringList     *triggerList,
-                               DatabaseHandle *databaseHandle
+                               DatabaseHandle *databaseHandle,
+                               const char     *databaseName
                               );
 
 //TODO: remove
@@ -1690,14 +1703,14 @@ INLINE bool Database_isLocked(DatabaseHandle    *databaseHandle,
 * Name   : Database_isLockPending
 * Purpose: check if database lock is pending
 * Input  : databaseHandle - database handle
-*          lockType       - lock type; see SEMAPHORE_LOCK_TYPE_*
+*          lockType       - lock type; see DATABASE_LOCK_TYPE_*
 * Output : -
 * Return : TRUE iff locked
 * Notes  : -
 \***********************************************************************/
 
-bool Database_isLockPending(DatabaseHandle     *databaseHandle,
-                            SemaphoreLockTypes lockType
+bool Database_isLockPending(DatabaseHandle    *databaseHandle,
+                            DatabaseLockTypes lockType
                            );
 
 /***********************************************************************\
@@ -2226,21 +2239,17 @@ char *Database_filterTimeString(const DatabaseHandle *databaseHandle,
 * Purpose: execute SQL statement
 * Input  : databaseHandle  - database handle
 *          changedRowCount - number of changd rows (can be NULL)
-*          flagsflags      - execute flags; see DATABASE_FLAG_...
+*          flags           - execute flags; see DATABASE_FLAG_...
 *          sqlCommand      - SQL command string
-*          values          - values for SQL command string
-*          valueCount      - value count
 * Output : -
 * Return : ERROR_NONE or error code
 * Notes  : -
 \***********************************************************************/
 
-Errors Database_execute(DatabaseHandle          *databaseHandle,
-                        ulong                   *changedRowCount,
-                        uint                    flags,
-                        const char              *sqlCommand,
-                        const DatabaseParameter parameters[],
-                        uint                    parameterCount
+Errors Database_execute(DatabaseHandle *databaseHandle,
+                        ulong          *changedRowCount,
+                        uint           flags,
+                        const char     *sqlCommand
                        );
 
 /***********************************************************************\
@@ -2448,20 +2457,41 @@ Errors Database_deleteByIds(DatabaseHandle   *databaseHandle,
 * Notes  : Database is locked until Database_finalize() is called
 \***********************************************************************/
 
-Errors Database_select(DatabaseStatementHandle *databaseStatementHandle,
-                       DatabaseHandle          *databaseHandle,
-                       const char              *tableName,
-                       uint                    flags,
-                       DatabaseColumn          columns[],
-                       uint                    columnCount,
-                       const char              *filter,
-                       const DatabaseFilter    filters[],
-                       uint                    filterCount,
-                       const char              *groupBy,
-                       const char              *orderBy,
-                       uint64                  offset,
-                       uint64                  limit
-                      );
+#ifdef NDEBUG
+  Errors Database_select(DatabaseStatementHandle *databaseStatementHandle,
+                         DatabaseHandle          *databaseHandle,
+// TODO: use DatabaseTable
+                         const char              *tableName,
+                         uint                    flags,
+                         DatabaseColumn          columns[],
+                         uint                    columnCount,
+                         const char              *filter,
+                         const DatabaseFilter    filters[],
+                         uint                    filterCount,
+                         const char              *groupBy,
+                         const char              *orderBy,
+                         uint64                  offset,
+                         uint64                  limit
+                        );
+#else /* not NDEBUG */
+  Errors __Database_select(const char              *__fileName__,
+                           ulong                   __lineNb__,
+                           DatabaseStatementHandle *databaseStatementHandle,
+                           DatabaseHandle          *databaseHandle,
+// TODO: use DatabaseTable
+                           const char              *tableName,
+                           uint                    flags,
+                           DatabaseColumn          columns[],
+                           uint                    columnCount,
+                           const char              *filter,
+                           const DatabaseFilter    filters[],
+                           uint                    filterCount,
+                           const char              *groupBy,
+                           const char              *orderBy,
+                           uint64                  offset,
+                           uint64                  limit
+                          );
+#endif /* NDEBUG */
 
 /***********************************************************************\
 * Name   : Database_getNextRow
@@ -2948,8 +2978,28 @@ Errors Database_setString(DatabaseHandle       *databaseHandle,
                          );
 
 /***********************************************************************\
+* Name   : Database_vacuum
+* Purpose: vacuum data base: remove not used storage space
+* Input  : databaseHandle - database handle
+*          tableNames     - tables to vacuum
+*          tableNameCount - tables count
+*          toDatabaseURI  - to-database URI or NULL
+*          forceFlag      - to force vacuum
+* Output : -
+* Return : ERROR_NONE or error code
+* Notes  : -
+\***********************************************************************/
+
+Errors Database_vacuum(DatabaseHandle     *databaseHandle,
+                       const char * const tableNames[],
+                       uint               tableNameCount,
+                       const char         *toDatabaseURI,
+                       bool               force
+                      );
+
+/***********************************************************************\
 * Name   : Database_check
-* Purpose: check database
+* Purpose: check database integrity
 * Input  : databaseHandle - database handle
 *          databaseCheck  - database check to execute
 * Output : -
