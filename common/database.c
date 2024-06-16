@@ -12179,9 +12179,9 @@ String Database_getPrintableName(String                  string,
   return string;
 }
 
-Errors Database_rename(DatabaseSpecifier *databaseSpecifier,
-                       const char        *databaseName,
-                       const char        *newDatabaseName
+Errors Database_rename(const DatabaseSpecifier *databaseSpecifier,
+                       const char              *databaseName,
+                       const char              *newDatabaseName
                       )
 {
   Errors error;
@@ -12200,7 +12200,6 @@ Errors Database_rename(DatabaseSpecifier *databaseSpecifier,
                                  newDatabaseName,
                                  NULL
                                 );
-      String_setCString(databaseSpecifier->sqlite.fileName,newDatabaseName);
       break;
     case DATABASE_TYPE_MARIADB:
       #if defined(HAVE_MARIADB)
@@ -12281,8 +12280,6 @@ Errors Database_rename(DatabaseSpecifier *databaseSpecifier,
           closeDatabase(&databaseHandle);
 
           // free resources
-
-          String_setCString(databaseSpecifier->mariadb.databaseName,newDatabaseName);
         }
       #else /* HAVE_MARIADB */
         error = ERROR_FUNCTION_NOT_SUPPORTED;
@@ -12333,8 +12330,6 @@ Errors Database_rename(DatabaseSpecifier *databaseSpecifier,
           closeDatabase(&databaseHandle);
 
           // free resources
-
-          String_setCString(databaseSpecifier->postgresql.databaseName,newDatabaseName);
         }
       #else /* HAVE_POSTGRESQL */
         error = ERROR_FUNCTION_NOT_SUPPORTED;
@@ -14387,28 +14382,30 @@ debugDatabaseValueToString(buffer2,sizeof(buffer2),&toValues[parameterMap[i]])
                                        for (i = 0; i < parameterMapCount; i++)
                                        {
                                          assert(i < parameterValueCount);
-                                         assert(fromColumnMap[i] != UNUSED);
-                                         assert((uint)fromColumnMap[i] < toColumnInfo.count);
 
-//fprintf(stderr,"%s:%d: copy %d -> %d\n",__FILE__,__LINE__,parameterMap[i],i);
-                                         memCopyFast(&parameterValues[i].data,
-                                                     sizeof(parameterValues[i].data),
-                                                     &toColumnInfo.values[parameterMap[i]].data,
-                                                     sizeof(toColumnInfo.values[parameterMap[i]].data)
-                                                  );
-
-                                         // fix broken UTF8 encodings
-                                         switch (parameterValues[i].type)
+                                         if (fromColumnMap[i] != UNUSED)
                                          {
-                                           case DATABASE_DATATYPE_STRING:
-                                             String_makeValidUTF8(parameterValues[i].string,STRING_BEGIN);
-                                             assert(String_isValidUTF8(parameterValues[i].string,STRING_BEGIN));
-                                             break;
-                                           case DATABASE_DATATYPE_CSTRING:
-                                             HALT_INTERNAL_ERROR_NOT_SUPPORTED();
-                                             break;
-                                           default:
-                                             break;
+                                           assert((uint)fromColumnMap[i] < toColumnInfo.count);
+
+                                           memCopyFast(&parameterValues[i].data,
+                                                       sizeof(parameterValues[i].data),
+                                                       &toColumnInfo.values[parameterMap[i]].data,
+                                                       sizeof(toColumnInfo.values[parameterMap[i]].data)
+                                                    );
+
+                                           // fix broken UTF8 encodings
+                                           switch (parameterValues[i].type)
+                                           {
+                                             case DATABASE_DATATYPE_STRING:
+                                               String_makeValidUTF8(parameterValues[i].string,STRING_BEGIN);
+                                               assert(String_isValidUTF8(parameterValues[i].string,STRING_BEGIN));
+                                               break;
+                                             case DATABASE_DATATYPE_CSTRING:
+                                               HALT_INTERNAL_ERROR_NOT_SUPPORTED();
+                                               break;
+                                             default:
+                                               break;
+                                           }
                                          }
                                        }
 
