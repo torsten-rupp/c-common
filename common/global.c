@@ -47,7 +47,6 @@
 #endif /* not NDEBUG */
 
 #include "errors.h"
-#include "cstrings.h"
 
 #include "global.h"
 
@@ -452,14 +451,15 @@ void __abortAt(const char *fileName,
 * Notes  : Some older GCC versions do not implement
 *          __sync_add_and_fetch() on 32bit. This is a replacement.
 \***********************************************************************/
-uint __sync_add_and_fetch_4(uint *p, uint n)
+
+uint __sync_add_and_fetch_4(void *p, uint n)
 {
   uint x;
 
   pthread_mutex_lock(&syncLock);
   {
-    (*p) += n;
-    x = (*p);
+    (*((int32_t*)p)) += n;
+    x = (*(int32_t*)p);
   }
   pthread_mutex_unlock(&syncLock);
 
@@ -1347,7 +1347,7 @@ void debugDumpStackTrace(FILE                           *handle,
 {
   #ifdef HAVE_BFD_INIT
     char                 executableName[PATH_MAX];
-    int                  n;
+    ssize_t              n;
     StackTraceOutputInfo stackTraceOutputInfo;
   #elif HAVE_BACKTRACE_SYMBOLS
     const char **functionNames;
@@ -1361,11 +1361,10 @@ void debugDumpStackTrace(FILE                           *handle,
   #ifdef HAVE_BFD_INIT
     // get executable name
     n = readlink("/proc/self/exe",executableName,sizeof(executableName)-1);
-    if (n == -1)
+    if ((n == -1) || ((size_t)n >= sizeof(executableName)))
     {
       return;
     }
-    assert((size_t)n < sizeof(executableName));
     executableName[n] = '\0';
 
     // output stack trace
@@ -1444,22 +1443,22 @@ void debugPrintStackTrace(void)
 void debugDumpMemory(const void *address, uint length, bool printAddress)
 {
   const byte *p;
-  uint       i,j;
+  uint       z,j;
 
   assert(address != NULL);
 
-  i = 0;
-  while (i < length)
+  z = 0;
+  while (z < length)
   {
-    p = (const byte*)address+i;
+    p = (const byte*)address+z;
     if (printAddress) fprintf(stderr,"%08lx:",(unsigned long)p);
     fprintf(stderr,"%08lx  ",(unsigned long)(p-(byte*)address));
 
     for (j = 0; j < 16; j++)
     {
-      if ((i+j) < length)
+      if ((z+j) < length)
       {
-        p = (const byte*)address+i+j;
+        p = (const byte*)address+z+j;
         fprintf(stderr,"%02x ",((uint)(*p)) & 0xFF);
       }
       else
@@ -1471,9 +1470,9 @@ void debugDumpMemory(const void *address, uint length, bool printAddress)
 
     for (j = 0; j < 16; j++)
     {
-      if ((i+j) < length)
+      if ((z+j) < length)
       {
-        p = (const byte*)address+i+j;
+        p = (const byte*)address+z+j;
         fprintf(stderr,"%c",isprint((int)(*p))?(*p):'.');
       }
       else
@@ -1482,7 +1481,7 @@ void debugDumpMemory(const void *address, uint length, bool printAddress)
     }
     fprintf(stderr,"\n");
 
-    i += 16;
+    z += 16;
   }
 }
 #endif /* not NDEBUG */
