@@ -23,6 +23,7 @@
 
 #include "common/global.h"
 #include "common/strings.h"
+#include "common/cstrings.h"
 
 #include "errors.h"
 
@@ -87,7 +88,7 @@ LOCAL void getRegularExpression(String       regexString,
   {
     case PATTERN_TYPE_GLOB:
       i = 0;
-      while (string[i] != '\0')
+      while (string[i] != NUL)
       {
         switch (string[i])
         {
@@ -184,7 +185,7 @@ LOCAL Errors compilePattern(ConstString regexString,
   error = regcomp(regexBegin,String_cString(string),regexFlags);
   if (error != 0)
   {
-    regerror(error,regexBegin,buffer,sizeof(buffer)-1); buffer[sizeof(buffer)-1] = '\0';
+    regerror(error,regexBegin,buffer,sizeof(buffer)-1); buffer[sizeof(buffer)-1] = NUL;
     String_delete(string);
     return ERRORX_(INVALID_PATTERN,0,"%s",buffer);
   }
@@ -193,7 +194,7 @@ LOCAL Errors compilePattern(ConstString regexString,
   if (String_index(string,STRING_END) != '$') String_insertChar(string,STRING_BEGIN,'$');
   if (regcomp(regexEnd,String_cString(string),regexFlags) != 0)
   {
-    regerror(error,regexEnd,buffer,sizeof(buffer)-1); buffer[sizeof(buffer)-1] = '\0';
+    regerror(error,regexEnd,buffer,sizeof(buffer)-1); buffer[sizeof(buffer)-1] = NUL;
     regfree(regexBegin);
     String_delete(string);
     return ERRORX_(INVALID_PATTERN,0,"%s",buffer);
@@ -204,7 +205,7 @@ LOCAL Errors compilePattern(ConstString regexString,
   if (String_index(string,STRING_END) != '$') String_insertChar(string,STRING_END,'$');
   if (regcomp(regexExact,String_cString(string),regexFlags) != 0)
   {
-    regerror(error,regexExact,buffer,sizeof(buffer)-1); buffer[sizeof(buffer)-1] = '\0';
+    regerror(error,regexExact,buffer,sizeof(buffer)-1); buffer[sizeof(buffer)-1] = NUL;
     regfree(regexEnd);
     regfree(regexBegin);
     String_delete(string);
@@ -214,7 +215,7 @@ LOCAL Errors compilePattern(ConstString regexString,
   String_set(string,regexString);
   if (regcomp(regexAny,String_cString(string),regexFlags) != 0)
   {
-    regerror(error,regexAny,buffer,sizeof(buffer)-1); buffer[sizeof(buffer)-1] = '\0';
+    regerror(error,regexAny,buffer,sizeof(buffer)-1); buffer[sizeof(buffer)-1] = NUL;
     regfree(regexExact);
     regfree(regexEnd);
     regfree(regexBegin);
