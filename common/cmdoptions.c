@@ -1886,14 +1886,14 @@ bool CmdOption_parse(const char              *argv[],
   return TRUE;
 }
 
-bool CmdOptionParseDeprecatedStringOption(void       *userData,
-                                          void       *variable,
-                                          const char *name,
-                                          const char *value,
-                                          const void *defaultValue,
-                                          char       errorMessage[],
-                                          uint       errorMessageSize
-                                         )
+bool CmdOption_parseDeprecatedStringOption(void       *userData,
+                                           void       *variable,
+                                           const char *name,
+                                           const char *value,
+                                           const void *defaultValue,
+                                           char       errorMessage[],
+                                           uint       errorMessageSize
+                                          )
 {
   assert(variable != NULL);
   assert(value != NULL);
@@ -1909,14 +1909,14 @@ bool CmdOptionParseDeprecatedStringOption(void       *userData,
   return TRUE;
 }
 
-bool CmdOptionParseDeprecatedCStringOption(void       *userData,
-                                           void       *variable,
-                                           const char *name,
-                                           const char *value,
-                                           const void *defaultValue,
-                                           char       errorMessage[],
-                                           uint       errorMessageSize
-                                          )
+bool CmdOption_parseDeprecatedCStringOption(void       *userData,
+                                            void       *variable,
+                                            const char *name,
+                                            const char *value,
+                                            const void *defaultValue,
+                                            char       errorMessage[],
+                                            uint       errorMessageSize
+                                           )
 {
   assert(variable != NULL);
   assert(value != NULL);
