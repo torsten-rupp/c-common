@@ -239,6 +239,18 @@ typedef void(*ExecuteIOFunction)(ConstString line,
                                  void        *userData
                                 );
 
+/***********************************************************************\
+* Name   : ServiceCode
+* Purpose: service code
+* Input  : argc - number of arguments
+*          argv - arguments
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+typedef Errors(*ServiceCode)(int argc, const char* argv[]);
+
 // performance values
 typedef struct
 {
@@ -1004,6 +1016,19 @@ INLINE void Misc_mdelay(uint64 time)
 /*---------------------------------------------------------------------*/
 
 /***********************************************************************\
+* Name   : Misc_getProgramFilePath
+* Purpose: get program file path
+* Input  : path - program path variable
+* Output : -
+* Return : program path
+* Notes  : -
+\***********************************************************************/
+
+String Misc_getProgramFilePath(String path);
+
+/*---------------------------------------------------------------------*/
+
+/***********************************************************************\
 * Name   : Misc_userNameToUserId
 * Purpose: convert user name to user id
 * Input  : name - user name
@@ -1394,6 +1419,22 @@ Errors Misc_executeScript(const char       *script,
                           ExecuteIOFunction stderrExecuteIOFunction,
                           void              *stderrExecuteIOUserData
                          );
+
+/***********************************************************************\
+* Name   : Misc_runService
+* Purpose: run code as daemon/service
+* Input  : serviceCode - service code
+*          argc        - number of arguments
+*          argv        - arguments
+* Output : -
+* Return : ERROR_NONE or error code
+* Notes  : -
+\***********************************************************************/
+
+Errors Misc_runService(ServiceCode serviceCode,
+                       int         argc,
+                       const char  *argv[]
+                      );
 
 /*---------------------------------------------------------------------*/
 

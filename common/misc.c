@@ -67,8 +67,25 @@
 
 /***************************** Datatypes *******************************/
 
+// service info
+typedef struct
+{
+  ServiceCode           serviceCode;
+  int                   argc;
+  const char            **argv;
+  #if   defined(PLATFORM_LINUX)
+  #elif defined(PLATFORM_WINDOWS)
+    SERVICE_STATUS_HANDLE serviceStatusHandle;
+    SERVICE_STATUS        serviceStatus;
+  #endif
+  Errors                error;
+} ServiceInfo;
+
 /***************************** Variables *******************************/
-LOCAL byte machineId[MISC_MACHINE_ID_LENGTH] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+LOCAL byte        machineId[MISC_MACHINE_ID_LENGTH] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+#ifdef PLATFORM_WINDOWS
+LOCAL ServiceInfo serviceInfo;
+#endif
 
 /****************************** Macros *********************************/
 
@@ -1420,6 +1437,46 @@ const char* Misc_formatDateTimeCString(char *buffer, uint bufferSize, uint64 dat
 
 /*---------------------------------------------------------------------*/
 
+String Misc_getProgramFilePath(String path)
+{
+  #if   defined(PLATFORM_LINUX)
+    char    buffer[PATH_MAX];
+    ssize_t bufferLength;
+  #elif defined(PLATFORM_WINDOWS)
+    char  buffer[MAX_PATH];
+    DWORD bufferLength;
+  #endif /* PLATFORM_... */
+
+  assert(path != NULL);
+
+  String_clear(path);
+
+  #if   defined(PLATFORM_LINUX)
+    bufferLength = readlink("/proc/self/exe",buffer,sizeof(buffer));
+    if ((bufferLength == -1) || (bufferLength >= (ssize_t)sizeof(buffer)))
+    {
+      return path;
+    }
+
+    String_setBuffer(path,buffer,(ulong)bufferLength);
+  #elif defined(PLATFORM_WINDOWS)
+    bufferLength = GetModuleFileName(NULL,buffer,MAX_PATH);
+    if ((bufferLength == -1) || (bufferLength >= (ssize_t)sizeof(buffer)))
+    {
+      return path;
+    }
+
+    String_setBuffer(path,buffer,(ulong)bufferLength);
+
+    // replace brain dead '\'
+    String_replaceAllChar(path,STRING_BEGIN,'\\',FILE_PATH_SEPARATOR_CHAR);
+  #endif /* PLATFORM_... */
+
+  return path;
+}
+
+/*---------------------------------------------------------------------*/
+
 uint32 Misc_userNameToUserId(const char *name)
 {
   #define BUFFER_DELTA_SIZE 1024
@@ -2699,6 +2756,112 @@ Errors Misc_executeScript(const char        *script,
   return error;
 }
 
+#ifdef PLATFORM_WINDOWS
+
+/***********************************************************************\
+* Name   : serviceControlHandler
+* Purpose: Win32 service control handler
+* Input  : control - control code
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+LOCAL void serviceControlHandler(DWORD control)
+{
+	switch (control)
+  {
+		case SERVICE_CONTROL_PAUSE:
+			serviceInfo.serviceStatus.dwCurrentState = SERVICE_PAUSED;
+			break;
+		case SERVICE_CONTROL_CONTINUE:
+			serviceInfo.serviceStatus.dwCurrentState = SERVICE_RUNNING;
+			break;
+		case SERVICE_CONTROL_STOP:
+		case SERVICE_CONTROL_SHUTDOWN:
+			serviceInfo.serviceStatus.dwCurrentState = SERVICE_STOPPED;
+			break;
+	}
+	SetServiceStatus(serviceInfo.serviceStatusHandle,&serviceInfo.serviceStatus);
+}
+
+/***********************************************************************\
+* Name   : serviceStartCode
+* Purpose: Win32 service start code
+* Input  : -
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+LOCAL void serviceStartCode(void)
+{
+	serviceInfo.serviceStatus.dwServiceType             = SERVICE_WIN32_OWN_PROCESS;
+	serviceInfo.serviceStatus.dwCurrentState            = SERVICE_RUNNING;
+	serviceInfo.serviceStatus.dwControlsAccepted        = SERVICE_ACCEPT_PAUSE_CONTINUE | SERVICE_ACCEPT_STOP | SERVICE_ACCEPT_SHUTDOWN;
+	serviceInfo.serviceStatus.dwWin32ExitCode           = NO_ERROR ;
+	serviceInfo.serviceStatus.dwServiceSpecificExitCode = 0;
+	serviceInfo.serviceStatus.dwCheckPoint              = 0;
+	serviceInfo.serviceStatus.dwWaitHint                = 0;
+	serviceInfo.serviceStatusHandle = RegisterServiceCtrlHandler("",serviceControlHandler);  // Note: the service name does not have to be NULL
+	if (serviceInfo.serviceStatusHandle == 0)
+  {
+    serviceInfo.error = ERROR_RUN_SERVICE;
+    return;
+  }
+
+	if (SetServiceStatus(serviceInfo.serviceStatusHandle,&serviceInfo.serviceStatus) == 0)
+  {
+    serviceInfo.error = ERROR_RUN_SERVICE;
+    return;
+  }
+
+  serviceInfo.error = serviceInfo.serviceCode(serviceInfo.argc,serviceInfo.argv);
+}
+
+#endif
+
+Errors Misc_runService(ServiceCode serviceCode,
+                       int         argc,
+                       const char  *argv[]
+                      )
+{
+  Errors error;
+
+  #if   defined(PLATFORM_LINUX)
+    // Note: do not suppress stdin/out/err for GCOV version
+    #ifdef GCOV
+      #define DAEMON_NO_SUPPRESS_STDIO 1
+    #else /* not GCOV */
+      #define DAEMON_NO_SUPPRESS_STDIO 0
+    #endif /* GCOV */
+    if (daemon(1,DAEMON_NO_SUPPRESS_STDIO) == 0)
+    {
+      error = serviceCode(argc,argv);
+    }
+    else
+    {
+      error = ERROR_RUN_SERVICE;
+    }
+  #elif defined(PLATFORM_WINDOWS)
+    serviceInfo.serviceCode = serviceCode;
+    serviceInfo.argc        = argc;
+    serviceInfo.argv        = argv;
+    serviceInfo.error       = ERROR_UNKNOWN;
+    SERVICE_TABLE_ENTRY serviceTable[] = {{"", serviceStartCode}, {NULL, NULL}};  // Note: the service name does not have to be NULL
+    if (StartServiceCtrlDispatcher(serviceTable))
+    {
+      error = serviceInfo.error;
+    }
+    else
+    {
+      error = ERROR_RUN_SERVICE;
+    }
+  #endif /* PLATFORM_... */
+
+  return error;
+}
+
 /*---------------------------------------------------------------------*/
 
 bool Misc_isTerminal(int handle)
@@ -2826,8 +2989,6 @@ void Misc_performanceFilterInit(PerformanceFilter *performanceFilter,
                                 uint              maxSeconds
                                )
 {
-  uint z;
-
   assert(performanceFilter != NULL);
   assert(maxSeconds > 0);
 
@@ -2836,12 +2997,12 @@ void Misc_performanceFilterInit(PerformanceFilter *performanceFilter,
   {
     HALT_INSUFFICIENT_MEMORY();
   }
-  performanceFilter->performanceValues[0].timeStamp = Misc_getTimestamp()/1000L;
+  performanceFilter->performanceValues[0].timeStamp = Misc_getTimestamp()/US_PER_MS;
   performanceFilter->performanceValues[0].value     = 0.0;
-  for (z = 1; z < maxSeconds; z++)
+  for (uint i = 1; i < maxSeconds; i++)
   {
-    performanceFilter->performanceValues[z].timeStamp = 0;
-    performanceFilter->performanceValues[z].value     = 0.0;
+    performanceFilter->performanceValues[i].timeStamp = 0;
+    performanceFilter->performanceValues[i].value     = 0.0;
   }
   performanceFilter->maxSeconds = maxSeconds;
   performanceFilter->seconds    = 0;
@@ -2860,17 +3021,15 @@ void Misc_performanceFilterDone(PerformanceFilter *performanceFilter)
 
 void Misc_performanceFilterClear(PerformanceFilter *performanceFilter)
 {
-  uint z;
-
   assert(performanceFilter != NULL);
   assert(performanceFilter->performanceValues != NULL);
 
-  performanceFilter->performanceValues[0].timeStamp = Misc_getTimestamp()/1000L;
+  performanceFilter->performanceValues[0].timeStamp = Misc_getTimestamp()/US_PER_MS;
   performanceFilter->performanceValues[0].value     = 0.0;
-  for (z = 1; z < performanceFilter->maxSeconds; z++)
+  for (uint i = 1; i < performanceFilter->maxSeconds; i++)
   {
-    performanceFilter->performanceValues[z].timeStamp = 0;
-    performanceFilter->performanceValues[z].value     = 0.0;
+    performanceFilter->performanceValues[i].timeStamp = 0;
+    performanceFilter->performanceValues[i].value     = 0.0;
   }
   performanceFilter->seconds = 0;
   performanceFilter->index   = 0;
@@ -2891,16 +3050,15 @@ void Misc_performanceFilterAdd(PerformanceFilter *performanceFilter,
   assert(performanceFilter->performanceValues != NULL);
   assert(performanceFilter->index < performanceFilter->maxSeconds);
 
-  timeStamp = Misc_getTimestamp()/1000L;
-
-  if (timeStamp > (performanceFilter->performanceValues[performanceFilter->index].timeStamp+1000))
+  timeStamp = Misc_getTimestamp()/US_PER_MS;
+  if (timeStamp > (performanceFilter->performanceValues[performanceFilter->index].timeStamp+MS_PER_SECOND))
   {
     // calculate new average value
     if (performanceFilter->seconds > 0)
     {
       valueDelta     = value-performanceFilter->performanceValues[performanceFilter->index].value;
       timeStampDelta = timeStamp-performanceFilter->performanceValues[performanceFilter->index].timeStamp;
-      average = (valueDelta*1000)/(double)timeStampDelta;
+      average = (valueDelta*MS_PER_SECOND)/(double)timeStampDelta;
       if (performanceFilter->n > 0)
       {
         performanceFilter->average = average/(double)performanceFilter->n+((double)(performanceFilter->n-1)*performanceFilter->average)/(double)performanceFilter->n;
@@ -2943,7 +3101,7 @@ double Misc_performanceFilterGetValue(const PerformanceFilter *performanceFilter
 
   valueDelta     = performanceFilter->performanceValues[i1].value-performanceFilter->performanceValues[i0].value;
   timeStampDelta = performanceFilter->performanceValues[i1].timeStamp-performanceFilter->performanceValues[i0].timeStamp;
-  return (timeStampDelta > 0) ? (valueDelta*1000)/(double)timeStampDelta : 0.0;
+  return (timeStampDelta > 0) ? (valueDelta*MS_PER_SECOND)/(double)timeStampDelta : 0.0;
 }
 
 double Misc_performanceFilterGetAverageValue(PerformanceFilter *performanceFilter)
