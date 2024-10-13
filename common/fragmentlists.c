@@ -63,6 +63,7 @@
 #endif
 
 #ifndef NDEBUG
+
 /***********************************************************************\
 * Name   : fragmentNodeValid
 * Purpose: check if fragment node is valid
@@ -90,14 +91,24 @@ LOCAL void fragmentNodeValid(const FragmentNode *fragmentNode)
 }
 #endif /* NDEBUG */
 
+/***********************************************************************\
+* Name   : fragmentNodeDone
+* Purpose: done fragment node
+* Input  : fragmentNode - fragment node
+*          userData     - user data (not used)
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
 LOCAL void fragmentNodeDone(FragmentNode *fragmentNode, void *userData)
 {
   assert(fragmentNode != NULL);
   FRAGMENTNODE_VALID(fragmentNode);
 
-  UNUSED_VARIABLE(userData);
-
   DEBUG_REMOVE_RESOURCE_TRACE(fragmentNode,FragmentNode);
+
+  UNUSED_VARIABLE(userData);
 
   List_done(&fragmentNode->rangeList);
   if (fragmentNode->userData != NULL)
@@ -152,6 +163,7 @@ void __FragmentList_init(const char   *__fileName__,
                         )
 #endif /* NDEBUG */
 {
+
   assert(fragmentList != NULL);
 
   List_init(fragmentList,CALLBACK_(NULL,NULL),CALLBACK_((ListNodeFreeFunction)fragmentNodeDone,NULL));
@@ -228,7 +240,14 @@ void FragmentList_doneNode(FragmentNode *fragmentNode)
   assert(fragmentNode != NULL);
   FRAGMENTNODE_VALID(fragmentNode);
 
-  fragmentNodeDone(fragmentNode,NULL);
+  DEBUG_REMOVE_RESOURCE_TRACE(fragmentNode,FragmentNode);
+
+  List_done(&fragmentNode->rangeList);
+  if (fragmentNode->userData != NULL)
+  {
+    free(fragmentNode->userData);
+  }
+  String_delete(fragmentNode->name);
 }
 
 void FragmentList_lockNode(FragmentNode *fragmentNode)
