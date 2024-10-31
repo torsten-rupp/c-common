@@ -530,15 +530,15 @@ LOCAL DictionaryEntry *growTable(DictionaryEntry *entries, uint oldSize, uint ne
 
 /*---------------------------------------------------------------------*/
 
-bool Dictionary_byteInitEntry(const void *fromData, void *toData, ulong length, void *userData)
+bool Dictionary_byteInitEntry(const void *fromValue, void *toValue, ulong length, void *userData)
 {
-  assert(toData != NULL);
+  assert(toValue != NULL);
 
   UNUSED_VARIABLE(userData);
 
-  if (fromData != NULL)
+  if (fromValue != NULL)
   {
-    memcpy(toData,fromData,length);
+    memcpy(toValue,fromValue,length);
   }
 
   return TRUE;

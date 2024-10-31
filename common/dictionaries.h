@@ -25,16 +25,16 @@
 /***********************************************************************\
 * Name   : DictionaryInitEntryFunction
 * Purpose: copy dictionary entry
-* Input  : fromData - source data entry
-*          toData   - memory for destination data entry
-*          length   - length of data entries
-*          userData - user data or NULL
+* Input  : fromValue - source value data
+*          toValue   - destination value data memory
+*          length    - length of data entries
+*          userData  - user data or NULL
 * Output : -
 * Return : TRUE if copied, FALSE otherwise
 * Notes  : -
 \***********************************************************************/
 
-typedef bool(*DictionaryInitEntryFunction)(const void *fromData, void *toData, ulong length, void *userData);
+typedef bool(*DictionaryInitEntryFunction)(const void *fromValue, void *toValue, ulong length, void *userData);
 
 /***********************************************************************\
 * Name   : DictionaryDoneEntryFunction
@@ -192,17 +192,17 @@ typedef bool(*DictionaryIterateFunction)(const void *key,
 /***********************************************************************\
 * Name   : Dictionary_byteInitEntry
 * Purpose: byte copy data
-* Input  : fromData - source data entry
-*          toData   - memory for destination data entry
-*          length   - length of data entries
-*          userData - user data or NULL
+* Input  : fromValue - source value data
+*          toValue   - destination value data memory
+*          length    - length of data entries
+*          userData  - user data or NULL
 * Output : -
 * Return : TRUE
 * Return : -
 * Notes  : -
 \***********************************************************************/
 
-bool Dictionary_byteInitEntry(const void *fromData, void *toData, ulong length, void *userData);
+bool Dictionary_byteInitEntry(const void *fromValue, void *toValue, ulong length, void *userData);
 
 /***********************************************************************\
 * Name   : Dictionary_valueCompareEntry
@@ -222,17 +222,17 @@ bool Dictionary_valueCompareEntry(const void *value0, const void *value1, ulong 
 * Name   : Dictionary_init/Dictionary_initValue
 * Purpose: initialize dictionary
 * Input  : dictionary                     - dictionary variable
-*          dictionaryInitEntryFunction    - copy function call back or
+*          dictionaryInitEntryFunction    - init value call back or
 *                                           NULL
-*          dictionaryInitEntryUserData    - copy function call back user
+*          dictionaryInitEntryUserData    - init value call back user
 *                                           data
-*          dictionaryDoneEntryFunction    - free function call back or
+*          dictionaryDoneEntryFunction    - done value call back or
 *                                           NULL
-*          dictionaryDoneEntryUserData    - free function call back user
+*          dictionaryDoneEntryUserData    - done value call back user
 *                                           data
-*          dictionaryCompareEntryFunction - compare function call back
+*          dictionaryCompareEntryFunction - compare value call back
 *                                           or NULL
-*          dictionaryCompareEntryUserData - compare function call back
+*          dictionaryCompareEntryUserData - compare value call back
 *                                           user data
 * Output : -
 * Return : TRUE if dictionary initialized, FALSE otherwise
