@@ -17,6 +17,7 @@ ERROR ABORTED                        "aborted"
 ERROR FUNCTION_NOT_SUPPORTED         "function not supported"
 ERROR STILL_NOT_IMPLEMENTED          "function still not implemented"
 ERROR TESTCODE                       "test code"
+ERROR RUN_SERVICE                    "run service"
 
 // patterns
 ERROR INVALID_PATTERN                "init pattern matching"
