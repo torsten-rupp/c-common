@@ -8,6 +8,12 @@
 /****************************** Includes *******************************/
 #include <config.h>  // use <...> to support separated build directory
 
+#if   defined(PLATFORM_LINUX)
+#elif defined(PLATFORM_WINDOWS)
+#else
+  #error unknown platform
+#endif /* PLATFORM_... */
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
