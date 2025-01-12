@@ -1384,6 +1384,112 @@ bool File_getNextSplitFileName(StringTokenizer *stringTokenizer, ConstString *na
   return String_getNextToken(stringTokenizer,name,NULL);
 }
 
+void File_initIteratePath(FilePathIterator *filePathIterator, ConstString path, bool appendFlag)
+{
+  assert(filePathIterator != NULL);
+
+  String_initTokenizer(&filePathIterator->stringTokenizer,path,STRING_BEGIN,FILE_PATH_SEPARATOR_CHARS,NULL,TRUE);
+  filePathIterator->appendFlag    = appendFlag;
+  filePathIterator->separatorFlag = File_isAbsoluteFileName(path);
+  filePathIterator->path          = String_new();
+}
+
+void File_initIteratePathCString(FilePathIterator *filePathIterator, const char *path, bool appendFlag)
+{
+  assert(filePathIterator != NULL);
+
+  String_initTokenizerCString(&filePathIterator->stringTokenizer,path,FILE_PATH_SEPARATOR_CHARS,NULL,TRUE);
+  filePathIterator->path          = String_new();
+  filePathIterator->separatorFlag = File_isAbsoluteFileNameCString(path);
+  filePathIterator->appendFlag    = appendFlag;
+}
+
+bool File_getNextIteratePath(FilePathIterator *filePathIterator, String variable, bool condition)
+{
+  assert(filePathIterator != NULL);
+  assert(variable != NULL);
+
+  bool hasNext = FALSE;
+  if (condition)
+  {
+    ConstString token;
+    if (filePathIterator->separatorFlag)
+    {
+      String_setChar(filePathIterator->path,FILE_PATH_SEPARATOR_CHAR);
+      filePathIterator->separatorFlag = FALSE;
+      hasNext = TRUE;
+    }
+    else if (String_getNextToken(&filePathIterator->stringTokenizer,&token,NULL))
+    {
+      if (filePathIterator->appendFlag)
+      {
+        File_appendFileName(filePathIterator->path,token);
+      }
+      else
+      {
+        String_set(filePathIterator->path,token);
+      }
+      hasNext = TRUE;
+    }
+  }
+
+  if (hasNext)
+  {
+    String_set(variable,filePathIterator->path);
+  }
+  else
+  {
+    String_clear(variable);
+    String_delete(filePathIterator->path);
+    String_doneTokenizer(&filePathIterator->stringTokenizer);
+  }
+
+  return hasNext;
+}
+
+bool File_getNextIteratePathCString(FilePathIterator *filePathIterator, const char **variable, bool condition)
+{
+  assert(filePathIterator != NULL);
+  assert(variable != NULL);
+
+  bool hasNext = FALSE;
+  if (condition)
+  {
+    ConstString token;
+    if (filePathIterator->separatorFlag)
+    {
+      String_setChar(filePathIterator->path,FILE_PATH_SEPARATOR_CHAR);
+      filePathIterator->separatorFlag = FALSE;
+      hasNext = TRUE;
+    }
+    else if (String_getNextToken(&filePathIterator->stringTokenizer,&token,NULL))
+    {
+      if (filePathIterator->appendFlag)
+      {
+        File_appendFileName(filePathIterator->path,token);
+      }
+      else
+      {
+        String_set(filePathIterator->path,token);
+      }
+      hasNext = TRUE;
+    }
+  }
+
+  if (hasNext)
+  {
+    (*variable) = String_cString(filePathIterator->path);
+  }
+  else
+  {
+    (*variable) = NULL;
+    String_delete(filePathIterator->path);
+    String_doneTokenizer(&filePathIterator->stringTokenizer);
+  }
+
+  return hasNext;
+}
+
 /*---------------------------------------------------------------------*/
 
 String File_getSystemDirectory(String path, FileSystemPathTypes fileSystemPathType, ConstString subDirectory)
@@ -3381,51 +3487,98 @@ Errors File_readDirectoryList(DirectoryListHandle *directoryListHandle,
 
 /*---------------------------------------------------------------------*/
 
-FilePermissions File_stringToPermission(const char *string)
+FilePermissions File_parsePermissions(const char *user, const char *group, const char *other)
 {
-  FilePermissions permissions;
-  uint            n;
+  FilePermissions permissions = FILE_PERMISSION_NONE;
 
-  assert(string != NULL);
+  if (user != NULL)
+  {
+    size_t n = stringLength(user);
+    if ((n >= 1) && (user[0]) == 'r') permissions |= FILE_PERMISSION_USER_READ;
+    if ((n >= 2) && (user[1]) == 'w') permissions |= FILE_PERMISSION_USER_WRITE;
+    if (n >= 3)
+    {
+      switch (user[2])
+      {
+        case 'x': permissions |= FILE_PERMISSION_USER_EXECUTE; break;
+        case 's': permissions |= FILE_PERMISSION_USER_EXECUTE | FILE_PERMISSION_USER_SET_ID; break;
+        case 'S': permissions |= FILE_PERMISSION_USER_SET_ID; break;
+      }
+    }
+  }
 
-  permissions = FILE_PERMISSION_NONE;
+  if (group != NULL)
+  {
+    size_t n = stringLength(group);
+    if ((n >= 1) && (group[0]) == 'r') permissions |= FILE_PERMISSION_GROUP_READ;
+    if ((n >= 2) && (group[1]) == 'w') permissions |= FILE_PERMISSION_GROUP_WRITE;
+    if (n >= 3)
+    {
+      switch (group[2])
+      {
+        case 'x': permissions |= FILE_PERMISSION_GROUP_EXECUTE; break;
+        case 's': permissions |= FILE_PERMISSION_GROUP_EXECUTE | FILE_PERMISSION_GROUP_SET_ID; break;
+        case 'S': permissions |= FILE_PERMISSION_GROUP_SET_ID; break;
+      }
+    }
+  }
 
-  n = stringLength(string);
-  if ((n >= 1) && (toupper(string[0]) == 'R')) permissions |= FILE_PERMISSION_USER_READ;
-  if ((n >= 2) && (toupper(string[1]) == 'W')) permissions |= FILE_PERMISSION_USER_WRITE;
-  if ((n >= 3) && (toupper(string[2]) == 'X')) permissions |= FILE_PERMISSION_USER_EXECUTE;
-  if ((n >= 3) && (toupper(string[2]) == 'S')) permissions |= FILE_PERMISSION_USER_SET_ID;
-  if ((n >= 4) && (toupper(string[3]) == 'R')) permissions |= FILE_PERMISSION_GROUP_READ;
-  if ((n >= 5) && (toupper(string[4]) == 'W')) permissions |= FILE_PERMISSION_GROUP_WRITE;
-  if ((n >= 6) && (toupper(string[5]) == 'X')) permissions |= FILE_PERMISSION_GROUP_EXECUTE;
-  if ((n >= 6) && (toupper(string[5]) == 'S')) permissions |= FILE_PERMISSION_GROUP_SET_ID;
-  if ((n >= 7) && (toupper(string[6]) == 'R')) permissions |= FILE_PERMISSION_OTHER_READ;
-  if ((n >= 8) && (toupper(string[7]) == 'W')) permissions |= FILE_PERMISSION_OTHER_WRITE;
-  if ((n >= 9) && (toupper(string[8]) == 'X')) permissions |= FILE_PERMISSION_OTHER_EXECUTE;
-  if ((n >= 9) && (toupper(string[8]) == 'T')) permissions |= FILE_PERMISSION_STICKY_BIT;
+  if (other != NULL)
+  {
+    size_t n = stringLength(other);
+    if ((n >= 1) && (other[0]) == 'r') permissions |= FILE_PERMISSION_OTHER_READ;
+    if ((n >= 2) && (other[1]) == 'w') permissions |= FILE_PERMISSION_OTHER_WRITE;
+    if (n >= 3)
+    {
+      switch (other[2])
+      {
+        case 'x': permissions |= FILE_PERMISSION_OTHER_EXECUTE; break;
+        case 't': permissions |= FILE_PERMISSION_OTHER_EXECUTE | FILE_PERMISSION_STICKY_BIT; break;
+        case 'T': permissions |= FILE_PERMISSION_STICKY_BIT; break;
+      }
+    }
+  }
 
   return permissions;
 }
 
-const char *File_permissionToString(char *string, uint stringSize, FilePermissions permissions)
+const char *File_permissionToString(char *string, uint stringSize, FilePermissions permissions, bool addColonSeparators)
 {
   assert(string != NULL);
   assert(stringSize > 0);
 
-  memset(string,'-',stringSize-1);
-  if ((stringSize >= 1) && ((permissions & FILE_PERMISSION_USER_READ    ) != 0)) string[0] = 'r';
-  if ((stringSize >= 2) && ((permissions & FILE_PERMISSION_USER_WRITE   ) != 0)) string[1] = 'w';
-  if ((stringSize >= 3) && ((permissions & FILE_PERMISSION_USER_EXECUTE ) != 0)) string[2] = 'x';
-  if ((stringSize >= 3) && ((permissions & FILE_PERMISSION_USER_SET_ID  ) != 0)) string[2] = 's';
-  if ((stringSize >= 4) && ((permissions & FILE_PERMISSION_GROUP_READ   ) != 0)) string[3] = 'r';
-  if ((stringSize >= 5) && ((permissions & FILE_PERMISSION_GROUP_WRITE  ) != 0)) string[4] = 'w';
-  if ((stringSize >= 6) && ((permissions & FILE_PERMISSION_GROUP_EXECUTE) != 0)) string[5] = 'x';
-  if ((stringSize >= 6) && ((permissions & FILE_PERMISSION_GROUP_SET_ID ) != 0)) string[5] = 's';
-  if ((stringSize >= 7) && ((permissions & FILE_PERMISSION_OTHER_READ   ) != 0)) string[6] = 'r';
-  if ((stringSize >= 8) && ((permissions & FILE_PERMISSION_OTHER_WRITE  ) != 0)) string[7] = 'w';
-  if ((stringSize >= 9) && ((permissions & FILE_PERMISSION_OTHER_EXECUTE) != 0)) string[8] = 'x';
-  if ((stringSize >= 9) && ((permissions & FILE_PERMISSION_STICKY_BIT   ) != 0)) string[8] = 't';
-  string[stringSize-1] = NUL;
+  stringSet(string,stringSize,addColonSeparators ? "---:---:---" : "---------");
+
+  size_t i = 0;
+
+  if ((stringSize >= (i+1)) && ((permissions & FILE_PERMISSION_USER_READ    ) != 0)) string[i+0] = 'r';
+  if ((stringSize >= (i+2)) && ((permissions & FILE_PERMISSION_USER_WRITE   ) != 0)) string[i+1] = 'w';
+  if (stringSize >= (i+3))
+  {
+    if ((permissions & FILE_PERMISSION_USER_EXECUTE ) != 0) string[i+2] = 'x';
+    if ((permissions & FILE_PERMISSION_USER_SET_ID  ) != 0) string[i+2] = ((permissions & FILE_PERMISSION_USER_EXECUTE) != 0) ? 's' : 'S';
+  }
+  i += (addColonSeparators ? 4 : 3);
+
+  if ((stringSize >= (i+1)) && ((permissions & FILE_PERMISSION_GROUP_READ   ) != 0)) string[i+0] = 'r';
+  if ((stringSize >= (i+2)) && ((permissions & FILE_PERMISSION_GROUP_WRITE  ) != 0)) string[i+1] = 'w';
+  if (stringSize >= (i+3))
+  {
+    if ((permissions & FILE_PERMISSION_GROUP_EXECUTE) != 0) string[i+2] = 'x';
+    if ((permissions & FILE_PERMISSION_GROUP_SET_ID ) != 0) string[i+2] = ((permissions & FILE_PERMISSION_GROUP_EXECUTE) != 0) ? 's' : 'S';
+  }
+  i += (addColonSeparators ? 4 : 3);
+
+  if ((stringSize >= (i+1)) && ((permissions & FILE_PERMISSION_OTHER_READ   ) != 0)) string[i+0] = 'r';
+  if ((stringSize >= (i+2)) && ((permissions & FILE_PERMISSION_OTHER_WRITE  ) != 0)) string[i+1] = 'w';
+  if (stringSize >= (i+3))
+  {
+    if ((permissions & FILE_PERMISSION_OTHER_EXECUTE) != 0) string[i+2] = 'x';
+    if ((permissions & FILE_PERMISSION_STICKY_BIT   ) != 0) string[i+2] = ((permissions & FILE_PERMISSION_OTHER_EXECUTE) != 0) ? 't' : 'T';
+  }
+  i += 3;
+
+  string[MIN(stringSize-1,i)] = NUL;
 
   return string;
 }
@@ -4407,7 +4560,7 @@ Errors File_setInfoCString(const FileInfo *fileInfo,
 //TODO: implement
       #endif /* PLATFORM_... */
 
-      // set last permissions
+      // set permissions
       #ifdef HAVE_CHMOD
         if (chmod(fileName,(mode_t)fileInfo->permissions) != 0)
         {
@@ -4938,8 +5091,6 @@ Errors File_makeDirectory(ConstString     pathName,
                           bool            ignoreExistingFlag
                          )
 {
-  #define PERMISSION_DIRECTORY (FILE_PERMISSION_USER_EXECUTE|FILE_PERMISSION_GROUP_EXECUTE|FILE_PERMISSION_OTHER_EXECUTE)
-
   String          directoryName;
   String          parentDirectoryName;
   mode_t          currentCreationMask;
@@ -4982,6 +5133,7 @@ Errors File_makeDirectory(ConstString     pathName,
   if      (!File_exists(directoryName))
   {
     // create root-directory
+
     // set owner/group
     if (   (userId  != FILE_DEFAULT_USER_ID)
         || (groupId != FILE_DEFAULT_GROUP_ID)
@@ -5011,7 +5163,7 @@ Errors File_makeDirectory(ConstString     pathName,
     {
       #ifdef HAVE_CHMOD
         if (chmod(String_cString(directoryName),
-                  ((mode_t)permissions|PERMISSION_DIRECTORY) & ~currentCreationMask
+                  ((mode_t)permissions|FILE_PERMISSION_DIRECTORY) & ~currentCreationMask
                  ) != 0
            )
         {
@@ -5055,9 +5207,9 @@ Errors File_makeDirectory(ConstString     pathName,
           File_deleteFileName(directoryName);
           return error;
         }
-        if (   ((fileStat.st_mode & PERMISSION_DIRECTORY) != PERMISSION_DIRECTORY)
+        if (   ((fileStat.st_mode & FILE_PERMISSION_DIRECTORY) != FILE_PERMISSION_DIRECTORY)
             && (chmod(String_cString(parentDirectoryName),
-                      (fileStat.st_mode|PERMISSION_DIRECTORY) & ~currentCreationMask
+                      (fileStat.st_mode|FILE_PERMISSION_DIRECTORY) & ~currentCreationMask
                      ) != 0
                )
            )
@@ -5127,7 +5279,7 @@ Errors File_makeDirectory(ConstString     pathName,
           // set permission
           #ifdef HAVE_CHMOD
             if (chmod(String_cString(directoryName),
-                      ((mode_t)permissions|PERMISSION_DIRECTORY) & ~currentCreationMask
+                      ((mode_t)permissions|FILE_PERMISSION_DIRECTORY) & ~currentCreationMask
                      ) != 0
                )
             {
@@ -5157,8 +5309,6 @@ Errors File_makeDirectory(ConstString     pathName,
   File_deleteFileName(directoryName);
 
   return ERROR_NONE;
-
-  #undef PERMISSION_DIRECTORY
 }
 
 Errors File_makeDirectoryCString(const char      *pathName,

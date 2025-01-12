@@ -203,6 +203,7 @@ typedef enum
 #define FILE_PERMISSION_EXECUTE   (FILE_PERMISSION_USER_EXECUTE|FILE_PERMISSION_GROUP_EXECUTE|FILE_PERMISSION_OTHER_EXECUTE)
 #define FILE_PERMISSION_MASK      (FILE_PERMISSION_READ|FILE_PERMISSION_WRITE|FILE_PERMISSION_EXECUTE)
 #define FILE_PERMISSION_ALL       (FILE_PERMISSION_READ|FILE_PERMISSION_WRITE|FILE_PERMISSION_EXECUTE|FILE_PERMISSION_USER_SET_ID|FILE_PERMISSION_GROUP_SET_ID|FILE_PERMISSION_STICKY_BIT)
+#define FILE_PERMISSION_DIRECTORY (FILE_PERMISSION_USER_EXECUTE|FILE_PERMISSION_GROUP_EXECUTE|FILE_PERMISSION_OTHER_EXECUTE)
 
 // own user, group ids, own default permission
 #define FILE_OWN_USER_ID        0
@@ -359,6 +360,14 @@ typedef struct
   uint   maxFileNameLength;
 } FileSystemInfo;
 
+typedef struct
+{
+  StringTokenizer stringTokenizer;
+  bool            separatorFlag;
+  bool            appendFlag;
+  String          path;
+} FilePathIterator;
+
 #ifndef NDEBUG
 /***********************************************************************\
 * Name   : FileDumpInfoFunction
@@ -386,6 +395,37 @@ typedef bool(*FileDumpInfoFunction)(const FileHandle *fileHandle,
 /***************************** Variables *******************************/
 
 /****************************** Macros *********************************/
+
+/***********************************************************************\
+* Name   : __FILE_PATH_ITERATE, FILE_ITERATE_CPATH
+* Purpose: iterate over file path parts
+* Input  : path       - path to iterate
+*          appendFlag - append to path
+*          condition  - condition
+* Output : variable - path
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+#define __FILE_PATH_ITERATE(filePathIterator,path,variable,appendFlag,condition) \
+  FilePathIterator filePathIterator; \
+  for (File_initIteratePath(&filePathIterator,path,appendFlag); \
+       File_getNextIteratePath(&filePathIterator,variable,condition); \
+      )
+#define FILE_PATH_ITERATE(path,variable,appendFlag) \
+  __FILE_PATH_ITERATE(__GLOBAL_CONCAT(__filePathIterator,__COUNTER__),path,variable,appendFlag,TRUE)
+#define FILE_PATH_ITERATEX(path,variable,appendFlag,condition) \
+  __FILE_PATH_ITERATE(__GLOBAL_CONCAT(__filePathIterator,__COUNTER__),path,variable,appendFlag,condition)
+
+#define __FILE_PATH_ITERATE_CSTRING(filePathIterator,path,variable,appendFlag,condition) \
+  FilePathIterator filePathIterator; \
+  for (File_initIteratePathCString(&filePathIterator,path,appendFlag); \
+       File_getNextIteratePathCString(&filePathIterator,&variable,condition); \
+      )
+#define FILE_PATH_ITERATE_CSTRING(path,variable,appendFlag) \
+  __FILE_PATH_ITERATE_CSTRING(__GLOBAL_CONCAT(__filePathIterator,__COUNTER__),path,variable,appendFlag,TRUE)
+#define FILE_PATH_ITERATEX_CSTRING(path,variable,appendFlag,condition) \
+  __FILE_PATH_ITERATE_CSTRING(__GLOBAL_CONCAT(__filePathIterator,__COUNTER__),path,variable,appendFlag,condition)
 
 #ifndef NDEBUG
   #define File_getTmpFile(...)             __File_getTmpFile(__FILE__,__LINE__, ## __VA_ARGS__)
@@ -616,6 +656,33 @@ void File_doneSplitFileName(StringTokenizer *stringTokenizer);
 \***********************************************************************/
 
 bool File_getNextSplitFileName(StringTokenizer *stringTokenizer, ConstString *name);
+
+/***********************************************************************\
+* Name   : File_iteratePathInit, File_initIteratePathCString
+* Purpose: initialize path iterator
+* Input  : filePathIterator - file path iterator variable
+*          path             - path
+*          appendFlag       - TRUE to append path
+* Output : variable - path
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+void File_initIteratePath(FilePathIterator *filePathIterator, ConstString path, bool appendFlag);
+void File_initIteratePathCString(FilePathIterator *filePathIterator, const char *path, bool appendFlag);
+
+/***********************************************************************\
+* Name   : File_iteratePathNext, File_getNextIteratePathCString
+* Purpose: get next path from path iterator
+* Input  : filePathIterator - file path iterator
+           condition        - condition
+* Output : variable - path
+* Return : TRUE if has next path segment
+* Notes  : -
+\***********************************************************************/
+
+bool File_getNextIteratePath(FilePathIterator *filePathIterator, String variable, bool condition);
+bool File_getNextIteratePathCString(FilePathIterator *filePathIterator, const char **variable, bool condition);
 
 /*---------------------------------------------------------------------*/
 
@@ -1208,28 +1275,31 @@ Errors File_readDirectoryList(DirectoryListHandle *directoryListHandle,
 /*---------------------------------------------------------------------*/
 
 /***********************************************************************\
-* Name   : File_stringToPermission
+* Name   : File_parsePermissions
 * Purpose: convert string to file permission
-* Input  : string - string
+* Input  : user  - user permission string (can be NULL)
+*          group - group permission string (can be NULL)
+*          other - other permission string (can be NULL)
 * Output : -
 * Return : file permissions
 * Notes  : -
 \***********************************************************************/
 
-FilePermissions File_stringToPermission(const char *string);
+FilePermissions File_parsePermissions(const char *user, const char *group, const char *other);
 
 /***********************************************************************\
 * Name   : File_permissionToString
 * Purpose: convert file permission to string
-* Input  : string      - string variable
-*          stringSize  - max. size of string
-*          permissions - file permission
+* Input  : string             - string variable
+*          stringSize         - max. size of string
+*          permissions        - file permission
+*          addColonSeparators - TRUE to insert ';'
 * Output : -
 * Return : string
 * Notes  : -
 \***********************************************************************/
 
-const char *File_permissionToString(char *string, uint stringSize, FilePermissions permissions);
+const char *File_permissionToString(char *string, uint stringSize, FilePermissions permissions, bool addColonSeparators);
 
 /***********************************************************************\
 * Name   : File_getType
