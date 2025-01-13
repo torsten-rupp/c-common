@@ -3493,13 +3493,12 @@ FilePermissions File_parsePermissions(const char *user, const char *group, const
 
   if (user != NULL)
   {
-    size_t n = stringLength(user);
-    if ((n >= 1) && (user[0]) == 'r') permissions |= FILE_PERMISSION_USER_READ;
-    if ((n >= 2) && (user[1]) == 'w') permissions |= FILE_PERMISSION_USER_WRITE;
-    if (n >= 3)
+    for (size_t i = 0; i < stringLength(user); i++)
     {
-      switch (user[2])
+      switch (user[i])
       {
+        case 'r': permissions |= FILE_PERMISSION_USER_READ; break;
+        case 'w': permissions |= FILE_PERMISSION_USER_WRITE; break;
         case 'x': permissions |= FILE_PERMISSION_USER_EXECUTE; break;
         case 's': permissions |= FILE_PERMISSION_USER_EXECUTE | FILE_PERMISSION_USER_SET_ID; break;
         case 'S': permissions |= FILE_PERMISSION_USER_SET_ID; break;
@@ -3509,13 +3508,12 @@ FilePermissions File_parsePermissions(const char *user, const char *group, const
 
   if (group != NULL)
   {
-    size_t n = stringLength(group);
-    if ((n >= 1) && (group[0]) == 'r') permissions |= FILE_PERMISSION_GROUP_READ;
-    if ((n >= 2) && (group[1]) == 'w') permissions |= FILE_PERMISSION_GROUP_WRITE;
-    if (n >= 3)
+    for (size_t i = 0; i < stringLength(group); i++)
     {
-      switch (group[2])
+      switch (group[i])
       {
+        case 'r': permissions |= FILE_PERMISSION_GROUP_READ; break;
+        case 'w': permissions |= FILE_PERMISSION_GROUP_WRITE; break;
         case 'x': permissions |= FILE_PERMISSION_GROUP_EXECUTE; break;
         case 's': permissions |= FILE_PERMISSION_GROUP_EXECUTE | FILE_PERMISSION_GROUP_SET_ID; break;
         case 'S': permissions |= FILE_PERMISSION_GROUP_SET_ID; break;
@@ -3525,13 +3523,12 @@ FilePermissions File_parsePermissions(const char *user, const char *group, const
 
   if (other != NULL)
   {
-    size_t n = stringLength(other);
-    if ((n >= 1) && (other[0]) == 'r') permissions |= FILE_PERMISSION_OTHER_READ;
-    if ((n >= 2) && (other[1]) == 'w') permissions |= FILE_PERMISSION_OTHER_WRITE;
-    if (n >= 3)
+    for (size_t i = 0; i < stringLength(other); i++)
     {
-      switch (other[2])
+      switch (other[i])
       {
+        case 'r': permissions |= FILE_PERMISSION_OTHER_READ; break;
+        case 'w': permissions |= FILE_PERMISSION_OTHER_WRITE; break;
         case 'x': permissions |= FILE_PERMISSION_OTHER_EXECUTE; break;
         case 't': permissions |= FILE_PERMISSION_OTHER_EXECUTE | FILE_PERMISSION_STICKY_BIT; break;
         case 'T': permissions |= FILE_PERMISSION_STICKY_BIT; break;
