@@ -48,17 +48,17 @@ Array *__StringArray_new(const char *fileName, ulong lineNb, ulong length)
 {
   #ifdef NDEBUG
     return Array_new(sizeof(String),
-                     length
-                     CALLBACK((ArrayFreeFunction)freeStringArrayElement,NULL),
-                     CALLBACK_NULL
+                     length,
+                     CALLBACK_((ArrayFreeFunction)freeStringArrayElement,NULL),
+                     CALLBACK_(NULL,NULL)
                     );
   #else /* not NDEBUG */
     return __Array_new(fileName,
                        lineNb,
                        sizeof(String),
                        length,
-                       CALLBACK((ArrayFreeFunction)freeStringArrayElement,NULL),
-                       CALLBACK_NULL
+                       CALLBACK_((ArrayFreeFunction)freeStringArrayElement,NULL),
+                       CALLBACK_(NULL,NULL)
                       );
   #endif /* NDEBUG */
 }
