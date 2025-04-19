@@ -3838,7 +3838,7 @@ LOCAL Errors postgresqlExecute(PGconn     *connection,
 
     if (changedRowCount != NULL)
     {
-      stringToUInt64(PQcmdTuples(postgresqlResult),changedRowCount,NULL);
+      stringToULong(PQcmdTuples(postgresqlResult),changedRowCount,NULL);
     }
 
     PQclear(postgresqlResult);
@@ -7840,7 +7840,7 @@ LOCAL Errors executePreparedQuery(DatabaseStatementHandle *databaseStatementHand
                 // get number of changes
                 if (changedRowCount != NULL)
                 {
-                  stringToUInt64(PQcmdTuples(postgresqlResult),changedRowCount,NULL);
+                  stringToULong(PQcmdTuples(postgresqlResult),changedRowCount,NULL);
                 }
 
                 error = ERROR_NONE;
