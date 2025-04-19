@@ -1461,7 +1461,7 @@ String Misc_getProgramFilePath(String path)
     String_setBuffer(path,buffer,(ulong)bufferLength);
   #elif defined(PLATFORM_WINDOWS)
     bufferLength = GetModuleFileName(NULL,buffer,MAX_PATH);
-    if ((bufferLength == -1) || (bufferLength >= (ssize_t)sizeof(buffer)))
+    if (bufferLength >= MAX_PATH)
     {
       return path;
     }
@@ -2794,7 +2794,7 @@ LOCAL void serviceControlHandler(DWORD control)
 * Notes  : -
 \***********************************************************************/
 
-LOCAL void serviceStartCode(void)
+LOCAL void serviceStartCode(DWORD argc, LPSTR argv[])
 {
 	serviceInfo.serviceStatus.dwServiceType             = SERVICE_WIN32_OWN_PROCESS;
 	serviceInfo.serviceStatus.dwCurrentState            = SERVICE_RUNNING;
@@ -2816,7 +2816,7 @@ LOCAL void serviceStartCode(void)
     return;
   }
 
-  serviceInfo.error = serviceInfo.serviceCode(serviceInfo.argc,serviceInfo.argv);
+  serviceInfo.error = serviceInfo.serviceCode((int)argc,(const char**)argv);
 }
 
 #endif
