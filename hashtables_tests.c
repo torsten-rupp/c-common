@@ -363,16 +363,18 @@ CTEST(hashTables,iterate_remove)
 
 CTEST(hashTables,printStatistic)
 {
-  HashTable hashTable;
+  #ifndef NDEBUG
+    HashTable hashTable;
 
-  HashTable_init(&hashTable,
-                 100,
-                 CALLBACK_(NULL,NULL),
-                 CALLBACK_(NULL,NULL),
-                 CALLBACK_(NULL,NULL)
-                );
-  HashTable_printStatistic(&hashTable);
-  HashTable_done(&hashTable);
+    HashTable_init(&hashTable,
+                   100,
+                   CALLBACK_(NULL,NULL),
+                   CALLBACK_(NULL,NULL),
+                   CALLBACK_(NULL,NULL)
+                  );
+    HashTable_printStatistic(&hashTable);
+    HashTable_done(&hashTable);
+  #endif
 }
 
 int main(int argc, const char *argv[])

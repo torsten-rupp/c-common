@@ -32,9 +32,6 @@ CTEST(strings,duplicate)
 {
   String s1,s2;
 
-  s1 = String_new();
-  s2 = String_new();
-
   s1 = String_newCString("test");
   ASSERT_STR("test",String_cString(s1));
   s2 = String_duplicate(s1);
@@ -47,9 +44,6 @@ CTEST(strings,duplicate)
 CTEST(strings,copy)
 {
   String s1,s2,s3;
-
-  s1 = String_new();
-  s3 = String_new();
 
   s1 = String_newCString("test");
   ASSERT_STR("test",String_cString(s1));

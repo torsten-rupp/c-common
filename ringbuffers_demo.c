@@ -175,7 +175,9 @@ int main(int argc, char *argv[])
   RINGBUFFER_DELETE(ringBuffer);
   #endif /* 0 */
 
-  RingBuffer_debugPrintInfo();
+  #ifndef NDEBUG
+    RingBuffer_debugPrintInfo();
+  #endif
 
   return 0;
 }

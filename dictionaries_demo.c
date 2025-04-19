@@ -116,7 +116,9 @@ int main(int argc, char *argv[])
   }
   Dictionary_doneIterator(&dictionaryIterator);
 
-  Dictionary_printStatistic(&dictionary);
+  #ifndef NDEBUG
+    Dictionary_printStatistic(&dictionary);
+  #endif
 
   Dictionary_done(&dictionary);
 

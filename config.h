@@ -27,3 +27,5 @@
 #ifndef TLS_DIR
   #define TLS_DIR "/etc/ssl"
 #endif
+
+#define MKDIR_ARGUMENTS_COUNT 2
