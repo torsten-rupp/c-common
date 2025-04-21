@@ -375,7 +375,6 @@ void MsgQueue_unlock(MsgQueue *msgQueue)
   unlock(msgQueue);
 }
 
-
 bool MsgQueue_get(MsgQueue *msgQueue, void *msg, ulong *size, ulong maxSize, long timeout)
 {
   TimeoutInfo timeoutInfo;
@@ -459,7 +458,8 @@ bool MsgQueue_put(MsgQueue *msgQueue, const void *msg, ulong size)
              && (List_count(&msgQueue->list) >= msgQueue->maxMsgs)
             )
       {
-        waitModified(msgQueue,WAIT_FOREVER);
+        // work-around: wait with timeout to handle lost wake-ups
+        (void)waitModified(msgQueue,5000);
       }
       assert(msgQueue->endOfMsgFlag || List_count(&msgQueue->list) < msgQueue->maxMsgs);
     }
@@ -482,7 +482,10 @@ void MsgQueue_wait(MsgQueue *msgQueue)
   {
     if (!msgQueue->endOfMsgFlag)
     {
-      waitModified(msgQueue,WAIT_FOREVER);
+      // work-around: wait with timeout to handle lost wake-ups
+      while (!waitModified(msgQueue,5000))
+      {
+      }
     }
   }
 }
