@@ -46,7 +46,7 @@
 
 #if   defined(PLATFORM_LINUX)
 #elif defined(PLATFORM_WINDOWS)
-  #include <winsock2.h>
+  #include <winsock2.h>  // Windows brain dead
   #include <windows.h>
   #include <rpcdce.h>
   #include <lmcons.h>
@@ -2955,7 +2955,9 @@ bool Misc_getYesNo(const char *message)
     }
   #elif defined(PLATFORM_WINDOWS)
 // NYI ???
+#ifndef WERROR
 #warning no console input on windows
+#endif
     UNUSED_VARIABLE(message);
 
     return FALSE;
