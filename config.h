@@ -6,6 +6,9 @@
 #define HAVE_SYS_STATFS_H 1
 #define HAVE_SYS_MOUNT_H 1
 #define HAVE_MNTENT_H 1
+#define HAVE_BFD_H 1
+#define HAVE_LINK_H 1
+#define HAVE_EXECINFO_H 1
 
 #define HAVE_SIGSET_T 1
 #define HAVE_PIPE 1
@@ -17,6 +20,10 @@
 #define HAVE_STRUCT_STAT64 1
 #define HAVE_MKDTEMP 1
 #define HAVE_MKSTEMP 1
+
+#define HAVE_BFD_INIT 1
+#define HAVE_BACKTRACE_SYMBOLS 1
+#define HAVE_BACKTRACE 1
 
 #ifndef CONFIG_DIR
   #define CONFIG_DIR "/etc"
