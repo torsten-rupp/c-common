@@ -14,7 +14,20 @@
 int keys  [TEST_SIZE];
 int values[TEST_SIZE];
 
+CTEST_DATA(dictionaries)
+{
+};
+
 // ---------------------------------------------------------------------
+
+CTEST_SETUP(dictionaries)
+{
+  for (size_t i = 0; i < TEST_SIZE; i++)
+  {
+    keys[i]   = i;
+    values[i] = i;
+  }
+}
 
 CTEST(dictionaries,initDoneReference)
 {
@@ -49,6 +62,10 @@ CTEST(dictionaries,addReference)
                   );
   }
   ASSERT_EQUAL(TEST_SIZE,Dictionary_count(&dictionary));
+  for (size_t i = 0; i < TEST_SIZE; i++)
+  {
+    ASSERT_TRUE(Dictionary_contains(&dictionary,&keys[i],sizeof(keys[i])));
+  }
   for (size_t i = 0; i < TEST_SIZE; i++)
   {
     Dictionary_add(&dictionary,
@@ -94,6 +111,10 @@ CTEST(dictionaries,removeReference)
                   );
   }
   ASSERT_EQUAL(TEST_SIZE,Dictionary_count(&dictionary));
+  for (size_t i = 0; i < TEST_SIZE; i++)
+  {
+    ASSERT_TRUE(Dictionary_contains(&dictionary,&keys[i],sizeof(keys[i])));
+  }
 
   for (size_t i = 0; i < TEST_SIZE; i++)
   {
@@ -127,6 +148,10 @@ CTEST(dictionaries,clearReference)
                   );
   }
   ASSERT_EQUAL(TEST_SIZE,Dictionary_count(&dictionary));
+  for (size_t i = 0; i < TEST_SIZE; i++)
+  {
+    ASSERT_TRUE(Dictionary_contains(&dictionary,&keys[i],sizeof(keys[i])));
+  }
 
   Dictionary_clear(&dictionary);
   ASSERT_EQUAL(0,Dictionary_count(&dictionary));
@@ -154,6 +179,10 @@ CTEST(dictionaries,iteratorReference)
                   );
   }
   ASSERT_EQUAL(TEST_SIZE,Dictionary_count(&dictionary));
+  for (size_t i = 0; i < TEST_SIZE; i++)
+  {
+    ASSERT_TRUE(Dictionary_contains(&dictionary,&keys[i],sizeof(keys[i])));
+  }
 
   DictionaryIterator dictionaryIterator;
   Dictionary_initIterator(&dictionaryIterator,&dictionary);
@@ -193,6 +222,10 @@ CTEST(dictionaries,containsReference)
                   );
   }
   ASSERT_EQUAL(TEST_SIZE,Dictionary_count(&dictionary));
+  for (size_t i = 0; i < TEST_SIZE; i++)
+  {
+    ASSERT_TRUE(Dictionary_contains(&dictionary,&keys[i],sizeof(keys[i])));
+  }
 
   for (size_t i = 0; i < TEST_SIZE; i++)
   {
@@ -249,6 +282,10 @@ CTEST(dictionaries,addCopy)
                   );
   }
   ASSERT_EQUAL(TEST_SIZE,Dictionary_count(&dictionary));
+  for (size_t i = 0; i < TEST_SIZE; i++)
+  {
+    ASSERT_TRUE(Dictionary_contains(&dictionary,&keys[i],sizeof(keys[i])));
+  }
   for (size_t i = 0; i < TEST_SIZE; i++)
   {
     int key  = i;
@@ -335,6 +372,10 @@ CTEST(dictionaries,clearCopy)
                   );
   }
   ASSERT_EQUAL(TEST_SIZE,Dictionary_count(&dictionary));
+  for (size_t i = 0; i < TEST_SIZE; i++)
+  {
+    ASSERT_TRUE(Dictionary_contains(&dictionary,&keys[i],sizeof(keys[i])));
+  }
 
   Dictionary_clear(&dictionary);
   ASSERT_EQUAL(0,Dictionary_count(&dictionary));
@@ -364,6 +405,10 @@ CTEST(dictionaries,iteratorCopy)
                   );
   }
   ASSERT_EQUAL(TEST_SIZE,Dictionary_count(&dictionary));
+  for (size_t i = 0; i < TEST_SIZE; i++)
+  {
+    ASSERT_TRUE(Dictionary_contains(&dictionary,&keys[i],sizeof(keys[i])));
+  }
 
   DictionaryIterator dictionaryIterator;
   Dictionary_initIterator(&dictionaryIterator,&dictionary);
@@ -405,6 +450,10 @@ CTEST(dictionaries,containsCopy)
                   );
   }
   ASSERT_EQUAL(TEST_SIZE,Dictionary_count(&dictionary));
+  for (size_t i = 0; i < TEST_SIZE; i++)
+  {
+    ASSERT_TRUE(Dictionary_contains(&dictionary,&keys[i],sizeof(keys[i])));
+  }
 
   for (size_t i = 0; i < TEST_SIZE; i++)
   {
@@ -455,8 +504,8 @@ CTEST(dictionaries,addValue)
   ASSERT_EQUAL(TEST_SIZE,Dictionary_count(&dictionary));
   for (size_t i = 0; i < TEST_SIZE; i++)
   {
-    Dictionary_addValue(&dictionary,
-                        keys[i],
+    Dictionary_contains(&dictionary,
+                        &keys[i],
                         values[i]
                        );
   }
