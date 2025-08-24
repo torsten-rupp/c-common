@@ -1,6 +1,6 @@
 /***********************************************************************\
 *
-* Contents: tiny memory pool managment functions
+* Contents: tiny memory pool allocator
 * Systems : all
 *
 \***********************************************************************/
@@ -22,13 +22,13 @@
 /***************************** Datatypes *******************************/
 typedef struct
 {
-  ulong size;
+  size_t size;
 } Chunk;
 
 typedef struct ChunkNode
 {
   struct ChunkNode *next;
-  ulong            size;
+  size_t           size;
 } ChunkNode;
 
 struct __TinyMemory
@@ -47,13 +47,11 @@ struct __TinyMemory
 #ifdef TINY_MEMORY_DEBUG
 LOCAL void dump(struct __TinyMemory *tinyMemory)
 {
-  ChunkNode *node;
-
   assert(tinyMemory != NULL);
 
   printf("Dump memory blocks:\n");
   printf("----------------------\n");
-  node = tinyMemory->chunkNode;
+  ChunkNode *node = tinyMemory->chunkNode;
   while (node != NULL)
   {
     printf("%p: %lu\n",node,node->size);
@@ -66,13 +64,11 @@ LOCAL void dump(struct __TinyMemory *tinyMemory)
 
 LOCAL void addChunk(struct __TinyMemory *tinyMemory, ChunkNode *chunkNode)
 {
-  ChunkNode *prevNode,*node;
-
   assert(tinyMemory != NULL);
   assert(chunkNode != NULL);
 
-  prevNode = NULL;
-  node     = tinyMemory->chunkNode;
+  ChunkNode *prevNode = NULL;
+  ChunkNode *node     = tinyMemory->chunkNode;
   while ((node != NULL) && (chunkNode->size > node->size))
   {
     prevNode = node;
@@ -93,13 +89,11 @@ LOCAL void addChunk(struct __TinyMemory *tinyMemory, ChunkNode *chunkNode)
 
 LOCAL void remChunk(struct __TinyMemory *tinyMemory, ChunkNode *chunkNode)
 {
-  ChunkNode *prevNode,*node;
-
   assert(tinyMemory != NULL);
   assert(chunkNode != NULL);
 
-  prevNode = NULL;
-  node     = tinyMemory->chunkNode;
+  ChunkNode *prevNode = NULL;
+  ChunkNode *node     = tinyMemory->chunkNode;
   while ((node != NULL) && (node != chunkNode))
   {
     prevNode = node;
@@ -117,17 +111,13 @@ LOCAL void remChunk(struct __TinyMemory *tinyMemory, ChunkNode *chunkNode)
   }
 }
 
-LOCAL Chunk *allocChunk(TinyMemory tinyMemory, ulong size)
+LOCAL Chunk *allocChunk(TinyMemory tinyMemory, size_t size)
 {
-  ChunkNode *node;
-  ulong     n;
-  Chunk     *chunk;
-
   assert(tinyMemory != NULL);
 
   size = (size+sizeof(Chunk)-1) & ~(sizeof(Chunk)-1);
 
-  node = tinyMemory->chunkNode;
+  ChunkNode *node = tinyMemory->chunkNode;
   while ((node != NULL) && ((size+sizeof(Chunk)) > node->size))
   {
     node = node->next;
@@ -137,7 +127,8 @@ LOCAL Chunk *allocChunk(TinyMemory tinyMemory, ulong size)
     return NULL;
   }
 
-  n = node->size;
+  Chunk  *chunk;
+  size_t n = node->size;
   if (n > (sizeof(Chunk)+size+sizeof(ChunkNode)))
   {
     /* split chunk */
@@ -167,15 +158,13 @@ LOCAL Chunk *allocChunk(TinyMemory tinyMemory, ulong size)
 
 LOCAL void freeChunk(TinyMemory tinyMemory, Chunk *chunk)
 {
-  ChunkNode *prevNode,*node,*nextNode;
-  ChunkNode *chunkNode;
-  ulong     n;
-
   assert(tinyMemory != NULL);
   assert(chunk != NULL);
 
-  prevNode = NULL;
-  node     = tinyMemory->chunkNode;
+  ChunkNode *chunkNode;
+  size_t    n;
+  ChunkNode *prevNode = NULL;
+  ChunkNode *node     = tinyMemory->chunkNode;
   while (   (node != NULL)
          && (((char*)node+node->size) != (char*)chunk)
          && ((char*)node != ((char*)chunk+chunk->size))
@@ -188,7 +177,7 @@ LOCAL void freeChunk(TinyMemory tinyMemory, Chunk *chunk)
   {
     /* merge with existing chunk */
 
-    nextNode = node->next;
+    ChunkNode *nextNode = node->next;
 
     remChunk(tinyMemory,node);
 
@@ -240,11 +229,8 @@ LOCAL void freeChunk(TinyMemory tinyMemory, Chunk *chunk)
 
 /*---------------------------------------------------------------------*/
 
-TinyMemory tinyMemory_init(void *p, ulong size)
+TinyMemory TinyMemory_init(void *p, size_t size)
 {
-  struct __TinyMemory *tinyMemory;
-  ChunkNode           *chunkNode;
-
   assert(p != NULL);
 
   if (size < (sizeof(struct __TinyMemory) + sizeof(ChunkNode)))
@@ -252,8 +238,8 @@ TinyMemory tinyMemory_init(void *p, ulong size)
     return NULL;
   }
 
-  tinyMemory = (struct __TinyMemory*)((char*)p + 0                          );
-  chunkNode  = (ChunkNode*          )((char*)p + sizeof(struct __TinyMemory));
+  struct __TinyMemory *tinyMemory = (struct __TinyMemory*)((char*)p + 0                          );
+  ChunkNode           *chunkNode  = (ChunkNode*          )((char*)p + sizeof(struct __TinyMemory));
   size = size - (sizeof(struct __TinyMemory) + sizeof(ChunkNode));
 
   tinyMemory->chunkNode = NULL;
@@ -264,38 +250,32 @@ TinyMemory tinyMemory_init(void *p, ulong size)
   return tinyMemory;
 }
 
-void tinyMemory_done(TinyMemory tinyMemory)
+void TinyMemory_done(TinyMemory tinyMemory)
 {
   assert(tinyMemory != NULL);
 }
 
-void *tinyMemory_alloc(TinyMemory tinyMemory, ulong size)
+void *TinyMemory_alloc(TinyMemory tinyMemory, size_t size)
 {
-  Chunk *chunk;
-
   assert(tinyMemory != NULL);
 
   size = (size+sizeof(Chunk)-1) & ~(sizeof(Chunk)-1);
-  chunk = allocChunk(tinyMemory,size);
+  Chunk *chunk = allocChunk(tinyMemory,size);
 
   return (chunk != NULL)?(void*)((char*)chunk+sizeof(Chunk)):NULL;
 }
 
-void *tinyMemory_realloc(TinyMemory tinyMemory, void *p, ulong newSize)
+void *TinyMemory_realloc(TinyMemory tinyMemory, void *p, size_t newSize)
 {
-  Chunk *chunk;
-  Chunk *newChunk;
-  ulong n;
-
   assert(tinyMemory != NULL);
 
-  chunk = (Chunk*)((char*)p-sizeof(chunk));
+  Chunk *chunk = (Chunk*)((char*)p-sizeof(chunk));
 
   newSize = (newSize+sizeof(Chunk)-1) & ~(sizeof(Chunk)-1);
-  newChunk = allocChunk(tinyMemory,newSize);
+  Chunk *newChunk = allocChunk(tinyMemory,newSize);
   if (newChunk != NULL)
   {
-    n = MIN(chunk->size,newChunk->size);
+    size_t n = MIN(chunk->size,newChunk->size);
     memcpy((char*)newChunk+sizeof(Chunk),
            (char*)chunk+sizeof(Chunk),
            n-sizeof(Chunk)
@@ -306,15 +286,13 @@ void *tinyMemory_realloc(TinyMemory tinyMemory, void *p, ulong newSize)
   return (newChunk != NULL)?(void*)((char*)newChunk+sizeof(Chunk)):NULL;
 }
 
-void tinyMemory_free(TinyMemory tinyMemory, void *p)
+void TinyMemory_free(TinyMemory tinyMemory, void *p)
 {
-  Chunk *chunk;
-
   assert(tinyMemory != NULL);
 
   if (p != NULL)
   {
-    chunk = (Chunk*)((char*)p-sizeof(chunk));
+    Chunk *chunk = (Chunk*)((char*)p-sizeof(chunk));
     freeChunk(tinyMemory,chunk);
   }
 }

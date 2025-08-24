@@ -1,7 +1,7 @@
 /***********************************************************************\
 *
-* Contents: 
-* Systems :
+* Contents: tiny memory allocator
+* Systems : all
 *
 \***********************************************************************/
 
@@ -33,7 +33,7 @@ typedef struct __TinyMemory *TinyMemory;
 #endif
 
 /***********************************************************************\
-* Name   : tinyMemory_init
+* Name   : TinyMemory_init
 * Purpose: initialize tiny memory
 * Input  : p    - memory
 *          size - memory size
@@ -42,10 +42,10 @@ typedef struct __TinyMemory *TinyMemory;
 * Notes  : -
 \***********************************************************************/
 
-TinyMemory tinyMemory_init(void *p, ulong size);
+TinyMemory TinyMemory_init(void *p, size_t size);
 
 /***********************************************************************\
-* Name   : tinyMemory_done
+* Name   : TinyMemory_done
 * Purpose: deinitialize tiny memory
 * Input  : tinyMemory - tiny memory
 * Output : -
@@ -53,10 +53,10 @@ TinyMemory tinyMemory_init(void *p, ulong size);
 * Notes  : -
 \***********************************************************************/
 
-void tinyMemory_done(TinyMemory tinyMemory);
+void TinyMemory_done(TinyMemory tinyMemory);
 
 /***********************************************************************\
-* Name   : tinyMemory_alloc
+* Name   : TinyMemory_alloc
 * Purpose: allocate memory block
 * Input  : tinyMemory - tiny memory
 *          size       - size of memory block
@@ -65,10 +65,10 @@ void tinyMemory_done(TinyMemory tinyMemory);
 * Notes  : -
 \***********************************************************************/
 
-void *tinyMemory_alloc(TinyMemory tinyMemory, ulong size);
+void *TinyMemory_alloc(TinyMemory tinyMemory, size_t size);
 
 /***********************************************************************\
-* Name   : tinyMemory_realloc
+* Name   : TinyMemory_realloc
 * Purpose: reallocate memory block
 * Input  : tinyMemory - tiny memory
 *          p          - memory block
@@ -78,10 +78,10 @@ void *tinyMemory_alloc(TinyMemory tinyMemory, ulong size);
 * Notes  : -
 \***********************************************************************/
 
-void *tinyMemory_realloc(TinyMemory tinyMemory, void *p, ulong newSize);
+void *TinyMemory_realloc(TinyMemory tinyMemory, void *p, size_t newSize);
 
 /***********************************************************************\
-* Name   : tinyMemory_free
+* Name   : TinyMemory_free
 * Purpose: free memory block
 * Input  : tinyMemory - tiny memory
 *          p          - memory block
@@ -90,7 +90,7 @@ void *tinyMemory_realloc(TinyMemory tinyMemory, void *p, ulong newSize);
 * Notes  : -
 \***********************************************************************/
 
-void tinyMemory_free(TinyMemory tinyMemory, void *p);
+void TinyMemory_free(TinyMemory tinyMemory, void *p);
 
 #ifdef __cplusplus
   }
