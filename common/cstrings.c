@@ -124,10 +124,10 @@ LOCAL bool vmatchString(const char *string,
     const char **matchedSubString;
     do
     {
-      const char **matchedSubString = va_arg(arguments,const char**);
+      matchedSubString = va_arg(arguments,const char**);
       if (matchedSubString != NULL)
       {
-        size_t matchedSubStringSize = va_arg(arguments,size_t*);
+        size_t *matchedSubStringSize = va_arg(arguments,size_t*);
         assert(matchedSubStringSize != NULL);
         subMatchCount++;
       }

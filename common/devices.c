@@ -1077,7 +1077,7 @@ Errors Device_getInfoCString(DeviceInfo *deviceInfo,
       {
         CStringTokenizer stringTokenizer;
         stringTokenizerInit(&stringTokenizer,debugEmulateBlockDevice,",");
-        const char *emulateDeviceName,*emulateFileName;
+        const char *emulateDeviceName;
         if (   stringGetNextToken(&stringTokenizer,&emulateDeviceName)
             && stringEquals(deviceName,emulateDeviceName)
            )
