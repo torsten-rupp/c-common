@@ -1330,12 +1330,12 @@ LOCAL bool parseValue(const ConfigValue    *configValue,
       {
         if (variable != NULL)
         {
-          if (!configValue->specialValue.parse(configValue->specialValue.userData,
-                                               (byte*)variable+configValue->offset,
+          if (!configValue->specialValue.parse((byte*)variable+configValue->offset,
                                                configValue->name,
                                                value,
                                                errorMessage,
-                                               sizeof(errorMessage)
+                                               sizeof(errorMessage),
+                                               configValue->specialValue.userData
                                               )
              )
           {
@@ -1366,12 +1366,12 @@ LOCAL bool parseValue(const ConfigValue    *configValue,
 
           if ((*configValue->variable.reference) != NULL)
           {
-            if (!configValue->specialValue.parse(configValue->specialValue.userData,
-                                                 (byte*)(*configValue->variable.reference)+configValue->offset,
+            if (!configValue->specialValue.parse((byte*)(*configValue->variable.reference)+configValue->offset,
                                                  configValue->name,
                                                  value,
                                                  errorMessage,
-                                                 sizeof(errorMessage)
+                                                 sizeof(errorMessage),
+                                                 configValue->specialValue.userData
                                                 )
                )
             {
@@ -1402,12 +1402,12 @@ LOCAL bool parseValue(const ConfigValue    *configValue,
       {
         assert(configValue->variable.special != NULL);
 
-        if (!configValue->specialValue.parse(configValue->specialValue.userData,
-                                             configValue->variable.special,
+        if (!configValue->specialValue.parse(configValue->variable.special,
                                              configValue->name,
                                              value,
                                              errorMessage,
-                                             sizeof(errorMessage)
+                                             sizeof(errorMessage),
+                                             configValue->specialValue.userData
                                             )
            )
         {
@@ -1488,12 +1488,12 @@ LOCAL bool parseValue(const ConfigValue    *configValue,
         {
           if (configValue->deprecatedValue.parse != NULL)
           {
-            if (!configValue->deprecatedValue.parse(configValue->deprecatedValue.userData,
-                                                    (byte*)variable+configValue->offset,
+            if (!configValue->deprecatedValue.parse((byte*)variable+configValue->offset,
                                                     configValue->name,
                                                     value,
                                                     errorMessage,
-                                                    sizeof(errorMessage)
+                                                    sizeof(errorMessage),
+                                                    configValue->deprecatedValue.userData
                                                    )
                )
             {
@@ -1525,12 +1525,12 @@ LOCAL bool parseValue(const ConfigValue    *configValue,
           {
             if (configValue->deprecatedValue.parse != NULL)
             {
-              if (!configValue->deprecatedValue.parse(configValue->deprecatedValue.userData,
-                                                      (byte*)(configValue->variable.reference)+configValue->offset,
+              if (!configValue->deprecatedValue.parse((byte*)(configValue->variable.reference)+configValue->offset,
                                                       configValue->name,
                                                       value,
                                                       errorMessage,
-                                                      sizeof(errorMessage)
+                                                      sizeof(errorMessage),
+                                                      configValue->deprecatedValue.userData
                                                      )
                  )
               {
@@ -1564,12 +1564,12 @@ LOCAL bool parseValue(const ConfigValue    *configValue,
         {
           if (configValue->deprecatedValue.parse != NULL)
           {
-            if (!configValue->deprecatedValue.parse(configValue->deprecatedValue.userData,
-                                                    variable,
+            if (!configValue->deprecatedValue.parse(variable,
                                                     configValue->name,
                                                     value,
                                                     errorMessage,
-                                                    sizeof(errorMessage)
+                                                    sizeof(errorMessage),
+                                                    configValue->deprecatedValue.userData
                                                    )
                )
             {
@@ -1601,12 +1601,12 @@ LOCAL bool parseValue(const ConfigValue    *configValue,
 
           if (configValue->deprecatedValue.parse != NULL)
           {
-            if (!configValue->deprecatedValue.parse(configValue->deprecatedValue.userData,
-                                                    configValue->variable.deprecated,
+            if (!configValue->deprecatedValue.parse(configValue->variable.deprecated,
                                                     configValue->name,
                                                     value,
                                                     errorMessage,
-                                                    sizeof(errorMessage)
+                                                    sizeof(errorMessage),
+                                                    configValue->deprecatedValue.userData
                                                    )
                )
             {
@@ -3270,7 +3270,7 @@ bool ConfigValue_parse(const ConfigValue    configValues[],
   return TRUE;
 }
 
-bool ConfigValue_parseDeprecatedBoolean(void *userData, void *variable, const char *name, const char *value, char errorMessage[], uint errorMessageSize)
+bool ConfigValue_parseDeprecatedBoolean(void *variable, const char *name, const char *value, char errorMessage[], uint errorMessageSize, void *userData)
 {
   assert(variable != NULL);
   assert(value != NULL);
@@ -3310,12 +3310,12 @@ bool ConfigValue_parseDeprecatedBoolean(void *userData, void *variable, const ch
   return TRUE;
 }
 
-bool ConfigValue_parseDeprecatedInteger(void       *userData,
-                                        void       *variable,
+bool ConfigValue_parseDeprecatedInteger(void       *variable,
                                         const char *name,
                                         const char *value,
                                         char       errorMessage[],
-                                        uint       errorMessageSize
+                                        uint       errorMessageSize,
+                                        void       *userData
                                        )
 {
   assert(variable != NULL);
@@ -3335,12 +3335,12 @@ bool ConfigValue_parseDeprecatedInteger(void       *userData,
   return TRUE;
 }
 
-bool ConfigValue_parseDeprecatedInteger64(void       *userData,
-                                          void       *variable,
+bool ConfigValue_parseDeprecatedInteger64(void       *variable,
                                           const char *name,
                                           const char *value,
                                           char       errorMessage[],
-                                          uint       errorMessageSize
+                                          uint       errorMessageSize,
+                                          void       *userData
                                          )
 {
   assert(variable != NULL);
@@ -3360,12 +3360,12 @@ bool ConfigValue_parseDeprecatedInteger64(void       *userData,
   return TRUE;
 }
 
-bool ConfigValue_parseDeprecatedString(void       *userData,
-                                       void       *variable,
+bool ConfigValue_parseDeprecatedString(void       *variable,
                                        const char *name,
                                        const char *value,
                                        char       errorMessage[],
-                                       uint       errorMessageSize
+                                       uint       errorMessageSize,
+                                       void       *userData
                                       )
 {
   String string;
@@ -4836,22 +4836,30 @@ void ConfigValue_debugPrintComments(void)
 * Purpose: update SHA256
 * Input  : sha256     - SHA256
 *          data       - data
-*          dateLength - length of data
+*          dataLength - length of data
 * Output : -
 * Return : -
 * Notes  : -
 \***********************************************************************/
 
-LOCAL void updateSHA256(SHA256_ sha256, const void *data, uint dateLength)
+#ifdef HAVE_GCRYPT
+LOCAL void updateSHA256(SHA256_ sha256, const void *data, uint dataLength)
 {
   #if   defined(HAVE_OPENSSL)
 // TODO: use openssl
+UNUSED_VARIABLE(sha256);
+UNUSED_VARIABLE(data);
+UNUSED_VARIABLE(dataLength);
   #elif defined(HAVE_GCRYPT)
-    gcry_md_write(sha256,data,dateLength);
+    gcry_md_write(sha256,data,dataLength);
   #else
 // TODO: implement simple sha256
+UNUSED_VARIABLE(sha256);
+UNUSED_VARIABLE(data);
+UNUSED_VARIABLE(dataLength);
   #endif
 }
+#endif // defined(HAVE_GCRYPT)
 
 /***********************************************************************\
 * Name   : updateSHA256StringList
@@ -4863,18 +4871,19 @@ LOCAL void updateSHA256(SHA256_ sha256, const void *data, uint dateLength)
 * Notes  : -
 \***********************************************************************/
 
+#ifdef HAVE_GCRYPT
 LOCAL void updateSHA256StringList(SHA256_ sha256, const StringList *stringList)
 {
-  const StringNode *stringNode;
-  ConstString      line;
-
   assert (stringList != NULL);
 
+  const StringNode *stringNode;
+  ConstString      line;
   STRINGLIST_ITERATE(stringList,stringNode,line)
   {
     updateSHA256(sha256,String_cString(line),String_length(line));
   }
 }
+#endif // defined(HAVE_GCRYPT)
 
 /***********************************************************************\
 * Name   : updateSHA256Value
@@ -4887,6 +4896,7 @@ LOCAL void updateSHA256StringList(SHA256_ sha256, const StringList *stringList)
 * Notes  : -
 \***********************************************************************/
 
+#ifdef HAVE_GCRYPT
 LOCAL void updateSHA256Value(SHA256_           sha256,
                              const ConfigValue *configValue,
                              const void        *variable
@@ -5248,6 +5258,7 @@ LOCAL void updateSHA256Value(SHA256_           sha256,
       break;
   }
 }
+#endif // defined(HAVE_GCRYPT)
 
 /***********************************************************************\
 * Name   : updateSHA256Section
@@ -5261,6 +5272,7 @@ LOCAL void updateSHA256Value(SHA256_           sha256,
 * Notes  : -
 \***********************************************************************/
 
+#ifdef HAVE_GCRYPT
 LOCAL void updateSHA256Section(SHA256_           sha256,
                                const ConfigValue configValues[],
                                uint              firstValueIndex,
@@ -5279,10 +5291,7 @@ LOCAL void updateSHA256Section(SHA256_           sha256,
     {
       case CONFIG_VALUE_TYPE_BEGIN_SECTION:
         {
-          uint   sectionFirstValueIndex,sectionLastValueIndex;
-          void   *sectionIterator;
-          void   *data;
-
+          uint   sectionFirstValueIndex,sectionLastValueIndex = 0;
           if (   (configValues[index+1].type != CONFIG_VALUE_TYPE_END_SECTION)
               && (configValues[index+1].type != CONFIG_VALUE_TYPE_END)
              )
@@ -5298,6 +5307,7 @@ LOCAL void updateSHA256Section(SHA256_           sha256,
             }
 
             // init iterator
+            void *sectionIterator;
             if (configValues[index].section.iteratorFunction != NULL)
             {
               configValues[index].section.iteratorFunction(&sectionIterator,
@@ -5310,6 +5320,7 @@ LOCAL void updateSHA256Section(SHA256_           sha256,
             // iterate
             if (configValues[index].section.iteratorFunction != NULL)
             {
+              void *data;
               do
               {
                 const StringList *commentList = configValues[index].section.iteratorFunction(&sectionIterator,
@@ -5368,14 +5379,12 @@ LOCAL void updateSHA256Section(SHA256_           sha256,
     }
   }
 }
+#endif // defined(HAVE_GCRYPT)
 
 void ConfigValue_debugSHA256(const ConfigValue configValues[], void *buffer, uint bufferSize)
 {
-  #if defined(HAVE_OPENSSL) || defined(HAVE_GCRYPT)
-    SHA256_ sha256;
-  #endif
-
   #if   defined(HAVE_OPENSSL)
+    SHA256_ sha256;
     if (SHA256_Init(&sha256) != 1)
     {
       return;
@@ -5409,6 +5418,10 @@ void ConfigValue_debugSHA256(const ConfigValue configValues[], void *buffer, uin
 
     gcry_md_close(sha256);
   #else
+    UNUSED_VARIABLE(configValues);
+    UNUSED_VARIABLE(buffer);
+    UNUSED_VARIABLE(bufferSize);
+
     HALT_INTERNAL_ERROR("no SHA256 implementation");
   #endif /* ... */
 }
@@ -5419,14 +5432,14 @@ void ConfigValue_debugSHA256(const ConfigValue configValues[], void *buffer, uin
 
 LOCAL uint32 getCommentHash(const char *comment)
 {
-  uint32          hash;
-  CStringIterator cstringIterator;
-  int             ch;
 
   assert(comment != NULL);
 
+  uint32          hash;
   initSimpleHash(&hash);
 
+  CStringIterator cstringIterator;
+  int             ch;
   CSTRING_CHAR_ITERATE(comment,cstringIterator,ch)
   {
     if (isalnum(ch))
@@ -5443,13 +5456,9 @@ bool ConfigValue_isDefaultComment(const ConfigValue configValues[],
                                   ConstString       comment
                                  )
 {
-  uint32 commentHash;
-  uint   index;
-  uint32 hash;
+  uint32 commentHash = getCommentHash(String_cString(comment));
 
-  commentHash = getCommentHash(String_cString(comment));
-
-  index = 0;
+  uint index = 0;
   while (configValues[index].type != CONFIG_VALUE_TYPE_END)
   {
     switch (configValues[index].type)
@@ -5459,7 +5468,7 @@ bool ConfigValue_isDefaultComment(const ConfigValue configValues[],
       case CONFIG_VALUE_TYPE_BEGIN_SECTION:
         if (configValues[index].separator.text != NULL)
         {
-          hash = getCommentHash(configValues[index].separator.text);
+          uint32 hash = getCommentHash(configValues[index].separator.text);
           if (   (hash == 0)            // empty lines/sepators
               || (hash == commentHash)
              )
@@ -5478,7 +5487,7 @@ bool ConfigValue_isDefaultComment(const ConfigValue configValues[],
         if (configValues[index].comment.text != NULL)
         {
 //fprintf(stderr,"%s:%d: commen=%s == configValues[index].comment.text=%s\n",__FILE__,__LINE__,String_cString(comment),configValues[index].comment.text);
-          hash = getCommentHash(configValues[index].comment.text);
+          uint32 hash = getCommentHash(configValues[index].comment.text);
           if (   (hash == 0)            // empty lines/sepators
               || (hash == commentHash)
              )
