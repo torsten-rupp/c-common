@@ -7,6 +7,9 @@
 
 int main(int argc, char *argv[])
 {
+  UNUSED_VARIABLE(argc);
+  UNUSED_VARIABLE(argv);
+
   StringList stringList;
   String     s,t;
   StringNode *stringNode;
