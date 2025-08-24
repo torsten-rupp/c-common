@@ -66,7 +66,7 @@ CTEST(fragmentlists,add_remove)
   name = String_newCString("test");
 
   testFragmentNode = FragmentList_add(&testFragmentList,name,1000,NULL,0,0);
-  ASSERT_NOT_EQUAL(testFragmentNode,NULL);
+  ASSERT_NOT_NULL(testFragmentNode);
   ASSERT_STR(String_cString(testFragmentNode->name),"test");
   ASSERT_EQUAL(FragmentList_getSize(testFragmentNode),0);
   ASSERT_EQUAL(FragmentList_getTotalSize(testFragmentNode),1000);
@@ -92,7 +92,7 @@ CTEST(fragmentlists,add_remove_ranges)
   name = String_newCString("test");
 
   testFragmentNode = FragmentList_add(&testFragmentList,name,1000,NULL,0,0);
-  ASSERT_NOT_EQUAL(testFragmentNode,NULL);
+  ASSERT_NOT_NULL(testFragmentNode);
   ASSERT_EQUAL(FragmentList_getSize(testFragmentNode),0);
 
   FragmentList_addRange(testFragmentNode,0,500);
@@ -141,7 +141,7 @@ CTEST(fragmentlists,print)
   name = String_newCString("test");
 
   testFragmentNode = FragmentList_add(&testFragmentList,name,1000,NULL,0,0);
-  ASSERT_NOT_EQUAL(testFragmentNode,NULL);
+  ASSERT_NOT_NULL(testFragmentNode);
   ASSERT_EQUAL(FragmentList_getSize(testFragmentNode),0);
 
   FragmentList_addRange(testFragmentNode,0,500);
