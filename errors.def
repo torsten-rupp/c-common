@@ -18,6 +18,7 @@ ERROR FUNCTION_NOT_SUPPORTED         "function not supported"
 ERROR STILL_NOT_IMPLEMENTED          "function still not implemented"
 ERROR TESTCODE                       "test code"
 ERROR RUN_SERVICE                    "run service"
+ERROR EXEC_TIMEOUT                   "execute timeout"
 
 // patterns
 ERROR INVALID_PATTERN                "init pattern matching"
