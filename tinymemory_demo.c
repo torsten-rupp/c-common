@@ -1,7 +1,7 @@
 /***********************************************************************\
 *
-* Contents:
-* Systems :
+* Contents: tiny memory pool allocator demo
+* Systems : all
 *
 \***********************************************************************/
 
@@ -94,23 +94,23 @@ int main(int argc, char *argv[])
     z++;
   }
 
-  tinyMemory = tinyMemory_init(memory,sizeof(memory));
+  tinyMemory = TinyMemory_init(memory,sizeof(memory));
   assert(tinyMemory != NULL);
 
-  p0 = tinyMemory_alloc(tinyMemory,256);
-  p1 = tinyMemory_alloc(tinyMemory,127);
-  p2 = tinyMemory_alloc(tinyMemory,12);
+  p0 = TinyMemory_alloc(tinyMemory,256);
+  p1 = TinyMemory_alloc(tinyMemory,127);
+  p2 = TinyMemory_alloc(tinyMemory,12);
 
-  tinyMemory_free(tinyMemory,p0);
-  tinyMemory_free(tinyMemory,p1);
-  tinyMemory_free(tinyMemory,p2);
+  TinyMemory_free(tinyMemory,p0);
+  TinyMemory_free(tinyMemory,p1);
+  TinyMemory_free(tinyMemory,p2);
 
 
-  p0 = tinyMemory_alloc(tinyMemory,256);
-  p1 = tinyMemory_realloc(tinyMemory,p0,300);
-  tinyMemory_free(tinyMemory,p1);
+  p0 = TinyMemory_alloc(tinyMemory,256);
+  p1 = TinyMemory_realloc(tinyMemory,p0,300);
+  TinyMemory_free(tinyMemory,p1);
 
-  tinyMemory_done(tinyMemory);
+  TinyMemory_done(tinyMemory);
 
   return(0);
  }
