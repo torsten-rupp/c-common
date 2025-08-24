@@ -45,7 +45,7 @@ struct __TinyMemory
 /***************************** Functions *******************************/
 
 #ifdef TINY_MEMORY_DEBUG
-void dump(struct __TinyMemory *tinyMemory)
+LOCAL void dump(struct __TinyMemory *tinyMemory)
 {
   ChunkNode *node;
 
