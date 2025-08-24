@@ -33,7 +33,7 @@ const CommandLineOptionSelect SELECT[] = CMD_VALUE_SELECT_ARRAY
   {"b",2,"b"},
 );
 
-LOCAL bool cmdOptionParseSpecial(void *userData, void *variable, const char *name, const char *value, const void *defaultValue, char errorMessage[], uint errorMessageSize)
+LOCAL bool cmdOptionParseSpecial(void *variable, const char *name, const char *value, const void *defaultValue, char errorMessage[], uint errorMessageSize, void *userData)
 {
   UNUSED_VARIABLE(userData);
   UNUSED_VARIABLE(name);
@@ -47,7 +47,7 @@ LOCAL bool cmdOptionParseSpecial(void *userData, void *variable, const char *nam
   return TRUE;
 }
 
-LOCAL bool cmdOptionParseDeprecated(void *userData, void *variable, const char *name, const char *value, const void *defaultValue, char errorMessage[], uint errorMessageSize)
+LOCAL bool cmdOptionParseDeprecated(void *variable, const char *name, const char *value, const void *defaultValue, char errorMessage[], uint errorMessageSize, void *userData)
 {
   UNUSED_VARIABLE(userData);
   UNUSED_VARIABLE(variable);
