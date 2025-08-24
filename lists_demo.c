@@ -60,12 +60,12 @@ LOCAL int compareStringNodes(StringNode *stringNode1, StringNode *stringNode2, v
 
 int main(int argc, char *argv[])
  {
+  UNUSED_VARIABLE(argc);
+  UNUSED_VARIABLE(argv);
+
   StringList stringList;
   StringNode *stringNode;
   StringList stringList1,stringList2;
-
-  UNUSED_VARIABLE(argc);
-  UNUSED_VARIABLE(argv);
 
   /* create a list, traverse it, delete list */
   List_init(&stringList,NULL,NULL,(ListNodeFreeFunction)freeStringNode,NULL);
