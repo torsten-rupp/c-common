@@ -8,7 +8,6 @@
 CTEST(hashTables,init_done)
 {
   HashTable hashTable;
-
   HashTable_init(&hashTable,
                  100,
                  CALLBACK_(NULL,NULL),
@@ -21,7 +20,6 @@ CTEST(hashTables,init_done)
 CTEST(hashTables,new_delete)
 {
   HashTable *hashTable;
-
   hashTable = HashTable_new(100,
                             CALLBACK_(NULL,NULL),
                             CALLBACK_(NULL,NULL),
@@ -33,21 +31,19 @@ CTEST(hashTables,new_delete)
 
 CTEST(hashTables,put)
 {
-  HashTable      hashTable;
-  HashTableEntry *hashTableEntry;
-
+  HashTable hashTable;
   HashTable_init(&hashTable,
                  100,
                  CALLBACK_(NULL,NULL),
                  CALLBACK_(NULL,NULL),
                  CALLBACK_(NULL,NULL)
                 );
-  hashTableEntry = HashTable_put(&hashTable,
-                                 "test",
-                                 4,
-                                 "data",
-                                 4
-                               );
+  HashTableEntry *hashTableEntry = HashTable_put(&hashTable,
+                                                 "test",
+                                                 4,
+                                                 "data",
+                                                 4
+                                               );
   ASSERT_FALSE(HashTable_isEmpty(&hashTable));
   ASSERT_NOT_NULL(hashTableEntry);
   HashTable_done(&hashTable);
@@ -56,7 +52,6 @@ CTEST(hashTables,put)
 CTEST(hashTables,remove)
 {
   HashTable hashTable;
-
   HashTable_init(&hashTable,
                  100,
                  CALLBACK_(NULL,NULL),
@@ -81,7 +76,6 @@ CTEST(hashTables,remove)
 CTEST(hashTables,isEmpty)
 {
   HashTable hashTable;
-
   HashTable_init(&hashTable,
                  100,
                  CALLBACK_(NULL,NULL),
@@ -95,7 +89,6 @@ CTEST(hashTables,isEmpty)
 CTEST(hashTables,count)
 {
   HashTable hashTable;
-
   HashTable_init(&hashTable,
                  100,
                  CALLBACK_(NULL,NULL),
@@ -117,7 +110,6 @@ CTEST(hashTables,count)
 CTEST(hashTables,clear)
 {
   HashTable hashTable;
-
   HashTable_init(&hashTable,
                  100,
                  CALLBACK_(NULL,NULL),
@@ -144,9 +136,7 @@ CTEST(hashTables,clear)
 
 CTEST(hashTables,find)
 {
-  HashTable            hashTable;
-  const HashTableEntry *hashTableEntry;
-
+  HashTable hashTable;
   HashTable_init(&hashTable,
                  100,
                  CALLBACK_(NULL,NULL),
@@ -166,7 +156,7 @@ CTEST(hashTables,find)
                 4
                );
 
-  hashTableEntry = HashTable_find(&hashTable,"test",4);
+  const HashTableEntry *hashTableEntry = HashTable_find(&hashTable,"test",4);
   ASSERT_NOT_NULL(hashTableEntry);
   ASSERT_TRUE(hashTableEntry->keyLength == 4);
   ASSERT_TRUE(memcmp(hashTableEntry->keyData,"test",4) == 0);
@@ -180,7 +170,6 @@ CTEST(hashTables,find)
 CTEST(hashTables,contains)
 {
   HashTable hashTable;
-
   HashTable_init(&hashTable,
                  100,
                  CALLBACK_(NULL,NULL),
@@ -207,12 +196,7 @@ CTEST(hashTables,contains)
 
 CTEST(hashTables,iterator_init_get_next_done)
 {
-  HashTable         hashTable;
-  HashTableIterator hashTableIterator;
-  bool              foundFlags[2];
-  const void        *keyData,*data;
-  ulong             keyLength,length;
-
+  HashTable hashTable;
   HashTable_init(&hashTable,
                  100,
                  CALLBACK_(NULL,NULL),
@@ -232,11 +216,13 @@ CTEST(hashTables,iterator_init_get_next_done)
                 8
                );
 
-  foundFlags[0] = FALSE;
-  foundFlags[1] = FALSE;
+  bool              foundFlags[2] = { FALSE, FALSE };
+  HashTableIterator hashTableIterator;
   HashTable_initIterator(&hashTableIterator,
                          &hashTable
                         );
+  const void *keyData,*data;
+  ulong      keyLength,length;
   ASSERT_NOT_NULL(HashTable_getNext(&hashTableIterator,
                                     &keyData,
                                     &keyLength,
@@ -272,8 +258,6 @@ CTEST(hashTables,iterator_init_get_next_done)
 CTEST(hashTables,iterate)
 {
   HashTable hashTable;
-  bool      foundFlags[2];
-
   HashTable_init(&hashTable,
                  100,
                  CALLBACK_(NULL,NULL),
@@ -293,8 +277,7 @@ CTEST(hashTables,iterate)
                 8
                );
 
-  foundFlags[0] = FALSE;
-  foundFlags[1] = FALSE;
+  bool foundFlags[2] = { FALSE, FALSE };
   HashTable_iterate(&hashTable,
                     CALLBACK_INLINE(bool,(const HashTableEntry *hashTableEntry, void *userData),
                     {
@@ -317,8 +300,6 @@ CTEST(hashTables,iterate)
 CTEST(hashTables,iterate_remove)
 {
   HashTable hashTable;
-  bool      foundFlags[2];
-
   HashTable_init(&hashTable,
                  100,
                  CALLBACK_(NULL,NULL),
@@ -338,8 +319,7 @@ CTEST(hashTables,iterate_remove)
                 8
                );
 
-  foundFlags[0] = FALSE;
-  foundFlags[1] = FALSE;
+  bool foundFlags[2] = { FALSE, FALSE };
   HashTable_iterate(&hashTable,
                     CALLBACK_INLINE(bool,(const HashTableEntry *hashTableEntry, void *userData),
                     {
@@ -349,7 +329,7 @@ CTEST(hashTables,iterate_remove)
 
                       if ((hashTableEntry->keyLength == 4) && (memcmp(hashTableEntry->keyData,"test",4) == 0)) foundFlags[0] = TRUE;
                       if ((hashTableEntry->keyLength == 5) && (memcmp(hashTableEntry->keyData,"test2",5) == 0)) foundFlags[1] = TRUE;
-                                    
+
                       HashTable_remove(&hashTable,hashTableEntry->keyData,hashTableEntry->keyLength);
 
                       return TRUE;
@@ -365,7 +345,6 @@ CTEST(hashTables,printStatistic)
 {
   #ifndef NDEBUG
     HashTable hashTable;
-
     HashTable_init(&hashTable,
                    100,
                    CALLBACK_(NULL,NULL),
