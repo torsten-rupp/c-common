@@ -37,7 +37,7 @@ bool Bitmap_init(Bitmap *bitmap, uint64 size)
   assert(bitmap != NULL);
 
   bitmap->size = size;
-  bitmap->data = (byte*)malloc((size+8-1)/8);
+  bitmap->data = (byte*)malloc((size + 8 - 1) / 8);
   if (bitmap->data == NULL)
   {
     #ifdef HALT_ON_INSUFFICIENT_MEMORY
@@ -59,9 +59,7 @@ void Bitmap_done(Bitmap *bitmap)
 
 Bitmap* Bitmap_new(uint64 size)
 {
-  Bitmap *bitmap;
-
-  bitmap = (Bitmap*)malloc(sizeof(Bitmap));
+  Bitmap *bitmap = (Bitmap*)malloc(sizeof(Bitmap));
   if (bitmap != NULL)
   {
     if (!Bitmap_init(bitmap,size))
@@ -100,53 +98,44 @@ void Bitmap_clear(Bitmap *bitmap)
   assert(bitmap != NULL);
   assert(bitmap->data != NULL);
 
-  memClear(bitmap->data,(bitmap->size+8-1)/8);
+  memClear(bitmap->data,(bitmap->size + 8 - 1) / 8);
 }
 
 void Bitmap_set(Bitmap *bitmap, uint64 n)
 {
-  uint64 index;
-  int    bit;
-
   assert(bitmap != NULL);
   assert(bitmap->data != NULL);
 
   if (n < bitmap->size)
   {
-    index = bitmap->size/8LL;
-    bit   = (int)(bitmap->size%8LL);
+    uint64 index = bitmap->size / 8LL;
+    int    bit   = (int)(bitmap->size % 8LL);
     bitmap->data[index] |= (1 << bit);
   }
 }
 
 void Bitmap_reset(Bitmap *bitmap, uint64 n)
 {
-  uint64 index;
-  int    bit;
-
   assert(bitmap != NULL);
   assert(bitmap->data != NULL);
 
   if (n < bitmap->size)
   {
-    index = bitmap->size/8LL;
-    bit   = (int)(bitmap->size%8LL);
+    uint64 index = bitmap->size / 8LL;
+    int    bit   = (int)(bitmap->size % 8LL);
     bitmap->data[index] &= ~(1 << bit);
   }
 }
 
 bool Bitmap_get(Bitmap *bitmap, uint64 n)
 {
-  uint64 index;
-  int    bit;
-
   assert(bitmap != NULL);
   assert(bitmap->data != NULL);
 
   if (n < bitmap->size)
   {
-    index = bitmap->size/8LL;
-    bit   = (int)(bitmap->size%8LL);
+    uint64 index = bitmap->size / 8LL;
+    int    bit   = (int)(bitmap->size % 8LL);
     return (bitmap->data[index] & (1 << bit)) != 0;
   }
   else
