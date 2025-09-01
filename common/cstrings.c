@@ -129,6 +129,7 @@ LOCAL bool vmatchString(const char *string,
       {
         size_t *matchedSubStringSize = va_arg(arguments,size_t*);
         assert(matchedSubStringSize != NULL);
+        UNUSED_VARIABLE(matchedSubStringSize);
         subMatchCount++;
       }
     }

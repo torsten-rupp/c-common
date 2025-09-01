@@ -237,7 +237,7 @@ void *__allocSecure(const char *__fileName__,
 {
   #ifdef HAVE_GCRYPT
     #ifndef NDEBUG
-      memoryHeader = gcry_malloc_secure(sizeof(MemoryHeader)+size);
+      MemoryHeader *memoryHeader = gcry_malloc_secure(sizeof(MemoryHeader)+size);
       if (memoryHeader == NULL)
       {
         return NULL;

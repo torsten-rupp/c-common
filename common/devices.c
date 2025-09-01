@@ -1160,9 +1160,11 @@ Errors Device_getInfoCString(DeviceInfo *deviceInfo,
             if      (handle != -1)
             {
               #if defined(HAVE_IOCTL) && defined(HAVE_BLKSSZGET)
+                int i;
                 if (ioctl(handle,BLKSSZGET, &i) == 0) deviceInfo->blockSize = (ulong)i;
               #endif
               #if defined(HAVE_IOCTL) && defined(HAVE_BLKGETSIZE)
+                long l;
                 if (ioctl(handle,BLKGETSIZE,&l) == 0) deviceInfo->size      = (int64)l*512;
               #endif
               close(handle);
@@ -1185,9 +1187,11 @@ Errors Device_getInfoCString(DeviceInfo *deviceInfo,
           if      (handle != -1)
           {
             #if defined(HAVE_IOCTL) && defined(HAVE_BLKSSZGET)
+              int i;
               if (ioctl(handle,BLKSSZGET, &i) == 0) deviceInfo->blockSize = (ulong)i;
             #endif
             #if defined(HAVE_IOCTL) && defined(HAVE_BLKGETSIZE)
+              long l;
               if (ioctl(handle,BLKGETSIZE,&l) == 0) deviceInfo->size      = (int64)l*512;
             #endif
             close(handle);
@@ -1203,13 +1207,15 @@ Errors Device_getInfoCString(DeviceInfo *deviceInfo,
           }
         }
       #else /* NDEBUG */
-        handle = open(deviceName,O_RDONLY);
+        int handle = open(deviceName,O_RDONLY);
         if      (handle != -1)
         {
           #if defined(HAVE_IOCTL) && defined(HAVE_BLKSSZGET)
+            int i;
             if (ioctl(handle,BLKSSZGET, &i) == 0) deviceInfo->blockSize = (ulong)i;
           #endif
           #if defined(HAVE_IOCTL) && defined(HAVE_BLKGETSIZE)
+            long l;
             if (ioctl(handle,BLKGETSIZE,&l) == 0) deviceInfo->size      = (int64)l*512;
           #endif
           close(handle);

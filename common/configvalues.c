@@ -5405,6 +5405,7 @@ void ConfigValue_debugSHA256(const ConfigValue configValues[], void *buffer, uin
                 sha256,SHA256_DIGEST_LENGTH
                );
   #elif defined(HAVE_GCRYPT)
+    SHA256_ sha256;
     if (gcry_md_open(&sha256,GCRY_MD_SHA256,0) != 0)
     {
       return;

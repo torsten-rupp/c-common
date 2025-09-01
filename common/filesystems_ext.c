@@ -287,17 +287,13 @@ typedef struct
 
 LOCAL FileSystemTypes EXT_init(DeviceHandle *deviceHandle, EXTHandle *extHandle)
 {
-  EXT23GroupDescriptor ext23GroupDescriptor;
-  EXT4GroupDescriptor  ext4GroupDescriptor;
 
   assert(deviceHandle != NULL);
   assert(extHandle != NULL);
-  assert(sizeof(extSuperBlock) == 1024);
-  assert(sizeof(ext23GroupDescriptor) == 32);
-  assert(sizeof(ext4GroupDescriptor) == 64);
 
   // read first super-block
   EXTSuperBlock extSuperBlock;
+  assert(sizeof(extSuperBlock) == 1024);
   if (Device_seek(deviceHandle,EXT2_FIRST_SUPER_BLOCK_OFFSET) != ERROR_NONE)
   {
     return FILE_SYSTEM_TYPE_UNKNOWN;
@@ -428,22 +424,30 @@ fprintf(stderr,"%s, %d: featureInCompatible & ~EXT4_FEATURE_INCOMPAT_SUPP = 0x%x
     {
       case FILE_SYSTEM_TYPE_EXT2:
       case FILE_SYSTEM_TYPE_EXT3:
-        if (Device_read(deviceHandle,&ext23GroupDescriptor,sizeof(ext23GroupDescriptor),NULL) != ERROR_NONE)
         {
-          free(extHandle->bitmapBlocks);
-          return FILE_SYSTEM_TYPE_UNKNOWN;
+          EXT23GroupDescriptor ext23GroupDescriptor;
+          assert(sizeof(ext23GroupDescriptor) == 32);
+          if (Device_read(deviceHandle,&ext23GroupDescriptor,sizeof(ext23GroupDescriptor),NULL) != ERROR_NONE)
+          {
+            free(extHandle->bitmapBlocks);
+            return FILE_SYSTEM_TYPE_UNKNOWN;
+          }
+          extHandle->bitmapBlocks[i] = (uint64)LE32_TO_HOST(ext23GroupDescriptor.blockBitmap);
         }
-        extHandle->bitmapBlocks[z] = (uint64)LE32_TO_HOST(ext23GroupDescriptor.blockBitmap);
         break;
       case FILE_SYSTEM_TYPE_EXT4:
-        if (Device_read(deviceHandle,&ext4GroupDescriptor,sizeof(ext4GroupDescriptor),NULL) != ERROR_NONE)
         {
-          free(extHandle->bitmapBlocks);
-          return FILE_SYSTEM_TYPE_UNKNOWN;
+          EXT4GroupDescriptor  ext4GroupDescriptor;
+          assert(sizeof(ext4GroupDescriptor) == 64);
+          if (Device_read(deviceHandle,&ext4GroupDescriptor,sizeof(ext4GroupDescriptor),NULL) != ERROR_NONE)
+          {
+            free(extHandle->bitmapBlocks);
+            return FILE_SYSTEM_TYPE_UNKNOWN;
+          }
+          extHandle->bitmapBlocks[i] = LOW_HIGH_TO_UINT64(LE32_TO_HOST(ext4GroupDescriptor.blockBitmap),
+                                                          LE32_TO_HOST(ext4GroupDescriptor.blockBitmapHigh)
+                                                         );
         }
-        extHandle->bitmapBlocks[z] = LOW_HIGH_TO_UINT64(LE32_TO_HOST(ext4GroupDescriptor.blockBitmap),
-                                                        LE32_TO_HOST(ext4GroupDescriptor.blockBitmapHigh)
-                                                       );
         break;
       default:
         #ifndef NDEBUG

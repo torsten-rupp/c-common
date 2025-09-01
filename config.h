@@ -25,6 +25,9 @@
 #define HAVE_BACKTRACE_SYMBOLS 1
 #define HAVE_BACKTRACE 1
 
+#define HAVE_PTHREAD_SETSCHEDPRIO 1
+#define HAVE_PTHREAD_SETNAME_NP 1
+
 #ifndef CONFIG_DIR
   #define CONFIG_DIR "/etc"
 #endif
