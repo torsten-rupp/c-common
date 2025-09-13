@@ -1095,6 +1095,7 @@ Errors Device_openDeviceList(DeviceListHandle *deviceListHandle)
         deviceListHandle->dir = fdopendir(directoryListHandle->handle);
       }
     #endif /* HAVE_O_NOATIME */
+    deviceListHandle->entry = NULL;
   #elif defined(PLATFORM_WINDOWS)
     deviceListHandle->logicalDrives = GetLogicalDrives();
     if (deviceListHandle->logicalDrives == 0)
