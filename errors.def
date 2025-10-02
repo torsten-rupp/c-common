@@ -84,6 +84,7 @@ ERROR NETWORK_RECEIVE                "receiving data fail"
 ERROR NETWORK_EXECUTE_FAIL           "execute command fail"
 
 // device
+ERROR DEVICE_NOT_FOUND               "device not found"
 ERROR INVALID_DEVICE_SPECIFIER       "invalid device specifier"
 ERROR LOAD_VOLUME_FAIL               "load volume fail"
 
