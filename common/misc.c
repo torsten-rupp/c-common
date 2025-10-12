@@ -2128,19 +2128,23 @@ String Misc_expandMacros(String           string,
               #endif /* NDEBUG */
           }
         }
-        else if (expandMacroCharacter)
-        {
-          // expand unknown to empty
-        }
-        else
+        else if (keepUnknownMacros)
         {
           // keep unknown macro
           String_appendCString(expanded,name);
         }
+        else
+        {
+          // expand unknown macro to empty value
+        }
       }
       else
       {
-        if (expandMacroCharacter)
+        if (keepUnknownMacros)
+        {
+          String_appendCString(expanded,"%");
+        }
+        else
         {
           // empty macro: expand with empty value
           switch (expandMacroMode)
@@ -2165,10 +2169,6 @@ String Misc_expandMacros(String           string,
                 break; /* not reached */
               #endif /* NDEBUG */
           }
-        }
-        else
-        {
-          String_appendCString(expanded,"%");
         }
       }
     }
