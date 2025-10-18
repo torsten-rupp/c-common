@@ -11,6 +11,7 @@
 /****************************** Includes *******************************/
 
 #include "common/global.h"
+#include "common/bitsets.h"
 
 /****************** Conditional compilation switches *******************/
 
