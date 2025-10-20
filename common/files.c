@@ -3669,6 +3669,9 @@ Errors File_readDirectoryList(DirectoryListHandle *directoryListHandle,
   String_set(fileName,directoryListHandle->basePath);
   File_appendFileNameCString(fileName,directoryListHandle->entry->d_name);
 
+  // mark entry read
+  directoryListHandle->entry = NULL;
+
   // get file info
   if (fileInfo != NULL)
   {
@@ -3678,9 +3681,6 @@ Errors File_readDirectoryList(DirectoryListHandle *directoryListHandle,
       return error;
     }
   }
-
-  // mark entry read
-  directoryListHandle->entry = NULL;
 
   return ERROR_NONE;
 }
