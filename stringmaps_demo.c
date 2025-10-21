@@ -74,7 +74,6 @@ static bool parseData(const String string, const Data *data, void *userData)
 int main(int argc, char *argv[])
 {
   StringMap      stringMap;
-  uint           z;
   const char     *name;
   StringMapTypes type;
   StringMapValue value;
@@ -103,7 +102,7 @@ int main(int argc, char *argv[])
   StringMap_putCString(stringMap,"c","Hello World!");
   StringMap_putData(stringMap,"d",&data,(StringMapFormatFunction)formatData,NULL);
 
-  STRINGMAP_ITERATE(stringMap,z,name,type,value)
+  STRINGMAP_ITERATE(stringMap,name,type,value)
   {
     printf("%d %s: %s/%p\n",type,name,String_cString(value.text),value.data.p);
   }
@@ -115,7 +114,7 @@ int main(int argc, char *argv[])
 
   StringMap_remove(stringMap,"b");
 
-  STRINGMAP_ITERATE(stringMap,z,name,type,value)
+  STRINGMAP_ITERATE(stringMap,name,type,value)
   {
     printf("%s: %p\n",name,value.data.p);
   }

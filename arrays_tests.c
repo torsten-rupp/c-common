@@ -3,6 +3,8 @@
 
 #include "ctest/ctest.h"
 
+#include "common/cstrings.h"
+
 #include "common/arrays.h"
 
 CTEST(arrays,init_done)
@@ -112,6 +114,7 @@ CTEST(arrays,insert)
              CALLBACK_(NULL,NULL),
              CALLBACK_(NULL,NULL)
             );
+
   Array_put(&array,
             0,
             "data1"
@@ -125,6 +128,14 @@ CTEST(arrays,insert)
   ASSERT_EQUAL(Array_length(&array),2);
   ASSERT_EQUAL(memcmp(Array_get(&array,1,NULL),"data1",5),0);
   ASSERT_EQUAL(memcmp(Array_get(&array,0,NULL),"data2",5),0);
+
+  for (size_t i = 0; i < 200; i++)
+  {
+    char buffer[16];
+    stringFormat(buffer,sizeof(buffer),"data%u",i);
+    Array_insert(&array,0,buffer);
+  }
+
   Array_done(&array);
 }
 
@@ -137,6 +148,7 @@ CTEST(arrays,append)
              CALLBACK_(NULL,NULL),
              CALLBACK_(NULL,NULL)
             );
+
   Array_put(&array,
             0,
             "data1"
@@ -149,6 +161,14 @@ CTEST(arrays,append)
   ASSERT_EQUAL(Array_length(&array),2);
   ASSERT_EQUAL(memcmp(Array_get(&array,0,NULL),"data1",5),0);
   ASSERT_EQUAL(memcmp(Array_get(&array,1,NULL),"data2",5),0);
+
+  for (size_t i = 0; i < 200; i++)
+  {
+    char buffer[16];
+    stringFormat(buffer,sizeof(buffer),"data%u",i);
+    Array_append(&array,buffer);
+  }
+
   Array_done(&array);
 }
 
@@ -318,9 +338,8 @@ CTEST(arrays,iterate)
            );
 
   bool foundFlags[2] = { FALSE, FALSE };
-  ArrayIterator arrayIterator;
   char data[5];
-  ARRAY_ITERATE(&array,arrayIterator,data)
+  ARRAY_ITERATE(&array,data)
   {
     assert(data != NULL);
 
@@ -352,10 +371,9 @@ CTEST(arrays,iterateX)
            );
 
   bool foundFlags[2] = { FALSE, FALSE };
-  ArrayIterator arrayIterator;
   char data[5];
   bool condition = TRUE;
-  ARRAY_ITERATEX(&array,arrayIterator,data,condition)
+  ARRAY_ITERATEX(&array,data,condition)
   {
     assert(data != NULL);
 

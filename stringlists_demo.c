@@ -10,9 +10,9 @@ int main(int argc, char *argv[])
   UNUSED_VARIABLE(argc);
   UNUSED_VARIABLE(argv);
 
-  StringList stringList;
-  String     s,t;
-  StringNode *stringNode;
+  StringList  stringList;
+  String      s;
+  ConstString t;
 
   StringList_init(&stringList);
 
@@ -27,7 +27,7 @@ int main(int argc, char *argv[])
   String_setCString(s,"World!");
   StringList_append(&stringList,s);
 
-  STRINGLIST_ITERATE(&stringList,stringNode,t)
+  STRINGLIST_ITERATE(&stringList,t)
   {
     printf("%s\n",String_cString(t));
   }
