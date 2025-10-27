@@ -1111,7 +1111,7 @@ LOCAL void debugDatabaseInit(void)
 \***********************************************************************/
 
 LOCAL_INLINE void debugSetDatabaseThreadInfo(const char         *__fileName__,
-                                             ulong              __lineNb__,
+                                             size_t             __lineNb__,
                                              DatabaseThreadInfo *databaseThreadInfo
                                             )
 {
@@ -1137,7 +1137,7 @@ LOCAL_INLINE void debugSetDatabaseThreadInfo(const char         *__fileName__,
 \***********************************************************************/
 
 LOCAL_INLINE void debugIncrementDatabaseThreadInfo(const char         *__fileName__,
-                                                   ulong              __lineNb__,
+                                                   size_t             __lineNb__,
                                                    DatabaseThreadInfo *databaseThreadInfo
                                                   )
 {
@@ -1163,7 +1163,7 @@ LOCAL_INLINE void debugIncrementDatabaseThreadInfo(const char         *__fileNam
 \***********************************************************************/
 
 LOCAL_INLINE void debugAddDatabaseThreadInfo(const char         *__fileName__,
-                                             ulong              __lineNb__,
+                                             size_t             __lineNb__,
                                              DatabaseThreadInfo databaseThreadInfo[],
                                              uint               databaseThreadInfoSize
                                             )
@@ -1241,7 +1241,7 @@ LOCAL_INLINE void debugClearDatabaseThreadInfo(DatabaseThreadInfo databaseThread
 \***********************************************************************/
 
 LOCAL_INLINE void debugAddHistoryDatabaseThreadInfo(const char                     *__fileName__,
-                                                    ulong                          __lineNb__,
+                                                    size_t                         __lineNb__,
                                                     DatabaseHistoryThreadInfo      databaseHistoryThreadInfo[],
                                                     uint                           *index,
                                                     uint                           databaseHistoryThreadInfoSize,
@@ -1289,7 +1289,7 @@ LOCAL const char *debugGetLockedByInfo(const DatabaseHandle *databaseHandle)
     else if (databaseHandle->databaseNode->readWriteCount > 0)
     {
       stringSet(buffer,sizeof(buffer),"read/write by");
-      for (uint i = 0; i < databaseHandle->databaseNode->readWriteCount; i++)
+      for (size_t i = 0; i < databaseHandle->databaseNode->readWriteCount; i++)
       {
         long index = stringFindReverseChar(databaseHandle->databaseNode->debug.readWrites[i].fileName,FILE_PATH_SEPARATOR_CHAR);
 
@@ -1305,7 +1305,7 @@ LOCAL const char *debugGetLockedByInfo(const DatabaseHandle *databaseHandle)
     else if (databaseHandle->databaseNode->readCount > 0)
     {
       stringSet(buffer,sizeof(buffer),"read by");
-      for (uint i = 0; i < databaseHandle->databaseNode->readCount; i++)
+      for (size_t i = 0; i < databaseHandle->databaseNode->readCount; i++)
       {
         long index = stringFindReverseChar(databaseHandle->databaseNode->debug.reads[i].fileName,FILE_PATH_SEPARATOR_CHAR);
 
@@ -1347,19 +1347,19 @@ LOCAL void debugPrintLockInfo(const DatabaseNode *databaseNode)
       fprintf(stderr,"Database lock info '%s':\n",String_cString(Database_getPrintableName(string,&databaseNode->databaseSpecifier,NULL)));
       String_delete(string);
       fprintf(stderr,
-              "  pending r %2u, locked r %2u, pending rw %2u, locked rw %2u, transactions %2u\n",
+              "  pending r %2zu, locked r %2zu, pending rw %2zu, locked rw %2zu, transactions %2zu\n",
               databaseNode->pendingReadCount,
               databaseNode->readCount,
               databaseNode->pendingReadWriteCount,
               databaseNode->readWriteCount,
               databaseNode->transactionCount
              );
-      for (uint i = 0; i < SIZE_OF_ARRAY(databaseNode->debug.reads); i++)
+      for (size_t i = 0; i < SIZE_OF_ARRAY(databaseNode->debug.reads); i++)
       {
         if (!Thread_isNone(databaseNode->debug.reads[i].threadId))
         {
           fprintf(stderr,
-                  "    r  '%s' (%s) at %s, %u\n",
+                  "    r  '%s' (%s) at %s, %zu\n",
                   Thread_getName(databaseNode->debug.reads[i].threadId),
                   Thread_getIdString(databaseNode->debug.reads[i].threadId),
                   databaseNode->debug.reads[i].fileName,
@@ -1384,12 +1384,12 @@ LOCAL void debugPrintLockInfo(const DatabaseNode *databaseNode)
 #endif
         }
       }
-      for (uint i = 0; i < SIZE_OF_ARRAY(databaseNode->debug.readWrites); i++)
+      for (size_t i = 0; i < SIZE_OF_ARRAY(databaseNode->debug.readWrites); i++)
       {
         if (!Thread_isNone(databaseNode->debug.readWrites[i].threadId))
         {
           fprintf(stderr,
-                  "    rw '%s' (%s) at %s, %u\n",
+                  "    rw '%s' (%s) at %s, %zu\n",
                   Thread_getName(databaseNode->debug.readWrites[i].threadId),
                   Thread_getIdString(databaseNode->debug.readWrites[i].threadId),
                   databaseNode->debug.readWrites[i].fileName,
@@ -2474,7 +2474,7 @@ LOCAL void mariaDBFinalizeStatement(DatabaseStatementHandle *databaseStatementHa
 
   // free bind data
   assert((databaseStatementHandle->resultCount == 0) || (databaseStatementHandle->results != NULL));
-  for (uint i = 0; i < databaseStatementHandle->resultCount; i++)
+  for (size_t i = 0; i < databaseStatementHandle->resultCount; i++)
   {
     switch (databaseStatementHandle->mariadb.results.bind[i].buffer_type)
     {
@@ -4434,7 +4434,7 @@ LOCAL Errors postgresqlGetTriggerList(StringList     *triggerList,
                           )
 #else /* not NDEBUG */
   LOCAL Errors __openDatabase(const char              *__fileName__,
-                              ulong                   __lineNb__,
+                              size_t                  __lineNb__,
                               DatabaseHandle          *databaseHandle,
                               const DatabaseSpecifier *databaseSpecifier,
                               const char              *databaseName,
@@ -4541,14 +4541,14 @@ LOCAL Errors postgresqlGetTriggerList(StringList     *triggerList,
       #endif /* DATABASE_DEBUG_LOCK */
 
       #ifndef NDEBUG
-        for (uint i = 0; i < SIZE_OF_ARRAY(databaseNode->debug.pendingReads);      i++) databaseNode->debug.pendingReads[i].threadId      = THREAD_ID_NONE;
-        for (uint i = 0; i < SIZE_OF_ARRAY(databaseNode->debug.reads);             i++) databaseNode->debug.reads[i].threadId             = THREAD_ID_NONE;
-        for (uint i = 0; i < SIZE_OF_ARRAY(databaseNode->debug.pendingReadWrites); i++) databaseNode->debug.pendingReadWrites[i].threadId = THREAD_ID_NONE;
+        for (size_t i = 0; i < SIZE_OF_ARRAY(databaseNode->debug.pendingReads);      i++) databaseNode->debug.pendingReads[i].threadId      = THREAD_ID_NONE;
+        for (size_t i = 0; i < SIZE_OF_ARRAY(databaseNode->debug.reads);             i++) databaseNode->debug.reads[i].threadId             = THREAD_ID_NONE;
+        for (size_t i = 0; i < SIZE_OF_ARRAY(databaseNode->debug.pendingReadWrites); i++) databaseNode->debug.pendingReadWrites[i].threadId = THREAD_ID_NONE;
         databaseNode->debug.readWriteLockedBy               = THREAD_ID_NONE;
-        for (uint i = 0; i < SIZE_OF_ARRAY(databaseNode->debug.readWrites);        i++) databaseNode->debug.readWrites[i].threadId        = THREAD_ID_NONE;
+        for (size_t i = 0; i < SIZE_OF_ARRAY(databaseNode->debug.readWrites);        i++) databaseNode->debug.readWrites[i].threadId        = THREAD_ID_NONE;
         databaseNode->debug.lastTrigger.threadInfo.threadId = THREAD_ID_NONE;
         databaseNode->debug.transaction.threadId            = THREAD_ID_NONE;
-        for (uint i = 0; i < SIZE_OF_ARRAY(databaseNode->debug.history);           i++) databaseNode->debug.history[i].threadId           = THREAD_ID_NONE;
+        for (size_t i = 0; i < SIZE_OF_ARRAY(databaseNode->debug.history);           i++) databaseNode->debug.history[i].threadId           = THREAD_ID_NONE;
         databaseNode->debug.historyIndex                    = 0;
       #endif /* not NDEBUG */
 
@@ -5084,7 +5084,7 @@ LOCAL Errors postgresqlGetTriggerList(StringList     *triggerList,
   LOCAL void closeDatabase(DatabaseHandle *databaseHandle)
 #else /* not NDEBUG */
   LOCAL void __closeDatabase(const char     *__fileName__,
-                             ulong          __lineNb__,
+                             size_t         __lineNb__,
                              DatabaseHandle *databaseHandle
                             )
 #endif /* NDEBUG */
@@ -5347,7 +5347,7 @@ LOCAL_INLINE bool isOwnReadWriteLock(DatabaseHandle *databaseHandle)
 #ifdef NDEBUG
 LOCAL_INLINE void pendingReadsIncrement(DatabaseHandle *databaseHandle)
 #else /* not NDEBUG */
-LOCAL_INLINE void __pendingReadsIncrement(const char *__fileName__, ulong __lineNb__, DatabaseHandle *databaseHandle)
+LOCAL_INLINE void __pendingReadsIncrement(const char *__fileName__, size_t __lineNb__, DatabaseHandle *databaseHandle)
 #endif /* NDEBUG */
 {
   assert(databaseHandle != NULL);
@@ -5408,7 +5408,7 @@ LOCAL_INLINE void pendingReadsDecrement(DatabaseHandle *databaseHandle)
 #ifdef NDEBUG
 LOCAL_INLINE void pendingReadWritesIncrement(DatabaseHandle *databaseHandle)
 #else /* not NDEBUG */
-LOCAL_INLINE void __pendingReadWritesIncrement(const char *__fileName__, ulong __lineNb__, DatabaseHandle *databaseHandle)
+LOCAL_INLINE void __pendingReadWritesIncrement(const char *__fileName__, size_t __lineNb__, DatabaseHandle *databaseHandle)
 #endif /* NDEBUG */
 {
   assert(databaseHandle != NULL);
@@ -5469,7 +5469,7 @@ LOCAL_INLINE void pendingReadWritesDecrement(DatabaseHandle *databaseHandle)
 #ifdef NDEBUG
 LOCAL_INLINE void readsIncrement(DatabaseHandle *databaseHandle)
 #else /* not NDEBUG */
-LOCAL_INLINE void __readsIncrement(const char *__fileName__, ulong __lineNb__, DatabaseHandle *databaseHandle)
+LOCAL_INLINE void __readsIncrement(const char *__fileName__, size_t __lineNb__, DatabaseHandle *databaseHandle)
 #endif /* NDEBUG */
 {
   assert(databaseHandle != NULL);
@@ -5518,7 +5518,7 @@ LOCAL_INLINE void __readsIncrement(const char *__fileName__, ulong __lineNb__, D
 #ifdef NDEBUG
 LOCAL_INLINE void readsDecrement(DatabaseHandle *databaseHandle)
 #else /* not NDEBUG */
-LOCAL_INLINE void __readsDecrement(const char *__fileName__, ulong __lineNb__, DatabaseHandle *databaseHandle)
+LOCAL_INLINE void __readsDecrement(const char *__fileName__, size_t __lineNb__, DatabaseHandle *databaseHandle)
 #endif /* NDEBUG */
 {
   assert(databaseHandle != NULL);
@@ -5570,7 +5570,7 @@ LOCAL_INLINE void __readsDecrement(const char *__fileName__, ulong __lineNb__, D
 #ifdef NDEBUG
 LOCAL_INLINE void readWritesIncrement(DatabaseHandle *databaseHandle)
 #else /* not NDEBUG */
-LOCAL_INLINE void __readWritesIncrement(const char *__fileName__, ulong __lineNb__, DatabaseHandle *databaseHandle)
+LOCAL_INLINE void __readWritesIncrement(const char *__fileName__, size_t __lineNb__, DatabaseHandle *databaseHandle)
 #endif /* NDEBUG */
 {
   assert(databaseHandle != NULL);
@@ -5631,7 +5631,7 @@ LOCAL_INLINE void __readWritesIncrement(const char *__fileName__, ulong __lineNb
 #ifdef NDEBUG
 LOCAL_INLINE void readWritesDecrement(DatabaseHandle *databaseHandle)
 #else /* not NDEBUG */
-LOCAL_INLINE void __readWritesDecrement(const char *__fileName__, ulong __lineNb__, DatabaseHandle *databaseHandle)
+LOCAL_INLINE void __readWritesDecrement(const char *__fileName__, size_t __lineNb__, DatabaseHandle *databaseHandle)
 #endif /* NDEBUG */
 {
   assert(databaseHandle != NULL);
@@ -5691,7 +5691,7 @@ LOCAL_INLINE bool waitTriggerRead(DatabaseHandle *databaseHandle,
                                  )
 #else /* not NDEBUG */
 LOCAL_INLINE bool __waitTriggerRead(const char     *__fileName__,
-                                    ulong          __lineNb__,
+                                    size_t         __lineNb__,
                                     DatabaseHandle *databaseHandle,
                                     long           timeout
                                    )
@@ -5761,7 +5761,7 @@ return TRUE;
 
   #ifndef NDEBUG
     #ifdef DATABASE_DEBUG_LOCK_PRINT
-      fprintf(stderr,"%s, %lu: %s                wait rw #%3u %p done\n",__fileName__,__lineNb__,Thread_getCurrentIdString(),databaseHandle->databaseNode->readWriteCount,&databaseHandle->databaseNode->readWriteTrigger);
+      fprintf(stderr,"%s, %zu: %s                wait rw #%3u %p done\n",__fileName__,__lineNb__,Thread_getCurrentIdString(),databaseHandle->databaseNode->readWriteCount,&databaseHandle->databaseNode->readWriteTrigger);
     #endif /* DATABASE_DEBUG_LOCK_PRINT */
   #endif /* not NDEBUG */
 
@@ -5784,7 +5784,7 @@ LOCAL_INLINE bool waitTriggerReadWrite(DatabaseHandle *databaseHandle,
                                       )
 #else /* not NDEBUG */
 LOCAL_INLINE bool __waitTriggerReadWrite(const char     *__fileName__,
-                                         ulong          __lineNb__,
+                                         size_t         __lineNb__,
                                          DatabaseHandle *databaseHandle,
                                          long           timeout
                                         )
@@ -5873,7 +5873,7 @@ LOCAL_INLINE bool waitTriggerTransaction(DatabaseHandle *databaseHandle,
                                         )
 #else /* not NDEBUG */
 LOCAL_INLINE bool __waitTriggerTransaction(const char     *__fileName__,
-                                           ulong          __lineNb__,
+                                           size_t         __lineNb__,
                                            DatabaseHandle *databaseHandle,
                                            long           timeout
                                           )
@@ -5951,7 +5951,7 @@ LOCAL_INLINE bool __waitTriggerTransaction(const char     *__fileName__,
 #ifdef NDEBUG
 LOCAL_INLINE void triggerUnlockRead(DatabaseHandle *databaseHandle, DatabaseLockTypes lockType)
 #else /* not NDEBUG */
-LOCAL_INLINE void __triggerUnlockRead(const char *__fileName__, ulong __lineNb__, DatabaseHandle *databaseHandle, DatabaseLockTypes lockType)
+LOCAL_INLINE void __triggerUnlockRead(const char *__fileName__, size_t __lineNb__, DatabaseHandle *databaseHandle, DatabaseLockTypes lockType)
 #endif /* NDEBUG */
 {
   assert(databaseHandle != NULL);
@@ -5993,7 +5993,7 @@ LOCAL_INLINE void __triggerUnlockRead(const char *__fileName__, ulong __lineNb__
 #ifdef NDEBUG
 LOCAL_INLINE void triggerUnlockReadWrite(DatabaseHandle *databaseHandle, DatabaseLockTypes lockType)
 #else /* not NDEBUG */
-LOCAL_INLINE void __triggerUnlockReadWrite(const char *__fileName__, ulong __lineNb__, DatabaseHandle *databaseHandle, DatabaseLockTypes lockType)
+LOCAL_INLINE void __triggerUnlockReadWrite(const char *__fileName__, size_t __lineNb__, DatabaseHandle *databaseHandle, DatabaseLockTypes lockType)
 #endif /* NDEBUG */
 {
   assert(databaseHandle != NULL);
@@ -6035,7 +6035,7 @@ LOCAL_INLINE void __triggerUnlockReadWrite(const char *__fileName__, ulong __lin
 #ifdef NDEBUG
 LOCAL_INLINE void triggerUnlockTransaction(DatabaseHandle *databaseHandle)
 #else /* not NDEBUG */
-LOCAL_INLINE void __triggerUnlockTransaction(const char *__fileName__, ulong __lineNb__, DatabaseHandle *databaseHandle)
+LOCAL_INLINE void __triggerUnlockTransaction(const char *__fileName__, size_t __lineNb__, DatabaseHandle *databaseHandle)
 #endif /* NDEBUG */
 {
   assert(databaseHandle != NULL);
@@ -6618,7 +6618,7 @@ fprintf(stderr,"%s, %d: %x trigger RW %p %"PRIu64" %d\n",__FILE__,__LINE__,Threa
 #ifdef NDEBUG
 LOCAL_INLINE bool begin(DatabaseHandle *databaseHandle, DatabaseLockTypes lockType, long timeout)
 #else /* not NDEBUG */
-LOCAL_INLINE bool __begin(const char *__fileName__, ulong __lineNb__, DatabaseHandle *databaseHandle, DatabaseLockTypes lockType, long timeout)
+LOCAL_INLINE bool __begin(const char *__fileName__, size_t __lineNb__, DatabaseHandle *databaseHandle, DatabaseLockTypes lockType, long timeout)
 #endif /* NDEBUG */
 {
   assert(databaseHandle != NULL);
@@ -6654,7 +6654,7 @@ LOCAL_INLINE bool __begin(const char *__fileName__, ulong __lineNb__, DatabaseHa
 #ifdef NDEBUG
 LOCAL_INLINE void end(DatabaseHandle *databaseHandle, DatabaseLockTypes lockType)
 #else /* not NDEBUG */
-LOCAL_INLINE void __end(const char *__fileName__, ulong __lineNb__, DatabaseHandle *databaseHandle, DatabaseLockTypes lockType)
+LOCAL_INLINE void __end(const char *__fileName__, size_t __lineNb__, DatabaseHandle *databaseHandle, DatabaseLockTypes lockType)
 #endif /* NDEBUG */
 {
   assert(databaseHandle != NULL);
@@ -7306,7 +7306,7 @@ LOCAL Errors prepareStatement(DatabaseStatementHandle *databaseStatementHandle,
 
 LOCAL Errors bindResults(DatabaseStatementHandle *databaseStatementHandle,
                          const DatabaseColumn    columns[],
-                         uint                    columnsCount
+                         size_t                  columnsCount
                         )
 {
   assert(databaseStatementHandle != NULL);
@@ -7314,7 +7314,7 @@ LOCAL Errors bindResults(DatabaseStatementHandle *databaseStatementHandle,
   assert(checkDatabaseInitialized(databaseStatementHandle->databaseHandle));
   assert((columnsCount == 0) || (columns != NULL));
   assertx(columnsCount <= databaseStatementHandle->resultCount,
-          "invalid result count: given %u, expected %u",
+          "invalid result count: given %zu, expected %zu",
           columnsCount,
           databaseStatementHandle->resultCount
          );
@@ -8592,7 +8592,7 @@ LOCAL void finalizeStatement(DatabaseStatementHandle *databaseStatementHandle)
 
   // free result data
   assert((databaseStatementHandle->resultCount == 0) || (databaseStatementHandle->results != NULL));
-  for (uint i = 0; i < databaseStatementHandle->resultCount; i++)
+  for (size_t i = 0; i < databaseStatementHandle->resultCount; i++)
   {
     switch (databaseStatementHandle->results[i].type)
     {
@@ -8703,7 +8703,7 @@ LOCAL Errors bindParameters(DatabaseStatementHandle *databaseStatementHandle,
         sqliteResult = sqlite3_reset(databaseStatementHandle->sqlite.statementHandle);
         if (sqliteResult == SQLITE_OK)
         {
-          for (uint i = 0; i < parameterCount; i++)
+          for (size_t i = 0; i < parameterCount; i++)
           {
             switch (parameters[i].type)
             {
@@ -8714,7 +8714,7 @@ LOCAL Errors bindParameters(DatabaseStatementHandle *databaseStatementHandle,
               case DATABASE_DATATYPE_PRIMARY_KEY:
               case DATABASE_DATATYPE_KEY:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid KEY value: index %u, count %u",
+                        "invalid KEY value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -8726,7 +8726,7 @@ LOCAL Errors bindParameters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_BOOL:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid BOOL value: index %u, count %u",
+                        "invalid BOOL value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -8738,7 +8738,7 @@ LOCAL Errors bindParameters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_INT:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid INT value: index %u, count %u",
+                        "invalid INT value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -8750,7 +8750,7 @@ LOCAL Errors bindParameters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_INT64:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid INT64 value: index %u, count %u",
+                        "invalid INT64 value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -8762,7 +8762,7 @@ LOCAL Errors bindParameters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_UINT:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid UINT value: index %u, count %u",
+                        "invalid UINT value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -8774,7 +8774,7 @@ LOCAL Errors bindParameters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_UINT64:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid UINT64 value: index %u, count %u",
+                        "invalid UINT64 value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -8786,7 +8786,7 @@ LOCAL Errors bindParameters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_DOUBLE:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid DOUBLE value: index %u, count %u",
+                        "invalid DOUBLE value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -8798,7 +8798,7 @@ LOCAL Errors bindParameters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_ENUM:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid ENUM value: index %u, count %u",
+                        "invalid ENUM value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -8810,7 +8810,7 @@ LOCAL Errors bindParameters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_DATETIME:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid DATETIME value: index %u, count %u",
+                        "invalid DATETIME value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -8822,7 +8822,7 @@ LOCAL Errors bindParameters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_STRING:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid STRING value: index %u, count %u",
+                        "invalid STRING value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -8836,7 +8836,7 @@ LOCAL Errors bindParameters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_CSTRING:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid CSTRING value: index %u, count %u",
+                        "invalid CSTRING value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -8895,7 +8895,7 @@ LOCAL Errors bindParameters(DatabaseStatementHandle *databaseStatementHandle,
       #if defined(HAVE_MARIADB)
         {
           // bind values
-          for (uint i = 0; i < parameterCount; i++)
+          for (size_t i = 0; i < parameterCount; i++)
           {
             switch (parameters[i].type)
             {
@@ -8906,7 +8906,7 @@ LOCAL Errors bindParameters(DatabaseStatementHandle *databaseStatementHandle,
               case DATABASE_DATATYPE_PRIMARY_KEY:
               case DATABASE_DATATYPE_KEY:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid KEY value: index %u, count %u",
+                        "invalid KEY value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -8918,7 +8918,7 @@ LOCAL Errors bindParameters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_BOOL:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid BOOL value: index %u, count %u",
+                        "invalid BOOL value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -8930,7 +8930,7 @@ LOCAL Errors bindParameters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_INT:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid INT value: index %u, count %u",
+                        "invalid INT value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -8943,7 +8943,7 @@ LOCAL Errors bindParameters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_INT64:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid INT64 value: index %u, count %u",
+                        "invalid INT64 value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -8956,7 +8956,7 @@ LOCAL Errors bindParameters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_UINT:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid UINT value: index %u, count %u",
+                        "invalid UINT value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -8969,7 +8969,7 @@ LOCAL Errors bindParameters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_UINT64:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid UINT64 value: index %u, count %u",
+                        "invalid UINT64 value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -8982,7 +8982,7 @@ LOCAL Errors bindParameters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_DOUBLE:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid DOUBLE value: index %u, count %u",
+                        "invalid DOUBLE value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -8994,7 +8994,7 @@ LOCAL Errors bindParameters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_ENUM:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid ENUM value: index %u, count %u",
+                        "invalid ENUM value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9012,7 +9012,7 @@ LOCAL Errors bindParameters(DatabaseStatementHandle *databaseStatementHandle,
                   uint hour,minute,second;
 
                   assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                          "invalid DATETIME value: index %u, count %u",
+                          "invalid DATETIME value: index %zu, count %zu",
                           databaseStatementHandle->parameterIndex,
                           databaseStatementHandle->parameterCount
                          );
@@ -9045,7 +9045,7 @@ LOCAL Errors bindParameters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_STRING:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid STRING value: index %u, count %u",
+                        "invalid STRING value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9058,7 +9058,7 @@ LOCAL Errors bindParameters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_CSTRING:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid CSTRING value: index %u, count %u",
+                        "invalid CSTRING value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9091,7 +9091,7 @@ LOCAL Errors bindParameters(DatabaseStatementHandle *databaseStatementHandle,
       #if defined(HAVE_POSTGRESQL)
         {
           // bind values
-          for (uint i = 0; i < parameterCount; i++)
+          for (size_t i = 0; i < parameterCount; i++)
           {
             switch (parameters[i].type)
             {
@@ -9102,7 +9102,7 @@ LOCAL Errors bindParameters(DatabaseStatementHandle *databaseStatementHandle,
               case DATABASE_DATATYPE_PRIMARY_KEY:
               case DATABASE_DATATYPE_KEY:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid KEY value: index %u, count %u",
+                        "invalid KEY value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9121,7 +9121,7 @@ LOCAL Errors bindParameters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_BOOL:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid BOOL value: index %u, count %u",
+                        "invalid BOOL value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9140,7 +9140,7 @@ LOCAL Errors bindParameters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_INT:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid INT value: index %u, count %u",
+                        "invalid INT value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9159,7 +9159,7 @@ LOCAL Errors bindParameters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_INT64:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid INT64 value: index %u, count %u",
+                        "invalid INT64 value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9178,7 +9178,7 @@ LOCAL Errors bindParameters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_UINT:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid UINT value: index %u, count %u",
+                        "invalid UINT value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9198,7 +9198,7 @@ LOCAL Errors bindParameters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_UINT64:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid UINT64 value: index %u, count %u",
+                        "invalid UINT64 value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9218,7 +9218,7 @@ LOCAL Errors bindParameters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_DOUBLE:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid DOUBLE value: index %u, count %u",
+                        "invalid DOUBLE value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9237,7 +9237,7 @@ LOCAL Errors bindParameters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_ENUM:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid ENUM value: index %u, count %u",
+                        "invalid ENUM value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9256,7 +9256,7 @@ LOCAL Errors bindParameters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_DATETIME:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid DATETIME value: index %u, count %u",
+                        "invalid DATETIME value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9275,7 +9275,7 @@ LOCAL Errors bindParameters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_STRING:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid STRING value: index %u, count %u",
+                        "invalid STRING value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9287,7 +9287,7 @@ LOCAL Errors bindParameters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_CSTRING:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid CSTRING value: index %u, count %u",
+                        "invalid CSTRING value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9353,7 +9353,7 @@ LOCAL Errors bindValues(DatabaseStatementHandle *databaseStatementHandle,
         sqliteResult = sqlite3_reset(databaseStatementHandle->sqlite.statementHandle);
         if (sqliteResult == SQLITE_OK)
         {
-          for (uint i = 0; i < valueCount; i++)
+          for (size_t i = 0; i < valueCount; i++)
           {
             switch (values[i].type)
             {
@@ -9364,7 +9364,7 @@ LOCAL Errors bindValues(DatabaseStatementHandle *databaseStatementHandle,
               case DATABASE_DATATYPE_PRIMARY_KEY:
               case DATABASE_DATATYPE_KEY:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid KEY value: index %u, count %u",
+                        "invalid KEY value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9376,7 +9376,7 @@ LOCAL Errors bindValues(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_BOOL:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid BOOL value: index %u, count %u",
+                        "invalid BOOL value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9388,7 +9388,7 @@ LOCAL Errors bindValues(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_INT:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid INT value: index %u, count %u",
+                        "invalid INT value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9400,7 +9400,7 @@ LOCAL Errors bindValues(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_INT64:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid INT64 value: index %u, count %u",
+                        "invalid INT64 value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9412,7 +9412,7 @@ LOCAL Errors bindValues(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_UINT:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid UINT value: index %u, count %u",
+                        "invalid UINT value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9424,7 +9424,7 @@ LOCAL Errors bindValues(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_UINT64:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid UINT64 value: index %u, count %u",
+                        "invalid UINT64 value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9436,7 +9436,7 @@ LOCAL Errors bindValues(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_DOUBLE:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid DOUBLE value: index %u, count %u",
+                        "invalid DOUBLE value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9448,7 +9448,7 @@ LOCAL Errors bindValues(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_ENUM:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid ENUM value: index %u, count %u",
+                        "invalid ENUM value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9460,7 +9460,7 @@ LOCAL Errors bindValues(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_DATETIME:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid DATETIME value: index %u, count %u",
+                        "invalid DATETIME value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9472,7 +9472,7 @@ LOCAL Errors bindValues(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_STRING:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid STRING value: index %u, count %u",
+                        "invalid STRING value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9486,7 +9486,7 @@ LOCAL Errors bindValues(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_CSTRING:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid CSTRING value: index %u, count %u",
+                        "invalid CSTRING value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9545,7 +9545,7 @@ LOCAL Errors bindValues(DatabaseStatementHandle *databaseStatementHandle,
       #if defined(HAVE_MARIADB)
         {
           // bind values
-          for (uint i = 0; i < valueCount; i++)
+          for (size_t i = 0; i < valueCount; i++)
           {
             switch (values[i].type)
             {
@@ -9556,7 +9556,7 @@ LOCAL Errors bindValues(DatabaseStatementHandle *databaseStatementHandle,
               case DATABASE_DATATYPE_PRIMARY_KEY:
               case DATABASE_DATATYPE_KEY:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid KEY value: index %u, count %u",
+                        "invalid KEY value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9568,7 +9568,7 @@ LOCAL Errors bindValues(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_BOOL:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid BOOL value: index %u, count %u",
+                        "invalid BOOL value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9580,7 +9580,7 @@ LOCAL Errors bindValues(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_INT:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid INT value: index %u, count %u",
+                        "invalid INT value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9593,7 +9593,7 @@ LOCAL Errors bindValues(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_INT64:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid INT64 value: index %u, count %u",
+                        "invalid INT64 value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9606,7 +9606,7 @@ LOCAL Errors bindValues(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_UINT:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid UINT value: index %u, count %u",
+                        "invalid UINT value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9619,7 +9619,7 @@ LOCAL Errors bindValues(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_UINT64:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid UINT64 value: index %u, count %u",
+                        "invalid UINT64 value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9632,7 +9632,7 @@ LOCAL Errors bindValues(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_DOUBLE:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid DOUBLE value: index %u, count %u",
+                        "invalid DOUBLE value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9644,7 +9644,7 @@ LOCAL Errors bindValues(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_ENUM:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid ENUM value: index %u, count %u",
+                        "invalid ENUM value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9662,7 +9662,7 @@ LOCAL Errors bindValues(DatabaseStatementHandle *databaseStatementHandle,
                   uint hour,minute,second;
 
                   assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                          "invalid DATETIME value: index %u, count %u",
+                          "invalid DATETIME value: index %zu, count %zu",
                           databaseStatementHandle->parameterIndex,
                           databaseStatementHandle->parameterCount
                          );
@@ -9695,7 +9695,7 @@ LOCAL Errors bindValues(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_STRING:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid STRING value: index %u, count %u",
+                        "invalid STRING value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9708,7 +9708,7 @@ LOCAL Errors bindValues(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_CSTRING:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid CSTRING value: index %u, count %u",
+                        "invalid CSTRING value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9741,7 +9741,7 @@ LOCAL Errors bindValues(DatabaseStatementHandle *databaseStatementHandle,
       #if defined(HAVE_POSTGRESQL)
         {
           // bind values
-          for (uint i = 0; i < valueCount; i++)
+          for (size_t i = 0; i < valueCount; i++)
           {
             switch (values[i].type)
             {
@@ -9752,7 +9752,7 @@ LOCAL Errors bindValues(DatabaseStatementHandle *databaseStatementHandle,
               case DATABASE_DATATYPE_PRIMARY_KEY:
               case DATABASE_DATATYPE_KEY:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid KEY value: index %u, count %u",
+                        "invalid KEY value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9771,7 +9771,7 @@ LOCAL Errors bindValues(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_BOOL:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid BOOL value: index %u, count %u",
+                        "invalid BOOL value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9790,7 +9790,7 @@ LOCAL Errors bindValues(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_INT:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid INT value: index %u, count %u",
+                        "invalid INT value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9809,7 +9809,7 @@ LOCAL Errors bindValues(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_INT64:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid INT64 value: index %u, count %u",
+                        "invalid INT64 value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9828,7 +9828,7 @@ LOCAL Errors bindValues(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_UINT:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid UINT value: index %u, count %u",
+                        "invalid UINT value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9848,7 +9848,7 @@ LOCAL Errors bindValues(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_UINT64:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid UINT64 value: index %u, count %u",
+                        "invalid UINT64 value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9868,7 +9868,7 @@ LOCAL Errors bindValues(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_DOUBLE:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid DOUBLE value: index %u, count %u",
+                        "invalid DOUBLE value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9887,7 +9887,7 @@ LOCAL Errors bindValues(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_ENUM:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid ENUM value: index %u, count %u",
+                        "invalid ENUM value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9906,7 +9906,7 @@ LOCAL Errors bindValues(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_DATETIME:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid DATETIME value: index %u, count %u",
+                        "invalid DATETIME value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9925,7 +9925,7 @@ LOCAL Errors bindValues(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_STRING:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid STRING value: index %u, count %u",
+                        "invalid STRING value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -9937,7 +9937,7 @@ LOCAL Errors bindValues(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_CSTRING:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid CSTRING value: index %u, count %u",
+                        "invalid CSTRING value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -10023,7 +10023,7 @@ LOCAL Errors bindFilters(DatabaseStatementHandle *databaseStatementHandle,
 
   assert(databaseStatementHandle != NULL);
   assertx((databaseStatementHandle->parameterIndex+filterCount) <= databaseStatementHandle->parameterCount,
-          "invalid filter count: given %u, expected %u",
+          "invalid filter count: given %zu, expected %zu",
           databaseStatementHandle->parameterIndex+filterCount,
           databaseStatementHandle->parameterCount
          );
@@ -10035,7 +10035,7 @@ LOCAL Errors bindFilters(DatabaseStatementHandle *databaseStatementHandle,
       {
         int sqliteResult = SQLITE_ERROR;
 
-        for (uint i = 0; i < filterCount; i++)
+        for (size_t i = 0; i < filterCount; i++)
         {
           switch (filters[i].type)
           {
@@ -10046,7 +10046,7 @@ LOCAL Errors bindFilters(DatabaseStatementHandle *databaseStatementHandle,
             case DATABASE_DATATYPE_PRIMARY_KEY:
             case DATABASE_DATATYPE_KEY:
               assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                      "invalid KEY value: index %u, count %u",
+                      "invalid KEY value: index %zu, count %zu",
                       databaseStatementHandle->parameterIndex,
                       databaseStatementHandle->parameterCount
                      );
@@ -10057,7 +10057,7 @@ LOCAL Errors bindFilters(DatabaseStatementHandle *databaseStatementHandle,
               break;
             case DATABASE_DATATYPE_BOOL:
               assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                      "invalid BOOL value: index %u, count %u",
+                      "invalid BOOL value: index %zu, count %zu",
                       databaseStatementHandle->parameterIndex,
                       databaseStatementHandle->parameterCount
                      );
@@ -10068,7 +10068,7 @@ LOCAL Errors bindFilters(DatabaseStatementHandle *databaseStatementHandle,
               break;
             case DATABASE_DATATYPE_INT:
               assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                      "invalid INT value: index %u, count %u",
+                      "invalid INT value: index %zu, count %zu",
                       databaseStatementHandle->parameterIndex,
                       databaseStatementHandle->parameterCount
                      );
@@ -10079,7 +10079,7 @@ LOCAL Errors bindFilters(DatabaseStatementHandle *databaseStatementHandle,
               break;
             case DATABASE_DATATYPE_INT64:
               assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                      "invalid INT64 value: index %u, count %u",
+                      "invalid INT64 value: index %zu, count %zu",
                       databaseStatementHandle->parameterIndex,
                       databaseStatementHandle->parameterCount
                      );
@@ -10090,7 +10090,7 @@ LOCAL Errors bindFilters(DatabaseStatementHandle *databaseStatementHandle,
               break;
             case DATABASE_DATATYPE_UINT:
               assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                      "invalid UINT value: index %u, count %u",
+                      "invalid UINT value: index %zu, count %zu",
                       databaseStatementHandle->parameterIndex,
                       databaseStatementHandle->parameterCount
                      );
@@ -10101,7 +10101,7 @@ LOCAL Errors bindFilters(DatabaseStatementHandle *databaseStatementHandle,
               break;
             case DATABASE_DATATYPE_UINT64:
               assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                      "invalid UINT64 value: index %u, count %u",
+                      "invalid UINT64 value: index %zu, count %zu",
                       databaseStatementHandle->parameterIndex,
                       databaseStatementHandle->parameterCount
                      );
@@ -10112,7 +10112,7 @@ LOCAL Errors bindFilters(DatabaseStatementHandle *databaseStatementHandle,
               break;
             case DATABASE_DATATYPE_DOUBLE:
               assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                      "invalid DOUBLE value: index %u, count %u",
+                      "invalid DOUBLE value: index %zu, count %zu",
                       databaseStatementHandle->parameterIndex,
                       databaseStatementHandle->parameterCount
                      );
@@ -10123,7 +10123,7 @@ LOCAL Errors bindFilters(DatabaseStatementHandle *databaseStatementHandle,
               break;
             case DATABASE_DATATYPE_ENUM:
               assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                      "invalid ENUM value: index %u, count %u",
+                      "invalid ENUM value: index %zu, count %zu",
                       databaseStatementHandle->parameterIndex,
                       databaseStatementHandle->parameterCount
                      );
@@ -10134,7 +10134,7 @@ LOCAL Errors bindFilters(DatabaseStatementHandle *databaseStatementHandle,
               break;
             case DATABASE_DATATYPE_DATETIME:
               assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                      "invalid DATETIME value: index %u, count %u",
+                      "invalid DATETIME value: index %zu, count %zu",
                       databaseStatementHandle->parameterIndex,
                       databaseStatementHandle->parameterCount
                      );
@@ -10145,7 +10145,7 @@ LOCAL Errors bindFilters(DatabaseStatementHandle *databaseStatementHandle,
               break;
             case DATABASE_DATATYPE_STRING:
               assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                      "invalid STRING value: index %u, count %u",
+                      "invalid STRING value: index %zu, count %zu",
                       databaseStatementHandle->parameterIndex,
                       databaseStatementHandle->parameterCount
                      );
@@ -10158,7 +10158,7 @@ LOCAL Errors bindFilters(DatabaseStatementHandle *databaseStatementHandle,
               break;
             case DATABASE_DATATYPE_CSTRING:
               assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                      "invalid CSTRING value: index %u, count %u",
+                      "invalid CSTRING value: index %zu, count %zu",
                       databaseStatementHandle->parameterIndex,
                       databaseStatementHandle->parameterCount
                      );
@@ -10178,7 +10178,7 @@ LOCAL Errors bindFilters(DatabaseStatementHandle *databaseStatementHandle,
                 uint   j;
 
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid ARRAY value: index %u, count %u",
+                        "invalid ARRAY value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -10237,7 +10237,7 @@ LOCAL Errors bindFilters(DatabaseStatementHandle *databaseStatementHandle,
     case DATABASE_TYPE_MARIADB:
       #if defined(HAVE_MARIADB)
         {
-          for (uint i = 0; i < filterCount; i++)
+          for (size_t i = 0; i < filterCount; i++)
           {
             switch (filters[i].type)
             {
@@ -10248,7 +10248,7 @@ LOCAL Errors bindFilters(DatabaseStatementHandle *databaseStatementHandle,
               case DATABASE_DATATYPE_PRIMARY_KEY:
               case DATABASE_DATATYPE_KEY:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid KEY value: index %u, count %u",
+                        "invalid KEY value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -10259,7 +10259,7 @@ LOCAL Errors bindFilters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_BOOL:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid BOOL value: index %u, count %u",
+                        "invalid BOOL value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -10270,7 +10270,7 @@ LOCAL Errors bindFilters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_INT:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid INT value: index %u, count %u",
+                        "invalid INT value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -10282,7 +10282,7 @@ LOCAL Errors bindFilters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_INT64:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid INT64 value: index %u, count %u",
+                        "invalid INT64 value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -10294,7 +10294,7 @@ LOCAL Errors bindFilters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_UINT:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid UINT value: index %u, count %u",
+                        "invalid UINT value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -10306,7 +10306,7 @@ LOCAL Errors bindFilters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_UINT64:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid UINT64 value: index %u, count %u",
+                        "invalid UINT64 value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -10318,7 +10318,7 @@ LOCAL Errors bindFilters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_DOUBLE:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid DOUBLE value: index %u, count %u",
+                        "invalid DOUBLE value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -10329,7 +10329,7 @@ LOCAL Errors bindFilters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_ENUM:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid ENUM value: index %u, count %u",
+                        "invalid ENUM value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -10346,7 +10346,7 @@ LOCAL Errors bindFilters(DatabaseStatementHandle *databaseStatementHandle,
                   uint hour,minute,second;
 
                   assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                          "invalid DATETIME value: index %u, count %u",
+                          "invalid DATETIME value: index %zu, count %zu",
                           databaseStatementHandle->parameterIndex,
                           databaseStatementHandle->parameterCount
                          );
@@ -10378,7 +10378,7 @@ LOCAL Errors bindFilters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_STRING:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid STRING value: index %u, count %u",
+                        "invalid STRING value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -10390,7 +10390,7 @@ LOCAL Errors bindFilters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_CSTRING:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid CSTRING value: index %u, count %u",
+                        "invalid CSTRING value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -10423,7 +10423,7 @@ LOCAL Errors bindFilters(DatabaseStatementHandle *databaseStatementHandle,
     case DATABASE_TYPE_POSTGRESQL:
       #if defined(HAVE_POSTGRESQL)
         {
-          for (uint i = 0; i < filterCount; i++)
+          for (size_t i = 0; i < filterCount; i++)
           {
             switch (filters[i].type)
             {
@@ -10434,7 +10434,7 @@ LOCAL Errors bindFilters(DatabaseStatementHandle *databaseStatementHandle,
               case DATABASE_DATATYPE_PRIMARY_KEY:
               case DATABASE_DATATYPE_KEY:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid KEY value: index %u, count %u",
+                        "invalid KEY value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -10452,7 +10452,7 @@ LOCAL Errors bindFilters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_BOOL:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid BOOL value: index %u, count %u",
+                        "invalid BOOL value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -10470,7 +10470,7 @@ LOCAL Errors bindFilters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_INT:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid INT value: index %u, count %u",
+                        "invalid INT value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -10488,7 +10488,7 @@ LOCAL Errors bindFilters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_INT64:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid INT64 value: index %u, count %u",
+                        "invalid INT64 value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -10506,7 +10506,7 @@ LOCAL Errors bindFilters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_UINT:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid UINT value: index %u, count %u",
+                        "invalid UINT value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -10525,7 +10525,7 @@ LOCAL Errors bindFilters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_UINT64:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid UINT64 value: index %u, count %u",
+                        "invalid UINT64 value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -10544,7 +10544,7 @@ LOCAL Errors bindFilters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_DOUBLE:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid DOUBLE value: index %u, count %u",
+                        "invalid DOUBLE value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -10562,7 +10562,7 @@ LOCAL Errors bindFilters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_ENUM:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid ENUM value: index %u, count %u",
+                        "invalid ENUM value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -10580,7 +10580,7 @@ LOCAL Errors bindFilters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_DATETIME:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid DATETIME value: index %u, count %u",
+                        "invalid DATETIME value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -10598,7 +10598,7 @@ LOCAL Errors bindFilters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_STRING:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid STRING value: index %u, count %u",
+                        "invalid STRING value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -10608,7 +10608,7 @@ LOCAL Errors bindFilters(DatabaseStatementHandle *databaseStatementHandle,
                 break;
               case DATABASE_DATATYPE_CSTRING:
                 assertx(databaseStatementHandle->parameterIndex < databaseStatementHandle->parameterCount,
-                        "invalid CSTRING value: index %u, count %u",
+                        "invalid CSTRING value: index %zu, count %zu",
                         databaseStatementHandle->parameterIndex,
                         databaseStatementHandle->parameterCount
                        );
@@ -10847,7 +10847,7 @@ LOCAL Errors databaseGet(DatabaseHandle       *databaseHandle,
   uint parameterCount = 0;
   if (!IS_SET(flags,DATABASE_FLAG_PLAIN))
   {
-    for (uint i = 0; i < tableNameCount; i++)
+    for (size_t i = 0; i < tableNameCount; i++)
     {
       if (i > 0)
       {
@@ -10859,7 +10859,7 @@ LOCAL Errors databaseGet(DatabaseHandle       *databaseHandle,
       }
       if (columns != NULL)
       {
-        for (uint j = 0; j < columnCount; j++)
+        for (size_t j = 0; j < columnCount; j++)
         {
           if (j > 0) String_appendChar(sqlString,',');
           switch (columns[j].type)
@@ -10973,7 +10973,7 @@ LOCAL Errors databaseGet(DatabaseHandle       *databaseHandle,
   // bind filters, results
   if (filter != NULL)
   {
-    for (uint i = 0; i < tableNameCount; i++)
+    for (size_t i = 0; i < tableNameCount; i++)
     {
       error = bindFilters(&databaseStatementHandle,
                           filters,
@@ -11408,7 +11408,7 @@ LOCAL void freeTableColumns(DatabaseColumn columns[],
                             uint           columnCount
                            )
 {
-  for (uint i = 0; i < columnCount; i++)
+  for (size_t i = 0; i < columnCount; i++)
   {
     // Note: suppress warning
     free((char*)columns[i].name);
@@ -11446,7 +11446,7 @@ LOCAL Errors getStatementColumns(DatabaseColumn          columns[],
       {
         (*columnCount) = sqlite3_column_count(databaseStatementHandle->sqlite.statementHandle);
 
-        for (uint i = 0; i < (*columnCount); i++)
+        for (size_t i = 0; i < (*columnCount); i++)
         {
           if (i < maxColumnCount)
           {
@@ -11475,7 +11475,7 @@ LOCAL Errors getStatementColumns(DatabaseColumn          columns[],
 
             mysqlFields = mysql_fetch_fields(mysqlMetaData);
             assert(mysqlFields != NULL);
-            for (uint i = 0; i < (*columnCount); i++)
+            for (size_t i = 0; i < (*columnCount); i++)
             {
               if (i < maxColumnCount)
               {
@@ -11524,7 +11524,7 @@ LOCAL Errors getStatementColumns(DatabaseColumn          columns[],
           }
           (*columnCount) = PQnfields(postgresqlResult);
 
-          for (uint i = 0; i < (*columnCount); i++)
+          for (size_t i = 0; i < (*columnCount); i++)
           {
             if (i < maxColumnCount)
             {
@@ -11559,7 +11559,7 @@ LOCAL DatabaseValue *findTableColumn(const DatabaseColumnInfo *columnInfo, const
 {
   assert(columnInfo != NULL);
 
-  for (uint i = 0; i < columnInfo->count; i++)
+  for (size_t i = 0; i < columnInfo->count; i++)
   {
     // Note: ignore case, because PostgreSQL does not support names in camel-case :-(
     if (stringEqualsIgnoreCase(columnInfo->values[i].name,columnName))
@@ -13714,7 +13714,7 @@ assert(Thread_isCurrentThread(databaseHandle->debug.threadId));
         }
 
         // compare columns (Note: case-insesitive, because some database engines do not support case-sensitive names)
-        for (uint i = 0; i < referenceColumnCount; i++)
+        for (size_t i = 0; i < referenceColumnCount; i++)
         {
           // find column
           uint j = ARRAY_FIND(columnNames,columnCount,j,stringEqualsIgnoreCase(referenceColumns[i].name,columns[j].name));
@@ -13740,7 +13740,7 @@ assert(Thread_isCurrentThread(databaseHandle->debug.threadId));
         if (!IS_SET(compareFlags,DATABASE_COMPARE_IGNORE_OBSOLETE))
         {
           // check for obsolete columns (Note: case-insesitive, because some database engines do not support case-sensitive names)
-          for (uint i = 0; i < columnCount; i++)
+          for (size_t i = 0; i < columnCount; i++)
           {
             // find column
             uint j = ARRAY_FIND(referenceColumns,referenceColumnCount,j,stringEqualsIgnoreCase(columns[i].name,referenceColumns[j].name));
@@ -13887,7 +13887,7 @@ assert(Thread_isCurrentThread(toDatabaseHandle->debug.threadId));
   }
   #ifdef DEBUG_COPY_TABLE
     fprintf(stderr,"fromTable '%s': %u\n",fromTableName,fromColumnCount);
-    for (uint i = 0; i < fromColumnCount; i++)
+    for (size_t i = 0; i < fromColumnCount; i++)
     {
       fprintf(stderr,"  %2u: %s %s\n",i,fromColumns[i].name,DATABASE_DATATYPE_NAMES[fromColumns[i].type]);
     }
@@ -13908,7 +13908,7 @@ assert(Thread_isCurrentThread(toDatabaseHandle->debug.threadId));
   }
   #ifdef DEBUG_COPY_TABLE
     fprintf(stderr,"toTable '%s': %u\n",toTableName,toColumnCount);
-    for (uint i = 0; i < toColumnCount; i++)
+    for (size_t i = 0; i < toColumnCount; i++)
     {
       fprintf(stderr,"  %2u: %s %s\n",i,toColumns[i].name,DATABASE_DATATYPE_NAMES[toColumns[i].type]);
     }
@@ -13917,7 +13917,7 @@ assert(Thread_isCurrentThread(toDatabaseHandle->debug.threadId));
 
   // get column mapping: toColumn[i] := fromColumn[fromColumnMap[i]]
   int fromColumnMap[DATABASE_MAX_TABLE_COLUMNS];
-  for (uint i = 0; i < toColumnCount; i++)
+  for (size_t i = 0; i < toColumnCount; i++)
   {
     uint j = ARRAY_FIND(fromColumns,fromColumnCount,j,stringEqualsIgnoreCase(fromColumns[j].name,toColumns[i].name));
     if (j < fromColumnCount)
@@ -13931,7 +13931,7 @@ assert(Thread_isCurrentThread(toDatabaseHandle->debug.threadId));
   }
   #ifdef DEBUG_COPY_TABLE
     fprintf(stderr,"mapping: %u\n",toColumnCount);
-    for (uint i = 0; i < toColumnCount; i++)
+    for (size_t i = 0; i < toColumnCount; i++)
     {
       if (fromColumnMap[i] != UNUSED)
       {
@@ -13950,7 +13950,7 @@ assert(Thread_isCurrentThread(toDatabaseHandle->debug.threadId));
   int  toColumnPrimaryKeyIndex = UNUSED;
   uint parameterMap[DATABASE_MAX_TABLE_COLUMNS];
   uint parameterMapCount       = 0;
-  for (uint i = 0; i < toColumnCount; i++)
+  for (size_t i = 0; i < toColumnCount; i++)
   {
     if (toColumns[i].type != DATABASE_DATATYPE_PRIMARY_KEY)
     {
@@ -13967,7 +13967,7 @@ assert(Thread_isCurrentThread(toDatabaseHandle->debug.threadId));
   }
   #ifdef DEBUG_COPY_TABLE
     fprintf(stderr,"parameter mapping: %u\n",parameterMapCount);
-    for (uint i = 0; i < parameterMapCount; i++)
+    for (size_t i = 0; i < parameterMapCount; i++)
     {
       fprintf(stderr,
               "  from %2u:%-30s -> to %2u:%-30s %s\n",
@@ -13978,7 +13978,7 @@ assert(Thread_isCurrentThread(toDatabaseHandle->debug.threadId));
               DATABASE_DATATYPE_NAMES[fromColumns[fromColumnMap[parameterMap[i]]].type]
              );
     }
-    for (uint i = 0; i < parameterMapCount; i++)
+    for (size_t i = 0; i < parameterMapCount; i++)
     {
       if (fromColumnMap[parameterMap[i]] != UNUSED)
       {
@@ -13990,7 +13990,7 @@ assert(Thread_isCurrentThread(toDatabaseHandle->debug.threadId));
   // init to-values, parameters
   DatabaseValue toValues[DATABASE_MAX_TABLE_COLUMNS];
   uint          toValueCount;
-  for (uint i = 0; i < toColumnCount; i++)
+  for (size_t i = 0; i < toColumnCount; i++)
   {
     toValues[i].type = toColumns[i].type;
     toValues[i].name = toColumns[i].name;
@@ -13999,7 +13999,7 @@ assert(Thread_isCurrentThread(toDatabaseHandle->debug.threadId));
 
   DatabaseValue parameterValues[DATABASE_MAX_TABLE_COLUMNS];
   uint          parameterValueCount = parameterMapCount;
-  for (uint i = 0; i < parameterMapCount; i++)
+  for (size_t i = 0; i < parameterMapCount; i++)
   {
     parameterValues[i].type = toColumns[parameterMap[i]].type;
   }
@@ -14007,7 +14007,7 @@ assert(Thread_isCurrentThread(toDatabaseHandle->debug.threadId));
   // create SQL select statement strings
   String sqlSelectString      = String_format(String_new(),"SELECT ");
   uint   selectParameterCount = 0;
-  for (uint i = 0; i < fromColumnCount; i++)
+  for (size_t i = 0; i < fromColumnCount; i++)
   {
     if (i > 0) String_appendChar(sqlSelectString,',');
     String_appendCString(sqlSelectString,fromColumns[i].name);
@@ -14041,13 +14041,13 @@ assert(Thread_isCurrentThread(toDatabaseHandle->debug.threadId));
 
   String sqlInsertString      = String_format(String_new(),"INSERT INTO %s (",toTableName);
   uint   insertParameterCount = 0;
-  for (uint i = 0; i < parameterMapCount; i++)
+  for (size_t i = 0; i < parameterMapCount; i++)
   {
     if (i > 0) String_appendChar(sqlInsertString,',');
     String_appendCString(sqlInsertString,fromColumns[fromColumnMap[parameterMap[i]]].name);
   }
   String_appendFormat(sqlInsertString,") VALUES (");
-  for (uint i = 0; i < parameterMapCount; i++)
+  for (size_t i = 0; i < parameterMapCount; i++)
   {
     if (i > 0) String_appendChar(sqlInsertString,',');
     formatParameters(sqlInsertString,toDatabaseHandle,"?",&insertParameterCount);
@@ -14170,7 +14170,7 @@ assert(Thread_isCurrentThread(toDatabaseHandle->debug.threadId));
                                        #endif /* DATABASE_DEBUG_COPY_TABLE */
 
                                        // set to-values
-                                       for (uint i = 0; i < parameterMapCount; i++)
+                                       for (size_t i = 0; i < parameterMapCount; i++)
                                        {
                                          assert(i < parameterValueCount);
                                          assert(parameterMap[i] < toColumnCount);
@@ -14197,7 +14197,7 @@ debugDatabaseValueToString(buffer2,sizeof(buffer2),&toValues[parameterMap[i]])
 #endif
                                        }
 
-                                       for (uint i = 0; i < toColumnCount; i++)
+                                       for (size_t i = 0; i < toColumnCount; i++)
                                        {
                                          if (fromColumnMap[i] != UNUSED)
                                          {
@@ -14236,7 +14236,7 @@ debugDatabaseValueToString(buffer2,sizeof(buffer2),&toValues[parameterMap[i]])
                                        }
 
                                        // copy parameter data
-                                       for (uint i = 0; i < parameterMapCount; i++)
+                                       for (size_t i = 0; i < parameterMapCount; i++)
                                        {
                                          assert(i < parameterValueCount);
 
@@ -15065,7 +15065,7 @@ Errors Database_removeColumn(DatabaseHandle *databaseHandle,
     // create new table
     formatSQLString(String_clear(sqlString),"CREATE TABLE IF NOT EXISTS __new__(");
     uint n = 0;
-    for (uint i = 0; i < columnCount; i++)
+    for (size_t i = 0; i < columnCount; i++)
     {
       if (!stringEquals(columns[i].name,columnName))
       {
@@ -15217,7 +15217,7 @@ Errors Database_removeColumn(DatabaseHandle *databaseHandle,
                                   )
 #else /* not NDEBUG */
   Errors __Database_beginTransaction(const char               *__fileName__,
-                                     uint                     __lineNb__,
+                                     size_t                   __lineNb__,
                                      DatabaseHandle           *databaseHandle,
                                      DatabaseTransactionTypes databaseTransactionType,
                                      long                     timeout
@@ -15252,7 +15252,7 @@ Errors Database_removeColumn(DatabaseHandle *databaseHandle,
 
           name1 = Thread_getCurrentName();
           name2 = Thread_getName(databaseHandle->databaseNode->transaction.threadId);
-          fprintf(stderr,"DEBUG ERROR: multiple transactions requested by thread '%s' (%s) at %s, %u and previously thread '%s' (%s) at %s, %u!\n",
+          fprintf(stderr,"DEBUG ERROR: multiple transactions requested by thread '%s' (%s) at %s, %zu and previously thread '%s' (%s) at %s, %zu!\n",
                   (name1 != NULL) ? name1 : "none",
                   Thread_getCurrentIdString(),
                   __fileName__,
@@ -15577,7 +15577,7 @@ Errors Database_removeColumn(DatabaseHandle *databaseHandle,
   Errors Database_rollbackTransaction(DatabaseHandle *databaseHandle)
 #else /* not NDEBUG */
   Errors __Database_rollbackTransaction(const char     *__fileName__,
-                                        uint           __lineNb__,
+                                        size_t         __lineNb__,
                                         DatabaseHandle *databaseHandle
                                        )
 #endif /* NDEBUG */
@@ -16090,13 +16090,13 @@ Errors Database_insert(DatabaseHandle       *databaseHandle,
   String_appendCString(sqlString," INTO ");
   formatParameters(sqlString,databaseHandle,tableName,&parameterCount);
   String_appendCString(sqlString," (");
-  for (uint i = 0; i < valueCount; i++)
+  for (size_t i = 0; i < valueCount; i++)
   {
     if (i > 0) String_appendChar(sqlString,',');
     appendName(sqlString,databaseHandle,values[i].name);
   }
   String_appendCString(sqlString,") VALUES (");
-  for (uint i = 0; i < valueCount; i++)
+  for (size_t i = 0; i < valueCount; i++)
   {
     if (i > 0) String_appendChar(sqlString,',');
     if (values[i].value != NULL)
@@ -16134,13 +16134,13 @@ Errors Database_insert(DatabaseHandle       *databaseHandle,
         else if (IS_SET(flags,DATABASE_FLAG_REPLACE))
         {
           String_appendCString(sqlString," ON CONFLICT (");
-          for (uint i = 0; i < conflictColumnCount; i++)
+          for (size_t i = 0; i < conflictColumnCount; i++)
           {
             if (i > 0) String_appendChar(sqlString,',');
             String_appendCString(sqlString,conflictColumns[i].name);
           }
           String_appendCString(sqlString,") DO UPDATE SET ");
-          for (uint i = 0; i < valueCount; i++)
+          for (size_t i = 0; i < valueCount; i++)
           {
             if (i > 0) String_appendChar(sqlString,',');
             if (values[i].value != NULL)
@@ -16375,14 +16375,14 @@ Errors Database_insertSelect(DatabaseHandle       *databaseHandle,
   String_appendCString(sqlString," INTO ");
   formatParameters(sqlString,databaseHandle,tableName,&parameterCount);
   String_appendCString(sqlString," (");
-  for (uint i = 0; i < toColumnCount; i++)
+  for (size_t i = 0; i < toColumnCount; i++)
   {
     if (i > 0) String_appendChar(sqlString,',');
     String_appendCString(sqlString,toColumns[i].name);
   }
   String_appendCString(sqlString,") ");
 
-  for (uint i = 0; i < tableNameCount; i++)
+  for (size_t i = 0; i < tableNameCount; i++)
   {
     if (i > 0)
     {
@@ -16392,7 +16392,7 @@ Errors Database_insertSelect(DatabaseHandle       *databaseHandle,
     {
       String_appendCString(sqlString,"SELECT ");
     }
-    for (uint j = 0; j < fromColumnCount; j++)
+    for (size_t j = 0; j < fromColumnCount; j++)
     {
       if (j > 0) String_appendChar(sqlString,',');
       formatParameters(sqlString,databaseHandle,fromColumns[j].name,&parameterCount);
@@ -16541,7 +16541,7 @@ Errors Database_update(DatabaseHandle       *databaseHandle,
     }
   }
   String_appendFormat(sqlString,"%s SET ",tableName);
-  for (uint i = 0; i < valueCount; i++)
+  for (size_t i = 0; i < valueCount; i++)
   {
     if (i > 0) String_appendChar(sqlString,',');
     if (values[i].value != NULL)
@@ -17068,7 +17068,7 @@ Errors Database_deleteByIds(DatabaseHandle   *databaseHandle,
   }
 #endif
 
-  for (uint i = 0; i < columnCount; i++)
+  for (size_t i = 0; i < columnCount; i++)
   {
     if (i > 0) String_appendChar(sqlString,',');
     switch (columns[i].type)
@@ -17234,7 +17234,7 @@ bool Database_getNextRow(DatabaseStatementHandle *databaseStatementHandle,
 
     va_list arguments;
     va_start(arguments,databaseStatementHandle);
-    for (uint i = 0; i < databaseStatementHandle->resultCount; i++)
+    for (size_t i = 0; i < databaseStatementHandle->resultCount; i++)
     {
       union
       {
@@ -17483,7 +17483,7 @@ Errors Database_get(DatabaseHandle       *databaseHandle,
   uint   parameterCount = 0;
   if (!IS_SET(flags,DATABASE_FLAG_PLAIN))
   {
-    for (uint i = 0; i < tableNameCount; i++)
+    for (size_t i = 0; i < tableNameCount; i++)
     {
       if (i > 0)
       {
@@ -17495,7 +17495,7 @@ Errors Database_get(DatabaseHandle       *databaseHandle,
       }
       if (columns != NULL)
       {
-        for (uint j = 0; j < columnCount; j++)
+        for (size_t j = 0; j < columnCount; j++)
         {
           if (j > 0) String_appendChar(sqlString,',');
           switch (columns[j].type)
@@ -17609,7 +17609,7 @@ Errors Database_get(DatabaseHandle       *databaseHandle,
   // bind filters, results
   if (filter != NULL)
   {
-    for (uint i = 0; i < tableNameCount; i++)
+    for (size_t i = 0; i < tableNameCount; i++)
     {
       error = bindFilters(&databaseStatementHandle,
                           filters,
@@ -18438,7 +18438,7 @@ Errors Database_vacuum(DatabaseHandle     *databaseHandle,
         UNUSED_VARIABLE(force);          // not supported
 
         error = ERROR_NONE;
-        for (uint i = 0; i < tableNameCount; i++)
+        for (size_t i = 0; i < tableNameCount; i++)
         {
           char sqlString[256];
           error = Database_execute(databaseHandle,
@@ -18462,7 +18462,7 @@ Errors Database_vacuum(DatabaseHandle     *databaseHandle,
         UNUSED_VARIABLE(force);          // not supported
 
         error = ERROR_NONE;
-        for (uint i = 0; i < tableNameCount; i++)
+        for (size_t i = 0; i < tableNameCount; i++)
         {
           char sqlString[256];
           error = Database_execute(databaseHandle,
@@ -18758,7 +18758,7 @@ void Database_debugPrintInfo(void)
         {
           case DATABASE_TYPE_SQLITE3:
             fprintf(stderr,
-                    "  opened 'sqlite3:%s': %u\n",
+                    "  opened 'sqlite3:%s': %zu\n",
                     String_cString(databaseNode->databaseSpecifier.sqlite.fileName),
                     databaseNode->openCount
                    );
@@ -18766,7 +18766,7 @@ void Database_debugPrintInfo(void)
           case DATABASE_TYPE_MARIADB:
             #if defined(HAVE_MARIADB)
               fprintf(stderr,
-                      "  opened 'mariadb:%s:%s': %u\n",
+                      "  opened 'mariadb:%s:%s': %zu\n",
                       String_cString(databaseNode->databaseSpecifier.mariadb.serverName),
                       String_cString(databaseNode->databaseSpecifier.mariadb.userName),
                       databaseNode->openCount
@@ -18777,7 +18777,7 @@ void Database_debugPrintInfo(void)
           case DATABASE_TYPE_POSTGRESQL:
             #if defined(HAVE_POSTGRESQL)
               fprintf(stderr,
-                      "  opened 'postgresql:%s:%s': %u\n",
+                      "  opened 'postgresql:%s:%s': %zu\n",
                       String_cString(databaseNode->databaseSpecifier.postgresql.serverName),
                       String_cString(databaseNode->databaseSpecifier.postgresql.userName),
                       databaseNode->openCount
@@ -18803,19 +18803,19 @@ void Database_debugPrintInfo(void)
           }
         }
         fprintf(stderr,
-                "  222lock state summary: pending r %2u, locked r %2u, pending rw %2u, locked rw %2u, transactions %2u\n",
+                "  222lock state summary: pending r %2zu, locked r %2zu, pending rw %2zu, locked rw %2zu, transactions %2zu\n",
                 databaseNode->pendingReadCount,
                 databaseNode->readCount,
                 databaseNode->pendingReadWriteCount,
                 databaseNode->readWriteCount,
                 databaseNode->transactionCount
                );
-        for (uint i = 0; i < SIZE_OF_ARRAY(databaseNode->debug.pendingReads); i++)
+        for (size_t i = 0; i < SIZE_OF_ARRAY(databaseNode->debug.pendingReads); i++)
         {
           if (!Thread_isNone(databaseNode->debug.pendingReads[i].threadId))
           {
             fprintf(stderr,
-                    "    pending r  %16"PRIu64"lu thread '%s' (%s) at %s, %u\n",
+                    "    pending r  %16"PRIu64"lu thread '%s' (%s) at %s, %zu\n",
                     databaseNode->debug.pendingReads[i].cycleCounter,
                     Thread_getName(databaseNode->debug.pendingReads[i].threadId),
                     Thread_getIdString(databaseNode->debug.pendingReads[i].threadId),
@@ -18833,12 +18833,12 @@ void Database_debugPrintInfo(void)
             #endif /* HAVE_BACKTRACE */
           }
         }
-        for (uint i = 0; i < SIZE_OF_ARRAY(databaseNode->debug.reads); i++)
+        for (size_t i = 0; i < SIZE_OF_ARRAY(databaseNode->debug.reads); i++)
         {
           if (!Thread_isNone(databaseNode->debug.reads[i].threadId))
           {
             fprintf(stderr,
-                    "    locked  r  %16"PRIu64" thread '%s' (%s) at %s, %u\n",
+                    "    locked  r  %16"PRIu64" thread '%s' (%s) at %s, %zu\n",
                     databaseNode->debug.reads[i].cycleCounter,
                     Thread_getName(databaseNode->debug.reads[i].threadId),
                     Thread_getIdString(databaseNode->debug.reads[i].threadId),
@@ -18856,12 +18856,12 @@ void Database_debugPrintInfo(void)
             #endif /* HAVE_BACKTRACE */
           }
         }
-        for (uint i = 0; i < SIZE_OF_ARRAY(databaseNode->debug.pendingReadWrites); i++)
+        for (size_t i = 0; i < SIZE_OF_ARRAY(databaseNode->debug.pendingReadWrites); i++)
         {
           if (!Thread_isNone(databaseNode->debug.pendingReadWrites[i].threadId))
           {
             fprintf(stderr,
-                    "    pending rw %16"PRIu64" thread '%s' (%s) at %s, %u\n",
+                    "    pending rw %16"PRIu64" thread '%s' (%s) at %s, %zu\n",
                     databaseNode->debug.pendingReadWrites[i].cycleCounter,
                     Thread_getName(databaseNode->debug.pendingReadWrites[i].threadId),
                     Thread_getIdString(databaseNode->debug.pendingReadWrites[i].threadId),
@@ -18879,12 +18879,12 @@ void Database_debugPrintInfo(void)
             #endif /* HAVE_BACKTRACE */
           }
         }
-        for (uint i = 0; i < SIZE_OF_ARRAY(databaseNode->debug.readWrites); i++)
+        for (size_t i = 0; i < SIZE_OF_ARRAY(databaseNode->debug.readWrites); i++)
         {
           if (!Thread_isNone(databaseNode->debug.readWrites[i].threadId))
           {
             fprintf(stderr,
-                    "    locked  rw %16"PRIu64" thread '%s' (%s) at %s, %u\n",
+                    "    locked  rw %16"PRIu64" thread '%s' (%s) at %s, %zu\n",
                     databaseNode->debug.readWrites[i].cycleCounter,
                     Thread_getName(databaseNode->debug.readWrites[i].threadId),
                     Thread_getIdString(databaseNode->debug.readWrites[i].threadId),
@@ -18905,7 +18905,7 @@ void Database_debugPrintInfo(void)
         if (!Thread_isNone(databaseNode->debug.transaction.threadId))
         {
           fprintf(stderr,
-                  "  transaction: thread '%s' (%s) at %s, %u\n",
+                  "  transaction: thread '%s' (%s) at %s, %zu\n",
                   Thread_getName(databaseNode->debug.transaction.threadId),
                   Thread_getIdString(databaseNode->debug.transaction.threadId),
                   databaseNode->debug.transaction.fileName,
@@ -18937,7 +18937,7 @@ void Database_debugPrintInfo(void)
             case DATABASE_LOCK_TYPE_READ_WRITE: s = "RW"; break;
           }
           fprintf(stderr,
-                  "  last trigger %s %16"PRIu64" thread '%s' (%s) at %s, %u\n",
+                  "  last trigger %s %16"PRIu64" thread '%s' (%s) at %s, %zu\n",
                   s,
                   databaseNode->debug.lastTrigger.threadInfo.cycleCounter,
                   Thread_getName(databaseNode->debug.lastTrigger.threadInfo.threadId),
@@ -18946,7 +18946,7 @@ void Database_debugPrintInfo(void)
                   databaseNode->debug.lastTrigger.threadInfo.lineNb
                  );
           fprintf(stderr,
-                  "                pending r %2u, locked r %2u, pending rw %2u, locked rw %2u, transactions %2u\n",
+                  "                pending r %2zu, locked r %2zu, pending rw %2zu, locked rw %2zu, transactions %2zu\n",
 databaseNode->debug.lastTrigger.pendingReadCount,
 databaseNode->debug.lastTrigger.readCount              ,
 databaseNode->debug.lastTrigger.pendingReadWriteCount  ,
@@ -18973,14 +18973,14 @@ databaseNode->debug.lastTrigger.transactionCount
         fprintf(stderr,
                 "  lock history (ascending):\n"
                );
-        for (uint i = 0; i < SIZE_OF_ARRAY(databaseNode->debug.history); i++)
+        for (size_t i = 0; i < SIZE_OF_ARRAY(databaseNode->debug.history); i++)
         {
           uint index = (databaseNode->debug.historyIndex+i) % SIZE_OF_ARRAY(databaseNode->debug.history);
 
           if (!Thread_isNone(databaseNode->debug.history[index].threadId))
           {
             fprintf(stderr,
-                    "    %-18s %16"PRIu64" thread '%s' (%s) at %s, %u\n",
+                    "    %-18s %16"PRIu64" thread '%s' (%s) at %s, %zu\n",
                     HISTORY_TYPE_STRINGS[databaseNode->debug.history[index].type],
                     databaseNode->debug.history[index].cycleCounter,
                     Thread_getName(databaseNode->debug.history[index].threadId),
@@ -19055,19 +19055,19 @@ void Database_debugPrintLockInfo(const DatabaseHandle *databaseHandle)
           break;
       }
       fprintf(stderr,
-              "  lock state summary: pending r %2u, locked r %2u, pending rw %2u, locked rw %2u, transactions %2u\n",
+              "  lock state summary: pending r %2zu, locked r %2zu, pending rw %2zu, locked rw %2zu, transactions %2zu\n",
               databaseHandle->databaseNode->pendingReadCount,
               databaseHandle->databaseNode->readCount,
               databaseHandle->databaseNode->pendingReadWriteCount,
               databaseHandle->databaseNode->readWriteCount,
               databaseHandle->databaseNode->transactionCount
              );
-      for (uint i = 0; i < SIZE_OF_ARRAY(databaseHandle->databaseNode->debug.reads); i++)
+      for (size_t i = 0; i < SIZE_OF_ARRAY(databaseHandle->databaseNode->debug.reads); i++)
       {
         if (!Thread_isNone(databaseHandle->databaseNode->debug.reads[i].threadId))
         {
           fprintf(stderr,
-                  "    locked  r  thread '%s' (%s) at %s, %u\n",
+                  "    locked  r  thread '%s' (%s) at %s, %zu\n",
                   Thread_getName(databaseHandle->databaseNode->debug.reads[i].threadId),
                   Thread_getIdString(databaseHandle->databaseNode->debug.reads[i].threadId),
                   databaseHandle->databaseNode->debug.reads[i].fileName,
@@ -19088,12 +19088,12 @@ void Database_debugPrintLockInfo(const DatabaseHandle *databaseHandle)
           #endif /* HAVE_BACKTRACE */
         }
       }
-      for (uint i = 0; i < SIZE_OF_ARRAY(databaseHandle->databaseNode->debug.readWrites); i++)
+      for (size_t i = 0; i < SIZE_OF_ARRAY(databaseHandle->databaseNode->debug.readWrites); i++)
       {
         if (!Thread_isNone(databaseHandle->databaseNode->debug.readWrites[i].threadId))
         {
           fprintf(stderr,
-                  "    locked  rw thread '%s' (%s) at %s, %u\n",
+                  "    locked  rw thread '%s' (%s) at %s, %zu\n",
                   Thread_getName(databaseHandle->databaseNode->debug.readWrites[i].threadId),
                   Thread_getIdString(databaseHandle->databaseNode->debug.readWrites[i].threadId),
                   databaseHandle->databaseNode->debug.readWrites[i].fileName,
@@ -19123,7 +19123,7 @@ void Database_debugPrintLockInfo(const DatabaseHandle *databaseHandle)
 #ifdef NDEBUG
   void Database_debugPrintQueryInfo(const DatabaseStatementHandle *databaseStatementHandle)
 #else /* not NDEBUG */
-  void __Database_debugPrintQueryInfo(const char *__fileName__, ulong __lineNb__, const DatabaseStatementHandle *databaseStatementHandle)
+  void __Database_debugPrintQueryInfo(const char *__fileName__, size_t __lineNb__, const DatabaseStatementHandle *databaseStatementHandle)
 #endif /* NDEBUG */
 {
   assert(databaseStatementHandle != NULL);
@@ -19223,7 +19223,7 @@ LOCAL size_t* debugGetColumnsWidth(const DatabaseValue values[], uint valueCount
   size_t *widths = (size_t*)malloc(valueCount*sizeof(size_t));
   assert(widths != NULL);
 
-  for (uint i = 0; i < valueCount; i++)
+  for (size_t i = 0; i < valueCount; i++)
   {
     widths[i] = 0;
     char buffer[1024];
@@ -19273,7 +19273,7 @@ void Database_debugDumpTable(DatabaseHandle *databaseHandle, const char *tableNa
                         if (dumpTableData->widths == NULL) dumpTableData->widths = debugGetColumnsWidth(values,valueCount);
                         assert(dumpTableData->widths != NULL);
 
-                        for (uint i = 0; i < valueCount; i++)
+                        for (size_t i = 0; i < valueCount; i++)
                         {
                           char buffer[1024];
                           Database_valueToCString(buffer,sizeof(buffer),&values[i]);
@@ -19315,7 +19315,7 @@ void Database_debugDumpTable(DatabaseHandle *databaseHandle, const char *tableNa
 
                         if (dumpTableData->showHeaderFlag && !dumpTableData->headerPrintedFlag)
                         {
-                          for (uint i = 0; i < columnCount; i++)
+                          for (size_t i = 0; i < columnCount; i++)
                           {
                             printf("%s ",columns[i].name); debugPrintSpaces(dumpTableData->widths[i]-stringLength(columns[i].name));
                           }
@@ -19323,7 +19323,7 @@ void Database_debugDumpTable(DatabaseHandle *databaseHandle, const char *tableNa
 
                           dumpTableData->headerPrintedFlag = TRUE;
                         }
-                        for (uint i = 0; i < valueCount; i++)
+                        for (size_t i = 0; i < valueCount; i++)
                         {
                           char buffer[1024];
                           Database_valueToCString(buffer,sizeof(buffer),&values[i]);
