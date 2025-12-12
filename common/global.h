@@ -302,8 +302,8 @@ typedef bool(*ResourceDumpInfoFunction)(const char *variableName,
                                         const void *resource,
                                         const char *allocFileName,
                                         size_t     allocLineNb,
-                                        size_t     n,
-                                        size_t     count,
+                                        ulong      n,
+                                        ulong      count,
                                         void       *userData
                                        );
 
@@ -1373,6 +1373,11 @@ typedef byte* StaticBitSet;
     } \
     while (0)
 #endif /* not NDEBUG */
+
+// define empty static assert if not supported
+#ifndef HAVE_STATIC_ASSERT
+  #define static_assert(condition,message)
+#endif /* not HAVE_STATIC_ASSERT */
 
 /***********************************************************************\
 * Name   : __B
