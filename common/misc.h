@@ -124,6 +124,14 @@ typedef enum
                           | HANDLE_EVENT_INVALID \
                          )
 
+// system notify types
+typedef enum
+{
+  MISC_SYSTEM_NOTIFY_TYPE_STARTED,
+  MISC_SYSTEM_NOTIFY_TYPE_STOPPING,
+  MISC_SYSTEM_NOTIFY_TYPE_ERROR
+} Misc_SystemNotifyTypes;
+
 /***************************** Datatypes *******************************/
 
 #if 0
@@ -593,6 +601,28 @@ typedef struct
 #ifdef __cplusplus
   extern "C" {
 #endif
+
+/***********************************************************************\
+* Name   : Misc_initAll
+* Purpose: initialize misceallaneous functions
+* Input  : -
+* Output : -
+* Return : ERROR_NONE or error code
+* Notes  : -
+\***********************************************************************/
+
+Errors Misc_initAll(void);
+
+/***********************************************************************\
+* Name   : Misc_doneAll
+* Purpose: deinitialize misceallaneous functions
+* Input  : -
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+void Misc_doneAll(void);
 
 /***********************************************************************\
 * Name   : Misc_getRandom
@@ -1136,6 +1166,17 @@ void Misc_setApplicationIdCString(const char *data);
 \***********************************************************************/
 
 MachineId Misc_getMachineId(void);
+
+/***********************************************************************\
+* Name   : Misc_getPID
+* Purpose: get id of current process
+* Input  : -
+* Output : -
+* Return : process id
+* Notes  : -
+\***********************************************************************/
+
+size_t Misc_getPID(void);
 
 /*---------------------------------------------------------------------*/
 
@@ -1764,6 +1805,21 @@ bool Misc_getRegistryString(String string, HKEY parentKey, const char *subKey, c
 \***********************************************************************/
 
 char *Misc_translate(const char *format, ...);
+
+/***********************************************************************\
+* Name   : Misc_systemNotify
+* Purpose: send system notification (systemd)
+* Input  : systemNotifyType - system notify type
+*          errorNumber      - error number or 0
+*          message          - error message printf-like
+*          ...              - optional arguments for formating error
+*                             message
+* Output : -
+* Return : TRUE iff notification sent
+* Notes  : -
+\***********************************************************************/
+
+bool Misc_systemNotify(Misc_SystemNotifyTypes systemNotifyType, int errorNumber, const char *message, ...);
 
 #ifdef __cplusplus
   }
