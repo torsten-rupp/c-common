@@ -158,25 +158,31 @@ LOCAL const struct
   #define FTELL(handle) ftell(handle)
 #endif
 
-#if defined(HAVE_STAT64) && defined(HAVE_LSTAT64) && defined(HAVE_STRUCT_STAT64)
-  #define STAT(fileName,fileState)  stat64(fileName,fileState)
-  #define LSTAT(fileName,fileState) lstat64(fileName,fileState)
-  typedef struct stat64 FileStat;
-#elif defined(HAVE___STAT64) && defined(HAVE___LSTAT64) && defined(HAVE_STRUCT___STAT64)
-  #define STAT(fileName,fileState)  __stat64(fileName,fileState)
-  #define LSTAT(fileName,fileState) __lstat64(fileName,fileState)
-  typedef struct __stat64 FileStat;
-#elif defined(HAVE_STAT) && defined(HAVE_LSTAT) && defined(HAVE_STRUCT_STAT)
-  #define STAT(fileName,fileState)  stat(fileName,fileState)
-  #define LSTAT(fileName,fileState) lstat(fileName,fileState)
-  typedef struct stat FileStat;
-#elif defined(HAVE__STATI64) && defined(HAVE_STRUCT__STATI64)
-  #define STAT(fileName,fileState)  _stati64(fileName,fileState)
-  #define LSTAT(fileName,fileState) _stati64(fileName,fileState)
-  typedef struct _stati64 FileStat;
-#else
-  #error No struct stat, lstat, or struct stat64
-#endif
+#if   defined(PLATFORM_LINUX)
+  #if defined(HAVE_STAT64) && defined(HAVE_LSTAT64) && defined(HAVE_STRUCT_STAT64)
+    #define STAT(fileName,fileState)  stat64(fileName,fileState)
+    #define LSTAT(fileName,fileState) lstat64(fileName,fileState)
+    typedef struct stat64 FileStat;
+  #elif defined(HAVE___STAT64) && defined(HAVE___LSTAT64) && defined(HAVE_STRUCT___STAT64)
+    #define STAT(fileName,fileState)  __stat64(fileName,fileState)
+    #define LSTAT(fileName,fileState) __lstat64(fileName,fileState)
+    typedef struct __stat64 FileStat;
+  #elif defined(HAVE_STAT) && defined(HAVE_LSTAT) && defined(HAVE_STRUCT_STAT)
+    #define STAT(fileName,fileState)  stat(fileName,fileState)
+    #define LSTAT(fileName,fileState) lstat(fileName,fileState)
+    typedef struct stat FileStat;
+  #elif defined(HAVE__STATI64) && defined(HAVE_STRUCT__STATI64)
+    #define STAT(fileName,fileState)  _stati64(fileName,fileState)
+    #define LSTAT(fileName,fileState) _stati64(fileName,fileState)
+    typedef struct _stati64 FileStat;
+  #else
+    #error No struct stat, lstat, or struct stat64
+  #endif
+#elif defined(PLATFORM_WINDOWS)
+  #define STAT(fileName,fileState)  _stat(fileName,fileState)
+  #define LSTAT(fileName,fileState) _stat(fileName,fileState)
+  typedef struct _stat FileStat;
+#endif /* PLATFORM_... */
 
 #ifndef NDEBUG
   typedef struct DebugFileNode
@@ -483,7 +489,7 @@ LOCAL Errors initFileHandle(const char *__fileName__,
       // seek to start and truncate
       if ((fileMode & FILE_STREAM) != FILE_STREAM)
       {
-        if (FSEEK(fileHandle->file,0,SEEK_SET) != 0)
+        if (FSEEK(fileHandle->file,0,SEEK_SET) == -1)
         {
           return getLastError(ERROR_CODE_CREATE_FILE,fileName);
         }
@@ -507,7 +513,7 @@ LOCAL Errors initFileHandle(const char *__fileName__,
       // get file size
       if ((fileMode & FILE_STREAM) != FILE_STREAM)
       {
-        if (FSEEK(fileHandle->file,0,SEEK_END) != 0)
+        if (FSEEK(fileHandle->file,0,SEEK_END) == -1)
         {
           error = getLastError(ERROR_CODE_IO,fileName);
           fclose(fileHandle->file);
@@ -520,7 +526,7 @@ LOCAL Errors initFileHandle(const char *__fileName__,
           fclose(fileHandle->file);
           return error;
         }
-        if (FSEEK(fileHandle->file,0,SEEK_SET) != 0)
+        if (FSEEK(fileHandle->file,0,SEEK_SET) == -1)
         {
           error = getLastError(ERROR_CODE_IO,fileName);
           fclose(fileHandle->file);
@@ -546,7 +552,7 @@ LOCAL Errors initFileHandle(const char *__fileName__,
       // seek to start
       if ((fileMode & FILE_STREAM) != FILE_STREAM)
       {
-        if (FSEEK(fileHandle->file,0,SEEK_SET) != 0)
+        if (FSEEK(fileHandle->file,0,SEEK_SET) == -1)
         {
           return getLastError(ERROR_CODE_CREATE_FILE,fileName);
         }
@@ -566,7 +572,7 @@ LOCAL Errors initFileHandle(const char *__fileName__,
       // get file size
       if ((fileMode & FILE_STREAM) != FILE_STREAM)
       {
-        if (FSEEK(fileHandle->file,0,SEEK_END) != 0)
+        if (FSEEK(fileHandle->file,0,SEEK_END) == -1)
         {
           return getLastError(ERROR_CODE_CREATE_FILE,fileName);
         }
@@ -983,6 +989,7 @@ LOCAL Errors getFileInfo(FileInfo   *fileInfo,
   fileInfo->userId          = fileStat.st_uid;
   fileInfo->groupId         = fileStat.st_gid;
   fileInfo->permissions     = (FilePermissions)fileStat.st_mode;
+
   #ifdef HAVE_MAJOR
     fileInfo->major         = major(fileStat.st_rdev);
   #else
@@ -1419,7 +1426,7 @@ String File_getDeviceNameCString(String deviceName, const char *fileName)
   if (fileName != NULL)
   {
     #if   defined(PLATFORM_LINUX)
-      handle = fopen(MOUNTS_FILENAME,"r");
+      handle = FOPEN(MOUNTS_FILENAME,"r");
       if (handle != NULL)
       {
         n0 = stringLength(fileName);
@@ -1715,6 +1722,9 @@ String File_getSystemDirectoryCString(String path, FileSystemPathTypes fileSyste
       case FILE_SYSTEM_PATH_RUNTIME:
         String_setCString(path,RUNTIME_DIR);
         break;
+      case FILE_SYSTEM_PATH_RUN:
+        String_setCString(path,RUN_DIR);
+        break;
       case FILE_SYSTEM_PATH_TLS:
         String_setCString(path,TLS_DIR);
         break;
@@ -1762,6 +1772,7 @@ String File_getSystemDirectoryCString(String path, FileSystemPathTypes fileSyste
         break;
       case FILE_SYSTEM_PATH_CONFIGURATION:
       case FILE_SYSTEM_PATH_RUNTIME:
+      case FILE_SYSTEM_PATH_RUN:
       case FILE_SYSTEM_PATH_TLS:
       case FILE_SYSTEM_PATH_LOG:
       case FILE_SYSTEM_PATH_USER_CONFIGURATION:
@@ -2519,7 +2530,7 @@ Errors __File_openCString(const char *__fileName__,
           // store atime
           if ((fileMode & FILE_OPEN_NO_ATIME) != 0)
           {
-            if (fstat(fileDescriptor,&fileStat) == 0)
+            if (FSTAT(fileDescriptor,&fileStat) == 0)
             {
               fileHandle->atime.tv_sec  = fileStat.st_atime;
               #ifdef HAVE_STAT_ATIM_TV_NSEC
@@ -2871,20 +2882,19 @@ Errors File_write(FileHandle *fileHandle,
                   ulong      bufferLength
                  )
 {
-  ssize_t    n;
-  const byte *data;
-  size_t     m;
-
   FILE_CHECK_VALID(fileHandle);
   assert(buffer != NULL);
 
+  ssize_t n;
   if (IS_SET(fileHandle->mode,FILE_SPARSE))
   {
     // write sparse data
-    n    = 0;
-    data = (const byte*)buffer;
+    n = 0;
+    const byte *data = (const byte*)buffer;
     while (n < (ssize_t)bufferLength)
     {
+      size_t m;
+
       // seek over 0-bytes
       m = 0;
       while (((n+m) < (size_t)bufferLength) && (data[n+m] == 0))
@@ -3293,6 +3303,7 @@ Errors File_dropCaches(FileHandle *fileHandle,
   #ifdef HAVE_FDATASYNC
     if (syncFlag)
     {
+      // Note: postgresql define fdatasync() on Windows!
       (void)fdatasync(handle);
     }
   #else
@@ -3356,7 +3367,7 @@ Errors File_openRootList(RootListHandle *rootListHandle, bool allMountsFlag)
     if (allMountsFlag)
     {
       // get file system names
-      handle = fopen(FILESYSMTES_FILENAME,"r");
+      handle = FOPEN(FILESYSMTES_FILENAME,"r");
       if (handle != NULL)
       {
         while (fgets(line,sizeof(line),handle) != NULL)
@@ -3381,7 +3392,7 @@ Errors File_openRootList(RootListHandle *rootListHandle, bool allMountsFlag)
       }
 
       // open mount list
-      rootListHandle->mounts = fopen(MOUNTS_FILENAME,"r");
+      rootListHandle->mounts = FOPEN(MOUNTS_FILENAME,"r");
     }
   #elif defined(PLATFORM_WINDOWS)
     UNUSED_VARIABLE(allMountsFlag);
@@ -3539,7 +3550,7 @@ Errors File_openDirectoryListCString(DirectoryListHandle *directoryListHandle,
         if (directoryListHandle->handle != -1)
         {
           // store atime
-          if (fstat(directoryListHandle->handle,&stat) == 0)
+          if (FSTAT(directoryListHandle->handle,&stat) == 0)
           {
             directoryListHandle->atime.tv_sec  = stat.st_atime;
             #ifdef HAVE_STAT_ATIM_TV_NSEC
@@ -4315,14 +4326,32 @@ bool File_isDirectoryCString(const char *fileName)
          );
 }
 
-bool File_isDevice(ConstString fileName)
+bool File_isCharacterDevice(ConstString fileName)
 {
   assert(fileName != NULL);
 
-  return File_isDeviceCString(String_cString(fileName));
+  return File_isCharacterDeviceCString(String_cString(fileName));
 }
 
-bool File_isDeviceCString(const char *fileName)
+bool File_isCharacterDeviceCString(const char *fileName)
+{
+  FileStat fileStat;
+
+  assert(fileName != NULL);
+
+  return (   (STAT(fileName,&fileStat) == 0)
+          && S_ISCHR(fileStat.st_mode)
+         );
+}
+
+bool File_isBlockDevice(ConstString fileName)
+{
+  assert(fileName != NULL);
+
+  return File_isBlockDeviceCString(String_cString(fileName));
+}
+
+bool File_isBlockDeviceCString(const char *fileName)
 {
   bool     isDevice;
   FileStat fileStat;
@@ -4350,7 +4379,7 @@ bool File_isDeviceCString(const char *fileName)
       {
         // use block device
         isDevice = (   (STAT(fileName,&fileStat) == 0)
-                    && (S_ISCHR(fileStat.st_mode) || S_ISBLK(fileStat.st_mode))
+                    && S_ISBLK(fileStat.st_mode)
                    );
       }
       stringTokenizerDone(&stringTokenizer);
@@ -4358,12 +4387,12 @@ bool File_isDeviceCString(const char *fileName)
     else
     {
       isDevice = (   (STAT(fileName,&fileStat) == 0)
-                  && (S_ISCHR(fileStat.st_mode) || S_ISBLK(fileStat.st_mode))
+                  && S_ISBLK(fileStat.st_mode)
                  );
     }
   #else /* NDEBUG */
     isDevice = (   (STAT(fileName,&fileStat) == 0)
-                && (S_ISCHR(fileStat.st_mode) || S_ISBLK(fileStat.st_mode))
+                && S_ISBLK(fileStat.st_mode)
               );
   #endif /* not NDEBUG */
 
@@ -5362,6 +5391,18 @@ Errors File_readLink(String      fileName,
                      bool        absolutePathFlag
                     )
 {
+  assert(linkName != NULL);
+  assert(!String_isEmpty(linkName));
+  assert(fileName != NULL);
+
+  return File_readLinkCString(fileName,String_cString(linkName),absolutePathFlag);
+}
+
+Errors File_readLinkCString(String     fileName,
+                            const char *linkName,
+                            bool       absolutePathFlag
+                           )
+{
   #define BUFFER_SIZE  256
   #define BUFFER_DELTA 128
 
@@ -5373,7 +5414,7 @@ Errors File_readLink(String      fileName,
   #endif /* HAVE_READLINK */
 
   assert(linkName != NULL);
-  assert(!String_isEmpty(linkName));
+  assert(!stringIsEmpty(linkName));
   assert(fileName != NULL);
 
   #ifdef HAVE_READLINK
@@ -5386,7 +5427,8 @@ Errors File_readLink(String      fileName,
     bufferSize = BUFFER_SIZE;
 
     // try to read link, increase buffer if needed
-    while ((result = readlink(String_cString(linkName),buffer,bufferSize)) == bufferSize)
+    // Note: postgresql define readlink() on Windows!
+    while ((result = readlink(linkName,buffer,bufferSize)) == bufferSize)
     {
       bufferSize += BUFFER_DELTA;
       buffer = realloc(buffer,bufferSize);
@@ -5397,7 +5439,7 @@ Errors File_readLink(String      fileName,
     }
     if (result == -1)
     {
-      error = getLastError(ERROR_CODE_IO,String_cString(linkName));
+      error = getLastError(ERROR_CODE_IO,linkName);
       free(buffer);
       return error;
     }
@@ -5405,7 +5447,7 @@ Errors File_readLink(String      fileName,
     if (absolutePathFlag && !File_isAbsoluteFileName(fileName))
     {
       // absolute name
-      File_getDirectoryName(fileName,linkName);
+      File_getDirectoryNameCString(fileName,linkName);
       File_appendFileNameBuffer(fileName,buffer,result);
     }
     else
@@ -5421,7 +5463,7 @@ Errors File_readLink(String      fileName,
   #else /* not HAVE_READLINK */
     UNUSED_VARIABLE(absolutePathFlag);
 
-    String_set(fileName,linkName);
+    String_setCString(fileName,linkName);
 
     return ERROR_NONE;
   #endif /* HAVE_READLINK */
@@ -5548,6 +5590,7 @@ Errors File_makeHardLinkCString(const char *linkName,
 
   #ifdef HAVE_LINK
     unlink(linkName);
+    // Note: postgresql define link() on Windows!
     if (link(fileName,linkName) != 0)
     {
       return getLastError(ERROR_CODE_IO,fileName);

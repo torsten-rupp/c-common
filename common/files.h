@@ -56,6 +56,7 @@ typedef enum
   FILE_SYSTEM_PATH_TMP,
   FILE_SYSTEM_PATH_CONFIGURATION,
   FILE_SYSTEM_PATH_RUNTIME,
+  FILE_SYSTEM_PATH_RUN,
   FILE_SYSTEM_PATH_TLS,
   FILE_SYSTEM_PATH_LOG,
   FILE_SYSTEM_PATH_USER_CONFIGURATION,
@@ -253,7 +254,7 @@ typedef struct
 {
   String     name;
   FileModes  mode;
-  FILE       *file;
+  FILE       *file;  // Note: use streamed i/o because for sparse files/hardlinks small data chunks may be written.
   uint64     index;
   uint64     size;
   #if   defined(PLATFORM_LINUX)
@@ -386,8 +387,8 @@ typedef struct
 typedef bool(*FileDumpInfoFunction)(const FileHandle *fileHandle,
                                     const char       *fileName,
                                     size_t           lineNb,
-                                    size_t           n,
-                                    size_t           count,
+                                    ulong            n,
+                                    ulong            count,
                                     void             *userData
                                    );
 #endif /* not NDEBUG */
@@ -1436,16 +1437,28 @@ bool File_isDirectory(ConstString fileName);
 bool File_isDirectoryCString(const char *fileName);
 
 /***********************************************************************\
-* Name   : File_isDevice, File_isDeviceCString
-* Purpose: check if device (block, character)
+* Name   : File_isCharacterDevice, File_isCharacterDeviceCString
+* Purpose: check if character device
 * Input  : fileName - file name
 * Output : -
 * Return : TRUE if device, FALSE otherweise
 * Notes  : -
 \***********************************************************************/
 
-bool File_isDevice(ConstString fileName);
-bool File_isDeviceCString(const char *fileName);
+bool File_isCharacterDevice(ConstString fileName);
+bool File_isCharacterDeviceCString(const char *fileName);
+
+/***********************************************************************\
+* Name   : File_isBlockDevice, File_isBlockDeviceCString
+* Purpose: check if block device
+* Input  : fileName - file name
+* Output : -
+* Return : TRUE if device, FALSE otherweise
+* Notes  : -
+\***********************************************************************/
+
+bool File_isBlockDevice(ConstString fileName);
+bool File_isBlockDeviceCString(const char *fileName);
 
 /***********************************************************************\
 * Name   : File_isReadable, File_isReadableCString
@@ -1804,7 +1817,7 @@ Errors File_changeDirectoryCString(const char *pathName);
 String File_getCurrentDirectory(String pathName);
 
 /***********************************************************************\
-* Name   : File_readLink
+* Name   : File_readLink, File_readLinkCString
 * Purpose: read link
 * Input  : linkName         - link name
 *          absolutePathFlag - TRUE to get absolute path
@@ -1817,6 +1830,10 @@ Errors File_readLink(String      fileName,
                      ConstString linkName,
                      bool        absolutePathFlag
                     );
+Errors File_readLinkCString(String     fileName,
+                            const char *linkName,
+                            bool       absolutePathFlag
+                           );
 
 /***********************************************************************\
 * Name   : File_makeLink, File_makeLinkCString
