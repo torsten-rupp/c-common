@@ -1169,10 +1169,10 @@ MachineId Misc_getMachineId(void);
 
 /***********************************************************************\
 * Name   : Misc_getPID
-* Purpose: get id of current process
+* Purpose: get process id
 * Input  : -
 * Output : -
-* Return : process id
+* Return : process id (PID)
 * Notes  : -
 \***********************************************************************/
 
