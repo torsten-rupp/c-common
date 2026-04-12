@@ -22,6 +22,12 @@ CTEST(cstrings,stringSetBuffer)
 
   char s[16];
 
+  stringSetBuffer(s,sizeof(s),BUFFER,5);
+  ASSERT_STR("01234",s);
+
+  stringSetBuffer(s,sizeof(s),BUFFER,15);
+  ASSERT_STR("012345678901234",s);
+
   stringSetBuffer(s,sizeof(s),BUFFER,20);
   ASSERT_STR("012345678901234",s);
 }
@@ -63,6 +69,9 @@ CTEST(cstrings,stringEquals)
 {
   char s[16];
 
+  ASSERT_TRUE(stringEquals(NULL,NULL));
+  ASSERT_TRUE(stringEquals("1234","1234"));
+
   stringSet(s,sizeof(s),"abc");
   ASSERT_TRUE(stringEquals(s,"abc"));
   ASSERT_FALSE(stringEquals(s,"ab"));
@@ -74,6 +83,9 @@ CTEST(cstrings,stringEqualsPrefix)
 {
   char s[16];
 
+  ASSERT_TRUE(stringEqualsPrefix(NULL,NULL,1));
+  ASSERT_TRUE(stringEqualsPrefix("1234","1234",1));
+
   stringSet(s,sizeof(s),"01234abcde");
   ASSERT_TRUE(stringEqualsPrefix(s,"01234",5));
   ASSERT_FALSE(stringEqualsPrefix(s,"012345",6));
@@ -83,6 +95,9 @@ CTEST(cstrings,stringEqualsIgnoreCase)
 {
   char s[16];
 
+  ASSERT_TRUE(stringEqualsPrefix(NULL,NULL,1));
+  ASSERT_TRUE(stringEqualsPrefix("1234","1234",1));
+
   stringSet(s,sizeof(s),"01234abcde");
   ASSERT_TRUE(stringEqualsIgnoreCase(s,"01234abcde"));
   ASSERT_TRUE(stringEqualsIgnoreCase(s,"01234ABCDE"));
@@ -91,6 +106,9 @@ CTEST(cstrings,stringEqualsIgnoreCase)
 CTEST(cstrings,stringEqualsPrefixIgnoreCase)
 {
   char s[16];
+
+  ASSERT_TRUE(stringEqualsPrefixIgnoreCase(NULL,NULL,1));
+  ASSERT_TRUE(stringEqualsPrefixIgnoreCase("1234","1234",1));
 
   stringSet(s,sizeof(s),"01234abcde");
   ASSERT_TRUE(stringEqualsPrefixIgnoreCase(s,"01234abcde",6));
@@ -158,72 +176,199 @@ static bool checkPad(const char *pad)
 
 CTEST(cstrings,stringReplace)
 {
-  char fence0[16];
-  char s[16];
-  char fence1[16];
+  struct
+  {
+    char fence0[16];
+    char s[10];
+    char fence1[16];
+  } __attribute((packed)) s10;
 
-  memFill(fence0,16,0xFE);
-  ASSERT_TRUE(checkPad(fence0));
-  memFill(fence1,16,0xFE);
-  ASSERT_TRUE(checkPad(fence0));
+  memFill(s10.fence0,16,0xFE);
+  ASSERT_TRUE(checkPad(s10.fence0));
+  memFill(s10.fence1,16,0xFE);
+  ASSERT_TRUE(checkPad(s10.fence1));
+
+  // short string
+  stringSet(s10.s,sizeof(s10.s),"abcdefgh");
+  ASSERT_STR("abcdefgh",s10.s);
+  stringReplace(s10.s,sizeof(s10.s), 2, 2, "XYZ");
+  ASSERT_STR("abXYZefgh",s10.s);
+  ASSERT_TRUE(checkPad(s10.fence0));
+  ASSERT_TRUE(checkPad(s10.fence1));
+
+  stringSet(s10.s,sizeof(s10.s),"abcdefgh");
+  ASSERT_STR("abcdefgh",s10.s);
+  stringReplace(s10.s,sizeof(s10.s), 2, 2, "XYZWVU");
+  ASSERT_STR("abXYZWVUe",s10.s);
+  ASSERT_TRUE(checkPad(s10.fence0));
+  ASSERT_TRUE(checkPad(s10.fence1));
+
+  struct
+  {
+    char fence0[16];
+    char s[12];
+    char fence1[16];
+  } __attribute((packed)) s12;
+
+  memFill(s12.fence0,16,0xFE);
+  ASSERT_TRUE(checkPad(s12.fence0));
+  memFill(s12.fence1,16,0xFE);
+  ASSERT_TRUE(checkPad(s12.fence1));
+
+  stringSet(s12.s,sizeof(s12.s),"Hello World");
+  ASSERT_STR("Hello World",s12.s);
+  stringReplace(s12.s,sizeof(s12.s),7,1,"12345678");
+  ASSERT_STR("Hello W1234",s12.s);
+  ASSERT_TRUE(checkPad(s12.fence0));
+  ASSERT_TRUE(checkPad(s12.fence1));
+
+  stringSet(s12.s,sizeof(s12.s),"Hello World");
+  ASSERT_STR("Hello World",s12.s);
+  stringReplace(s12.s,sizeof(s12.s),7,8,"12345678");
+  ASSERT_STR("Hello W1234",s12.s);
+  ASSERT_TRUE(checkPad(s12.fence0));
+  ASSERT_TRUE(checkPad(s12.fence1));
+
+  stringSet(s12.s,sizeof(s12.s),"Hello World");
+  ASSERT_STR("Hello World",s12.s);
+  stringReplace(s12.s, sizeof(s12.s), 2, 10, "X");
+  ASSERT_STR("HeX",s12.s);
+  ASSERT_TRUE(checkPad(s12.fence0));
+  ASSERT_TRUE(checkPad(s12.fence1));
+
+  stringSet(s12.s,sizeof(s12.s),"Hello World");
+  ASSERT_STR("Hello World",s12.s);
+  stringReplace(s12.s, sizeof(s12.s), 2, 10, "XYZ");
+  ASSERT_STR("HeXYZ",s12.s);
+  ASSERT_TRUE(checkPad(s12.fence0));
+  ASSERT_TRUE(checkPad(s12.fence1));
+
+  struct
+  {
+    char fence0[16];
+    char s[16];
+    char fence1[16];
+  } __attribute((packed)) s16;
+
+  memFill(s16.fence0,16,0xFE);
+  ASSERT_TRUE(checkPad(s16.fence0));
+  memFill(s16.fence1,16,0xFE);
+  ASSERT_TRUE(checkPad(s16.fence1));
 
   // replace with ""/NULL
-  stringSet(s,sizeof(s),"01234abcde");
-  ASSERT_STR("01234abcde",s);
-  stringReplace(s,sizeof(s),0,0,"");
-  ASSERT_STR("01234abcde",s);
-  stringReplace(s,sizeof(s),2,2,NULL);
-  ASSERT_STR("014abcde",s);
-  stringReplace(s,sizeof(s),0,8,NULL);
-  ASSERT_STR("",s);
-  ASSERT_TRUE(checkPad(fence0));
-  ASSERT_TRUE(checkPad(fence1));
+  stringSet(s16.s,sizeof(s16.s),"01234abcde");
+  ASSERT_STR("01234abcde",s16.s);
+  stringReplace(s16.s,sizeof(s16.s),0,0,"");
+  ASSERT_STR("01234abcde",s16.s);
+  stringReplace(s16.s,sizeof(s16.s),2,2,NULL);
+  ASSERT_STR("014abcde",s16.s);
+  stringReplace(s16.s,sizeof(s16.s),0,8,NULL);
+  ASSERT_STR("",s16.s);
+  ASSERT_TRUE(checkPad(s16.fence0));
+  ASSERT_TRUE(checkPad(s16.fence1));
 
   // replace n-by-n
-  stringSet(s,sizeof(s),"01234abcde");
-  ASSERT_STR("01234abcde",s);
-  stringReplace(s,sizeof(s),0,2,"XX");
-  ASSERT_STR("XX234abcde",s);
-  stringReplace(s,sizeof(s),1,2,"YY");
-  ASSERT_STR("XYY34abcde",s);
-  stringReplace(s,sizeof(s),0,2,"ZZ");
-  ASSERT_STR("ZZY34abcde",s);
+  stringSet(s16.s,sizeof(s16.s),"01234abcde");
+  ASSERT_STR("01234abcde",s16.s);
+  stringReplace(s16.s,sizeof(s16.s),0,2,"XX");
+  ASSERT_STR("XX234abcde",s16.s);
+  stringReplace(s16.s,sizeof(s16.s),1,2,"YY");
+  ASSERT_STR("XYY34abcde",s16.s);
+  stringReplace(s16.s,sizeof(s16.s),0,2,"ZZ");
+  ASSERT_STR("ZZY34abcde",s16.s);
 
   // extend string
-  stringSet(s,sizeof(s),"01234abcde");
-  ASSERT_STR("01234abcde",s);
-  stringReplace(s,sizeof(s),0,1,"AB");
-  ASSERT_STR("AB1234abcde",s);
-  stringReplace(s,sizeof(s),1,1,"uv");
-  ASSERT_STR("Auv1234abcde",s);
-  ASSERT_TRUE(checkPad(fence0));
-  ASSERT_TRUE(checkPad(fence1));
+  stringSet(s16.s,sizeof(s16.s),"01234abcde");
+  ASSERT_STR("01234abcde",s16.s);
+  stringReplace(s16.s,sizeof(s16.s),0,1,"AB");
+  ASSERT_STR("AB1234abcde",s16.s);
+  stringReplace(s16.s,sizeof(s16.s),1,1,"uv");
+  ASSERT_STR("Auv1234abcde",s16.s);
+  stringReplace(s16.s,sizeof(s16.s),11,1,"XY");
+  ASSERT_STR("Auv1234abcdXY",s16.s);
+  ASSERT_TRUE(checkPad(s16.fence0));
+  ASSERT_TRUE(checkPad(s16.fence1));
 
   // shrink string
-  stringSet(s,sizeof(s),"01234abcde");
-  ASSERT_STR("01234abcde",s);
-  stringReplace(s,sizeof(s),1,4,"A");
-  ASSERT_STR("0Aabcde",s);
-  ASSERT_TRUE(checkPad(fence0));
-  ASSERT_TRUE(checkPad(fence1));
+  stringSet(s16.s,sizeof(s16.s),"01234abcde");
+  ASSERT_STR("01234abcde",s16.s);
+  stringReplace(s16.s,sizeof(s16.s),1,4,"A");
+  ASSERT_STR("0Aabcde",s16.s);
+  ASSERT_TRUE(checkPad(s16.fence0));
+  ASSERT_TRUE(checkPad(s16.fence1));
+
+  stringSet(s16.s,sizeof(s16.s),"01234abcde");
+  ASSERT_STR("01234abcde",s16.s);
+  stringReplace(s16.s,sizeof(s16.s),1,4,"ABCDEF");
+  ASSERT_STR("0ABCDEFabcde",s16.s);
+  ASSERT_TRUE(checkPad(s16.fence0));
+  ASSERT_TRUE(checkPad(s16.fence1));
 
   // replace out-of-bounds
-  stringSet(s,sizeof(s),"01234");
-  ASSERT_STR("01234",s);
-  stringReplace(s,sizeof(s),5,1,"A");
-  ASSERT_STR("01234",s);
-  ASSERT_TRUE(checkPad(fence0));
-  ASSERT_TRUE(checkPad(fence1));
+  stringSet(s16.s,sizeof(s16.s),"01234");
+  ASSERT_STR("01234",s16.s);
+  stringReplace(s16.s,sizeof(s16.s),6,1,"A");
+  ASSERT_STR("01234",s16.s);
+  ASSERT_TRUE(checkPad(s16.fence0));
+  ASSERT_TRUE(checkPad(s16.fence1));
 
   // string too long
-  stringReplace(s,sizeof(s),1,1,"ABCDEFGHIJKLMNO");
-  ASSERT_TRUE(checkPad(fence0));
-  ASSERT_TRUE(checkPad(fence1));
-  ASSERT_STR("0ABCDEFGHIJKLMN",s);
-  stringReplace(s,sizeof(s),4,1,"ABCDEFGHIJKL");
-  ASSERT_STR("0ABCABCDEFGHIJK",s);
-  ASSERT_TRUE(checkPad(fence0));
-  ASSERT_TRUE(checkPad(fence1));
+  stringSet(s16.s,sizeof(s16.s),"01234");
+  ASSERT_STR("01234",s16.s);
+  stringReplace(s16.s,sizeof(s16.s),1,1,"ABCDEFGHIJKLMNO");
+  ASSERT_STR("0ABCDEFGHIJKLMN",s16.s);
+  ASSERT_TRUE(checkPad(s16.fence0));
+  ASSERT_TRUE(checkPad(s16.fence1));
+
+  stringSet(s16.s,sizeof(s16.s),"0123456789");
+  ASSERT_STR("0123456789",s16.s);
+  stringReplace(s16.s,sizeof(s16.s),1,1,"ABCDEFGHIJKLMNO");
+  ASSERT_STR("0ABCDEFGHIJKLMN",s16.s);
+  ASSERT_TRUE(checkPad(s16.fence0));
+  ASSERT_TRUE(checkPad(s16.fence1));
+
+  stringSet(s16.s,sizeof(s16.s),"0123456789");
+  ASSERT_STR("0123456789",s16.s);
+  stringReplace(s16.s,sizeof(s16.s),4,1,"ABCD");
+  ASSERT_STR("0123ABCD56789",s16.s);
+  ASSERT_TRUE(checkPad(s16.fence0));
+  ASSERT_TRUE(checkPad(s16.fence1));
+
+  stringSet(s16.s,sizeof(s16.s),"0123456789");
+  ASSERT_STR("0123456789",s16.s);
+  stringReplace(s16.s,sizeof(s16.s),6,10,"abcd");
+  ASSERT_STR("012345abcd",s16.s);
+  ASSERT_TRUE(checkPad(s16.fence0));
+  ASSERT_TRUE(checkPad(s16.fence1));
+
+  stringSet(s16.s,sizeof(s16.s),"0123456789");
+  ASSERT_STR("0123456789",s16.s);
+  stringReplace(s16.s,sizeof(s16.s),6,10,"abcdefghijk");
+  ASSERT_STR("012345abcdefghi",s16.s);
+  ASSERT_TRUE(checkPad(s16.fence0));
+  ASSERT_TRUE(checkPad(s16.fence1));
+
+  stringSet(s16.s,sizeof(s16.s),"0123456789");
+  ASSERT_STR("0123456789",s16.s);
+  stringReplace(s16.s,sizeof(s16.s),10,3,"abcdefgh");
+  ASSERT_STR("0123456789abcde",s16.s);
+  ASSERT_TRUE(checkPad(s16.fence0));
+  ASSERT_TRUE(checkPad(s16.fence1));
+
+
+  stringSet(s16.s,sizeof(s16.s),"abcdefgh");
+  ASSERT_STR("abcdefgh",s16.s);
+  stringReplace(s16.s,sizeof(s16.s), 2, 2, "XYZ");
+  ASSERT_STR("abXYZefgh",s16.s);
+  ASSERT_TRUE(checkPad(s16.fence0));
+  ASSERT_TRUE(checkPad(s16.fence1));
+
+  stringSet(s16.s,sizeof(s16.s),"abcdefgh");
+  ASSERT_STR("abcdefgh",s16.s);
+  stringReplace(s16.s,sizeof(s16.s), 2, 2, "XYZWVU");
+  ASSERT_STR("abXYZWVUefgh",s16.s);
+  ASSERT_TRUE(checkPad(s16.fence0));
+  ASSERT_TRUE(checkPad(s16.fence1));
 }
 
 CTEST(cstrings,stringIntLength)
@@ -326,12 +471,22 @@ CTEST(cstrings,stringAppendBuffer)
 
   char s[16];
 
+  stringSet(s,sizeof(s),"abcde");
+  ASSERT_STR("abcde",s);
+  stringAppendBuffer(s,sizeof(s),BUFFER,5);
+  ASSERT_STR("abcde01234",s);
+
   stringSet(s,sizeof(s),"01234abcde");
   ASSERT_STR("01234abcde",s);
   stringAppendBuffer(s,sizeof(s),BUFFER,5);
   ASSERT_STR("01234abcde01234",s);
-  stringAppendBuffer(s,sizeof(s),BUFFER,5);
-  ASSERT_STR("01234abcde01234",s);
+
+  stringSet(s,sizeof(s),"01234abcde");
+  ASSERT_STR("01234abcde",s);
+  stringAppendBuffer(s,sizeof(s),BUFFER,3);
+  ASSERT_STR("01234abcde012",s);
+  stringAppendBuffer(s,sizeof(s),BUFFER,3);
+  ASSERT_STR("01234abcde01201",s);
 }
 
 CTEST(cstrings,stringAppendFormat)
@@ -403,9 +558,22 @@ CTEST(cstrings,stringFillAppend)
   ASSERT_STR("012222222222222",s);
 }
 
+CTEST(cstrings,stringTrim)
+{
+  char s[16];
+
+  ASSERT_NULL(stringTrim(NULL));
+
+  stringSet(s,sizeof(s),"  01234  ");
+  ASSERT_STR("  01234  ",s);
+  ASSERT_STR("01234",stringTrim(s));
+}
+
 CTEST(cstrings,stringTrimBegin)
 {
   char s[16];
+
+  ASSERT_NULL(stringTrimBegin(NULL));
 
   stringSet(s,sizeof(s),"  01234  ");
   ASSERT_STR("  01234  ",s);
@@ -415,6 +583,8 @@ CTEST(cstrings,stringTrimBegin)
 CTEST(cstrings,stringTrimEnd)
 {
   char s[16];
+
+  ASSERT_NULL(stringTrimEnd(NULL));
 
   stringSet(s,sizeof(s),"  01234  ");
   ASSERT_STR("  01234  ",s);
