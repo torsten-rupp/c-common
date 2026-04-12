@@ -191,7 +191,7 @@ static inline bool stringEquals(const char *s1, const char *s2)
 
 static inline bool stringEqualsPrefix(const char *s1, const char *s2, size_t n)
 {
-  return strncmp(s1,s2,n) == 0;
+  return (s1 == s2) || ((s1 != NULL) && (s2 != NULL) && (strncmp(s1,s2,n) == 0));
 }
 
 /***********************************************************************\
@@ -220,7 +220,7 @@ static inline bool stringEqualsIgnoreCase(const char *s1, const char *s2)
 
 static inline bool stringEqualsPrefixIgnoreCase(const char *s1, const char *s2, size_t n)
 {
-  return strncasecmp(s1,s2,n) == 0;
+  return (s1 == s2) || ((s1 != NULL) && (s2 != NULL) && (strncasecmp(s1,s2,n) == 0));
 }
 
 /***********************************************************************\
@@ -235,6 +235,9 @@ static inline bool stringEqualsPrefixIgnoreCase(const char *s1, const char *s2, 
 
 static inline bool stringStartsWith(const char *string, const char *prefix)
 {
+  assert(string != NULL);
+  assert(prefix != NULL);
+
   return strncmp(string,prefix,strlen(prefix)) == 0;
 }
 
@@ -250,6 +253,9 @@ static inline bool stringStartsWith(const char *string, const char *prefix)
 
 static inline bool stringStartsWithIgnoreCase(const char *string, const char *prefix)
 {
+  assert(string != NULL);
+  assert(prefix != NULL);
+
   return strncasecmp(string,prefix,strlen(prefix)) == 0;
 }
 
@@ -265,6 +271,9 @@ static inline bool stringStartsWithIgnoreCase(const char *string, const char *pr
 
 static inline bool stringEndsWith(const char *string, const char *suffix)
 {
+  assert(string != NULL);
+  assert(suffix != NULL);
+
   size_t n = strlen(string);
   size_t m = strlen(suffix);
 
@@ -284,6 +293,9 @@ static inline bool stringEndsWith(const char *string, const char *suffix)
 
 static inline bool stringEndsWithIgnoreCase(const char *string, const char *suffix)
 {
+  assert(string != NULL);
+  assert(suffix != NULL);
+
   size_t n = strlen(string);
   size_t m = strlen(suffix);
 
@@ -368,7 +380,8 @@ static inline char* stringSetBuffer(char *string, size_t stringSize, const char 
   {
     if (buffer != NULL)
     {
-      strncpy(string,buffer,MIN(stringSize-1,bufferSize)); string[MIN(stringSize-1,bufferSize)] = NUL;
+      strncpy(string,buffer,MIN(stringSize-1,bufferSize));
+      string[MIN(stringSize-1,bufferSize)] = NUL;
     }
     else
     {
@@ -566,11 +579,15 @@ static inline char* stringAppendBuffer(char *string, size_t stringSize, const ch
 
   if ((string != NULL) && (buffer != NULL))
   {
-    size_t n = strlen(string);
-    if (stringSize >= (n+bufferLength+1))
+    size_t length = strlen(string);
+
+    size_t appendLength = bufferLength;
+    if (appendLength > (stringSize - length - 1)) appendLength = stringSize - length -1;
+
+    if (appendLength > 0)
     {
-      memcpy(&string[n],buffer,stringSize-(bufferLength+1));
-      string[n+bufferLength] = NUL;
+      memcpy(&string[length], buffer, appendLength);
+      string[length + appendLength] = NUL;
     }
   }
 
@@ -695,9 +712,12 @@ static inline char* stringFillAppend(char *string, size_t stringSize, size_t len
 
 static inline const char* stringTrimBegin(const char *string)
 {
-  while (isspace(*string))
+  if (string != NULL)
   {
-    string++;
+    while (isspace(*string))
+    {
+      string++;
+    }
   }
 
   return string;
@@ -714,14 +734,19 @@ static inline const char* stringTrimBegin(const char *string)
 
 static inline char* stringTrimEnd(char *string)
 {
-  char *s;
-
-  s = &string[strlen(string)-1];
-  while ((s >= string) && isspace(*s))
+  if (string != NULL)
   {
-    s--;
+    size_t length = strlen(string);
+    if (length > 0)
+    {
+      char *s = &string[length - 1];
+      while ((s >= string) && isspace(*s))
+      {
+        s--;
+      }
+      s[1] = NUL;
+    }
   }
-  s[1] = NUL;
 
   return string;
 }
@@ -737,19 +762,24 @@ static inline char* stringTrimEnd(char *string)
 
 static inline char* stringTrim(char *string)
 {
-  char *s;
-
-  while (isspace(*string))
+  if (string != NULL)
   {
-    string++;
-  }
+    while (isspace(*string))
+    {
+      string++;
+    }
 
-  s = &string[strlen(string)-1];
-  while ((s >= string) && isspace(*s))
-  {
-    s--;
+    size_t length = strlen(string);
+    if (length > 0)
+    {
+      char *s = &string[length - 1];
+      while ((s >= string) && isspace(*s))
+      {
+        s--;
+      }
+      s[1] = NUL;
+    }
   }
-  s[1] = NUL;
 
   return string;
 }
