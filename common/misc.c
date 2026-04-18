@@ -969,7 +969,11 @@ LOCAL bool hexDecode(byte *data, uint *dataLength, const char *s, ulong n, uint 
 
 Errors Misc_initAll(void)
 {
-  srand(time(NULL));
+  #if   defined(PLATFORM_LINUX)
+    srandom((unsigned int)time(NULL));
+  #elif defined(PLATFORM_WINDOWS)
+    srand((unsigned int)time(NULL));
+  #endif /* PLATFORM_... */
 
   /* Note: avoid a direct dipendency to libsystemd. Load library and bin
            functions dynamic if possible.
