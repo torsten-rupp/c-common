@@ -747,7 +747,7 @@ void List_delete(void *list)
 {
   assert(list != NULL);
 
-  List_done(list);\
+  List_done(list);
   free(list);
 }
 
@@ -906,9 +906,27 @@ void *List_remove(void *list,
   return nextNode;
 }
 
-void *List_removeAndFree(void *list,
-                         void *node
-                        )
+void *List_removeAndFreePrev(void *list,
+                             void *node
+                            )
+{
+  assert(list != NULL);
+  assert(node != NULL);
+
+  void *prevNode = ((Node*)node)->prev;
+  listRemove(list,node);
+  if (((List*)list)->freeFunction != NULL)
+  {
+    ((List*)list)->freeFunction(node,((List*)list)->freeUserData);
+  }
+  LIST_DELETE_NODE(node);
+
+  return prevNode;
+}
+
+void *List_removeAndFreeNext(void *list,
+                             void *node
+                            )
 {
   assert(list != NULL);
   assert(node != NULL);
@@ -1089,8 +1107,9 @@ void List_sort(void                    *list,
   do
   {
     List sortedList;
-    sortedList.head = NULL;
-    sortedList.tail = NULL;
+    sortedList.head  = NULL;
+    sortedList.tail  = NULL;
+    sortedList.count = 0;
 
     mergedFlag = FALSE;
     void *node1 = ((List*)list)->head;
@@ -1177,9 +1196,9 @@ void List_debugDone(void)
     {
       free(List_removeFirst(&debugListFreeNodeList));
     }
-    while (!List_isEmpty(&debugListFreeNodeList))
+    while (!List_isEmpty(&debugListAllocNodeList))
     {
-      free(List_removeFirst(&debugListFreeNodeList));
+      free(List_removeFirst(&debugListAllocNodeList));
     }
   }
   pthread_mutex_unlock(&debugListLock);
