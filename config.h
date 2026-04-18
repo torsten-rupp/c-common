@@ -34,8 +34,12 @@
 #ifndef RUNTIME_DIR
   #define RUNTIME_DIR "/run"
 #endif
+#ifndef RUN_DIR
+  #define RUN_DIR "/run"
+#endif
 #ifndef TLS_DIR
   #define TLS_DIR "/etc/ssl"
 #endif
 
 #define MKDIR_ARGUMENTS_COUNT 2
+#define HAVE_STATIC_ASSERT 1
