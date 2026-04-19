@@ -797,13 +797,19 @@ void List_copy(void       *toList,
   while (node != fromListToNode)
   {
     Node *newNode = ((List*)toList)->duplicateFunction(node,((List*)toList)->duplicateUserData);
-    List_insert(toList,newNode,toListNextNode);
+    if (newNode != NULL)
+    {
+      List_insert(toList,newNode,toListNextNode);
+    }
     node = node->next;
   }
   if (node != NULL)
   {
     Node *newNode = ((List*)toList)->duplicateFunction(node,((List*)toList)->duplicateUserData);
-    List_insert(toList,newNode,toListNextNode);
+    if (newNode != NULL)
+    {
+      List_insert(toList,newNode,toListNextNode);
+    }
   }
 }
 
