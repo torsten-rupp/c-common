@@ -638,12 +638,10 @@ typedef void(*DebugDumpStackTraceOutputFunction)(const char *text, void *userDat
 
 #define ARRAY_FIND(array,size,i,condition) \
   ({ \
-    auto uint __closure__ (void); \
-    uint __closure__ (void) \
+    auto size_t __closure__ (void); \
+    size_t __closure__ (void) \
     { \
-      uint i; \
-      \
-      i = 0; \
+      size_t (i) = 0; \
       while ((i) < (size) && !(condition)) \
       { \
         (i)++; \
@@ -659,27 +657,24 @@ typedef void(*DebugDumpStackTraceOutputFunction)(const char *text, void *userDat
 * Purpose: check if value is in array
 * Input  : array     - array
 *          size      - size of array (number of elements)
-*          i         - iterator
 *          condition - condition
 * Output : -
 * Return : TURE iff in array
 * Notes  : -
 \***********************************************************************/
 
-#define ARRAY_CONTAINS(array,size,i,condition) \
+#define ARRAY_CONTAINS(array,size,condition) \
   ({ \
     auto bool __closure__ (void); \
     bool __closure__ (void) \
     { \
-      uint i; \
-      \
-      i = 0; \
-      while ((i) < (size) && !(condition)) \
+      size_t i = 0; \
+      while (i < (size) && !(condition)) \
       { \
-        (i)++; \
+        i++; \
       } \
       \
-      return (i) < (size); \
+      return i < (size); \
     }; \
     __closure__; \
   })()
@@ -1426,21 +1421,21 @@ typedef byte* StaticBitSet;
   #define DEBUG_MEMORY_FENCE_INIT(name) \
     do \
     { \
-      unsigned int __z; \
+      size_t __i; \
       \
-      for (__z = 0; __z < sizeof(name); __z++) \
+      for (__i = 0; __i < sizeof(name); __i++) \
       { \
-        name[__z] = 0xED; \
+        name[__i] = 0xED; \
       } \
     } \
     while (0)
   #define DEBUG_MEMORY_FENCE_CHECK(name) \
     do \
     { \
-      unsigned int __z; \
-      for (__z = 0; __z < sizeof(name); __z++) \
+      size_t __i; \
+      for (__i = 0; __i < sizeof(name); __i++) \
       { \
-        assert(name[__z] == 0xED); \
+        assert(name[__i] == 0xED); \
       } \
     } \
     while (0)
@@ -1946,16 +1941,13 @@ static inline uint64 getCycleCounter(void)
 * Notes  : -
 \***********************************************************************/
 
-static inline uint getStackTrace(void const * stackTrace[], uint maxStackTraceSize)
+static inline size_t getStackTrace(void const * stackTrace[], size_t maxStackTraceSize)
 {
-  uint stackTraceSize;
-  #ifdef HAVE_BACKTRACE
-    uint i;
-  #endif
+  size_t stackTraceSize;
 
   #ifdef HAVE_BACKTRACE
     stackTraceSize = (uint)backtrace((void**)stackTrace,maxStackTraceSize);
-    for (i = 0; i < stackTraceSize; i++)
+    for (size_t i = 0; i < stackTraceSize; i++)
     {
       stackTrace[i] = (void const **)((const byte*)stackTrace[i]-1);
     }
