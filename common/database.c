@@ -31,13 +31,13 @@
 #include <time.h>
 #include <signal.h>
 // Note: sanitizer intercept regex functions; must use libc regex
-#if defined(HAVE_PCRE) && !defined(__SANITIZE_ADDRESS__)
+#if defined(HAVE_PCRE) && defined(HAVE_PCREPOSIX) && !defined(__SANITIZE_ADDRESS__)
   #include <pcreposix.h>
 #elif defined(HAVE_REGEX_H)
   #include <regex.h>
 #else
   #error No regular expression library available!
-#endif /* HAVE_PCRE || HAVE_REGEX_H */
+#endif /* HAVE_PCRE/HAVE_PCREPOSIX || HAVE_REGEX_H */
 #ifdef POSTGRESQL_BINARY_INTERFACE
   #include <endian.h>
 #endif
@@ -45,14 +45,22 @@
 #include <assert.h>
 
 #include "sqlite3.h"
-#if defined(HAVE_MARIADB_MYSQL_H) && defined(HAVE_MARIADB_ERRMSG_H)
+#if   defined(HAVE_MARIADB_MYSQL_H)
   #include "mariadb/mysql.h"
+#elif defined(HAVE_MYSQL_MYSQL_H)
+  #include "mysql/mysql.h"
+#endif
+#if   defined(HAVE_MARIADB_ERRMSG_H)
   #include "mariadb/errmsg.h"
   #include "mariadb/mysqld_error.h"
+#elif defined(HAVE_MYSQL_ERRMSG_H)
+  #include "mysql/errmsg.h"
+  #include "mysql/mysqld_error.h"
 #endif /* HAVE_MARIADB_MYSQL_H && HAVE_MARIADB_ERRMSG_H */
-#if defined(HAVE_LIBPQ_FE_H)
+#if defined(HAVE_POSTGRESQL_LIBPQ_FE_H)
+  #include "postgresql/libpq-fe.h"
+#elif defined(HAVE_LIBPQ_FE_H)
   #include "libpq-fe.h"
-//  #include "pgtypes_numeric.h"
 #endif /* HAVE_LIBPQ_FE_H */
 
 #include "common/arrays.h"
@@ -719,7 +727,7 @@ LOCAL Errors getStatementColumns(DatabaseColumn          columns[],
 LOCAL Errors databaseGet(DatabaseHandle       *databaseHandle,
                          DatabaseRowFunction  databaseRowFunction,
                          void                 *databaseRowUserData,
-                         ulong                *changedRowCount,
+                         size_t               *changedRowCount,
                          const char           *tableNames[],
                          uint                 tableNameCount,
                          uint                 flags,
@@ -963,7 +971,7 @@ LOCAL int logTraceCommandHandler(unsigned int traceCommand, void *context, void 
 * Notes  : -
 \***********************************************************************/
 
-LOCAL_INLINE void initTimeSpec(struct timespec *timespec, ulong timeout)
+LOCAL_INLINE void initTimeSpec(struct timespec *timespec, size_t timeout)
 {
   #if   defined(PLATFORM_LINUX)
   #elif defined(PLATFORM_WINDOWS)
@@ -1359,7 +1367,7 @@ LOCAL void debugPrintLockInfo(const DatabaseHandle *databaseHandle)
       if (!Thread_isNone(databaseHandle->databaseNode->debug.reads[i].threadId))
       {
         fprintf(stderr,
-                "    #%2u r  '%s' (%s) at %s, %zu\n",
+                "    #%2zu r  '%s' (%s) at %s, %zu\n",
                 i,
                 Thread_getName(databaseHandle->databaseNode->debug.reads[i].threadId),
                 Thread_getIdString(databaseHandle->databaseNode->debug.reads[i].threadId),
@@ -1387,7 +1395,7 @@ LOCAL void debugPrintLockInfo(const DatabaseHandle *databaseHandle)
       if (!Thread_isNone(databaseHandle->databaseNode->debug.readWrites[i].threadId))
       {
         fprintf(stderr,
-                "    #%2u rw '%s' (%s) at %s, %zu\n",
+                "    #%2zu rw '%s' (%s) at %s, %zu\n",
                 i,
                 Thread_getName(databaseHandle->databaseNode->debug.readWrites[i].threadId),
                 Thread_getIdString(databaseHandle->databaseNode->debug.readWrites[i].threadId),
@@ -2668,21 +2676,24 @@ LOCAL Errors mariaDBConnect(MYSQL          **handle,
   {
     bool b;
     uint u;
-  }      optionValue;
+  } optionValue;
   optionValue.b = TRUE;
   mysql_options(*handle,MYSQL_OPT_RECONNECT,&optionValue);
   optionValue.u = MARIADB_TIMEOUT;
   mysql_options(*handle,MYSQL_OPT_READ_TIMEOUT,&optionValue);
   mysql_options(*handle,MYSQL_OPT_WRITE_TIMEOUT,&optionValue);
+  optionValue.u = 0;
+  mysql_options(*handle, MYSQL_OPT_SSL_ENFORCE, &optionValue);
+  mysql_options(*handle, MYSQL_OPT_SSL_VERIFY_SERVER_CERT, &optionValue);
 
   // connect
   error = ERROR_UNKNOWN;
   PASSWORD_DEPLOY_DO(plainPassword,password)
   {
-    if (error != ERROR_NONE)
+    if ((error == ERROR_UNKNOWN) || (Error_getCode(error) == ERROR_CODE_CONNECT_FAIL))
     {
       if (mysql_real_connect(*handle,
-                             serverName,
+NULL,//                             serverName,
                              userName,
                              plainPassword,
                              NULL,  // databaseName
@@ -2694,8 +2705,42 @@ LOCAL Errors mariaDBConnect(MYSQL          **handle,
       {
         error = ERROR_NONE;
       }
+      else
+      {
+        uint errorCode = mysql_errno(*handle);
+fprintf(stderr,"%s:%d: errorCode=%d\n",__FILE__,__LINE__,errorCode);
+        switch (errorCode)
+        {
+          case ER_DBACCESS_DENIED_ERROR:
+          case ER_ACCESS_DENIED_ERROR:
+          case CR_SECURE_AUTH:
+            error = ERRORX_(INVALID_PASSWORD_,
+                            errorCode,
+                            "%s",
+                            mysql_error(*handle)
+                           );
+            break;
+          case CR_SOCKET_CREATE_ERROR:
+          case CR_CONNECTION_ERROR:
+          case CR_CONN_HOST_ERROR:
+          case CR_UNKNOWN_HOST:
+            error = ERRORX_(CONNECT_FAIL,
+                            errorCode,
+                            "%s",
+                            mysql_error(*handle)
+                           );
+            break;
+          default:
+            error = ERRORX_(DATABASE,
+                            errorCode,
+                            "%s",
+                            mysql_error(*handle)
+                           );
+            break;
+        }
+      }
     }
-    if (error != ERROR_NONE)
+    if ((error == ERROR_UNKNOWN) || (Error_getCode(error) == ERROR_CODE_CONNECT_FAIL))
     {
       if (mysql_real_connect(*handle,
                              serverName,
@@ -2709,6 +2754,39 @@ LOCAL Errors mariaDBConnect(MYSQL          **handle,
          )
       {
         error = ERROR_NONE;
+      }
+      else
+      {
+        uint errorCode = mysql_errno(*handle);
+        switch (errorCode)
+        {
+          case ER_DBACCESS_DENIED_ERROR:
+          case ER_ACCESS_DENIED_ERROR:
+          case CR_SECURE_AUTH:
+            error = ERRORX_(INVALID_PASSWORD_,
+                            errorCode,
+                            "%s",
+                            mysql_error(*handle)
+                           );
+            break;
+          case CR_SOCKET_CREATE_ERROR:
+          case CR_CONNECTION_ERROR:
+          case CR_CONN_HOST_ERROR:
+          case CR_UNKNOWN_HOST:
+            error = ERRORX_(CONNECT_FAIL,
+                            errorCode,
+                            "%s",
+                            mysql_error(*handle)
+                           );
+            break;
+          default:
+            error = ERRORX_(DATABASE,
+                            errorCode,
+                            "%s",
+                            mysql_error(*handle)
+                           );
+            break;
+        }
       }
     }
     if (error != ERROR_NONE)
@@ -3712,7 +3790,7 @@ LOCAL void postgresqlDisconnect(PGconn *connection)
 \***********************************************************************/
 
 LOCAL Errors postgresqlExecute(PGconn     *connection,
-                               ulong      *changedRowCount,
+                               size_t     *changedRowCount,
                                const char *sqlString,
                                const Oid  parameterTypes[],
                                const char *parameterValues[],
@@ -6711,7 +6789,6 @@ LOCAL String appendName(String string, const DatabaseHandle *databaseHandle, con
 
           if (ARRAY_CONTAINS(RESERVED_KEYWORDS,
                              SIZE_OF_ARRAY(RESERVED_KEYWORDS),
-                             i,
                              stringEquals(RESERVED_KEYWORDS[i],name)
                             )
              )
@@ -6736,7 +6813,6 @@ LOCAL String appendName(String string, const DatabaseHandle *databaseHandle, con
 
           if (ARRAY_CONTAINS(RESERVED_KEYWORDS,
                              SIZE_OF_ARRAY(RESERVED_KEYWORDS),
-                             i,
                              stringEquals(RESERVED_KEYWORDS[i],name)
                             )
              )
@@ -6925,7 +7001,7 @@ LOCAL String vformatSQLString(String     sqlString,
                 if (quoteFlag) String_appendChar(sqlString,'\'');
                 if (value.string != NULL)
                 {
-                  ulong i = 0L;
+                  size_t i = 0L;
                   while (i < String_length(value.string))
                   {
                     char ch = String_index(value.string,i);
@@ -7579,7 +7655,7 @@ LOCAL Errors bindResults(DatabaseStatementHandle *databaseStatementHandle,
 \***********************************************************************/
 
 LOCAL Errors executePreparedQuery(DatabaseStatementHandle *databaseStatementHandle,
-                                  ulong                   *changedRowCount,
+                                  size_t                  *changedRowCount,
                                   long                    timeout
                                  )
 {
@@ -7660,7 +7736,7 @@ LOCAL Errors executePreparedQuery(DatabaseStatementHandle *databaseStatementHand
             // get number of changes
             if (changedRowCount != NULL)
             {
-              (*changedRowCount) += (ulong)sqlite3_changes(databaseStatementHandle->databaseHandle->sqlite.handle);
+              (*changedRowCount) += (size_t)sqlite3_changes(databaseStatementHandle->databaseHandle->sqlite.handle);
             }
           }
         }
@@ -7711,7 +7787,7 @@ LOCAL Errors executePreparedQuery(DatabaseStatementHandle *databaseStatementHand
             // get number of changes
             if (changedRowCount != NULL)
             {
-              (*changedRowCount) += (ulong)mysql_affected_rows(databaseStatementHandle->databaseHandle->mariadb.handle);
+              (*changedRowCount) += (size_t)mysql_affected_rows(databaseStatementHandle->databaseHandle->mariadb.handle);
             }
           }
         #else /* HAVE_MARIADB */
@@ -8336,7 +8412,7 @@ LOCAL DatabaseId getLastInsertRowId(DatabaseStatementHandle *databaseStatementHa
 LOCAL Errors executePreparedStatement(DatabaseStatementHandle *databaseStatementHandle,
                                       DatabaseRowFunction     databaseRowFunction,
                                       void                    *databaseRowUserData,
-                                      ulong                   *changedRowCount,
+                                      size_t                  *changedRowCount,
                                       uint                    flags,
                                       long                    timeout
                                      )
@@ -8445,7 +8521,7 @@ LOCAL Errors executePreparedStatement(DatabaseStatementHandle *databaseStatement
             // get number of changes
             if (changedRowCount != NULL)
             {
-              (*changedRowCount) += (ulong)sqlite3_changes(databaseStatementHandle->databaseHandle->sqlite.handle);
+              (*changedRowCount) += (size_t)sqlite3_changes(databaseStatementHandle->databaseHandle->sqlite.handle);
             }
           }
         }
@@ -8477,7 +8553,7 @@ LOCAL Errors executePreparedStatement(DatabaseStatementHandle *databaseStatement
               // get number of changes
               if (changedRowCount != NULL)
               {
-                (*changedRowCount) += (ulong)mysql_stmt_affected_rows(databaseStatementHandle->mariadb.statementHandle);
+                (*changedRowCount) += (size_t)mysql_stmt_affected_rows(databaseStatementHandle->mariadb.statementHandle);
               }
             }
           }
@@ -10697,7 +10773,7 @@ LOCAL void resetFilters(DatabaseStatementHandle *databaseStatementHandle)
 \***********************************************************************/
 
 LOCAL Errors executeQuery(DatabaseHandle *databaseHandle,
-                          ulong          *changedRowCount,
+                          size_t         *changedRowCount,
                           long           timeout,
                           uint           flags,
                           const char     *sqlString
@@ -10730,7 +10806,7 @@ LOCAL Errors executeQuery(DatabaseHandle *databaseHandle,
           // get number of changes
           if (changedRowCount != NULL)
           {
-            (*changedRowCount) += (ulong)sqlite3_changes(databaseHandle->sqlite.handle);
+            (*changedRowCount) += (size_t)sqlite3_changes(databaseHandle->sqlite.handle);
           }
         }
         break;
@@ -10742,7 +10818,7 @@ LOCAL Errors executeQuery(DatabaseHandle *databaseHandle,
             // get number of changes
             if (changedRowCount != NULL)
             {
-              (*changedRowCount) += (ulong)mysql_affected_rows(databaseHandle->mariadb.handle);
+              (*changedRowCount) += (size_t)mysql_affected_rows(databaseHandle->mariadb.handle);
             }
           }
         #else /* HAVE_MARIADB */
@@ -10827,7 +10903,7 @@ LOCAL Errors executeQuery(DatabaseHandle *databaseHandle,
 LOCAL Errors databaseGet(DatabaseHandle       *databaseHandle,
                          DatabaseRowFunction  databaseRowFunction,
                          void                 *databaseRowUserData,
-                         ulong                *changedRowCount,
+                         size_t               *changedRowCount,
                          const char           *tableNames[],
                          uint                 tableNameCount,
                          uint                 flags,
@@ -11962,10 +12038,11 @@ bool Database_exists(const DatabaseSpecifier *databaseSpecifier,
                      ConstString             databaseName
                     )
 {
-  bool existsFlag;
+  assert(databaseSpecifier != NULL);
 
   DatabaseHandle databaseHandle;
   Errors error = openDatabase(&databaseHandle,databaseSpecifier,String_cString(databaseName),DATABASE_OPEN_MODE_READ,NO_WAIT);
+  bool existsFlag;
   if (error == ERROR_NONE)
   {
     closeDatabase(&databaseHandle);
@@ -11986,7 +12063,7 @@ bool Database_equalSpecifiers(const DatabaseSpecifier *databaseSpecifier0,
                              )
 {
   assert(databaseSpecifier0 != NULL);
-  assert(databaseSpecifier0 != NULL);
+  assert(databaseSpecifier1 != NULL);
 
   if (databaseSpecifier0->type == databaseSpecifier1->type)
   {
@@ -13690,7 +13767,7 @@ assert(Thread_isCurrentThread(databaseHandle->debug.threadId));
   STRINGLIST_ITERATEX(&referenceTableNameList,tableName,error == ERROR_NONE)
   {
     if (   (tableNames == NULL)
-        || ARRAY_CONTAINS(tableNames,tableNameCount,i,String_equalsCString(tableName,tableNames[i]))
+        || ARRAY_CONTAINS(tableNames,tableNameCount,String_equalsCString(tableName,tableNames[i]))
        )
     {
       if (StringList_contains(&tableNameList,tableName))
@@ -13874,7 +13951,7 @@ assert(Thread_isCurrentThread(toDatabaseHandle->debug.threadId));
 
   #ifdef DATABASE_DEBUG_COPY_TABLE
     uint64 t0       = Misc_getTimestamp();
-    ulong  rowCount = 0;
+    size_t rowCount = 0;
   #endif /* DATABASE_DEBUG_COPY_TABLE */
 
   uint64 t;
@@ -15926,7 +16003,7 @@ char *Database_filterTimeString(const DatabaseHandle *databaseHandle,
 }
 
 Errors Database_execute(DatabaseHandle *databaseHandle,
-                        ulong          *changedRowCount,
+                        size_t         *changedRowCount,
                         uint           flags,
                         const char     *sqlString
                        )
@@ -16306,7 +16383,7 @@ Errors Database_insert(DatabaseHandle       *databaseHandle,
 }
 
 Errors Database_insertSelect(DatabaseHandle       *databaseHandle,
-                             ulong                *changedRowCount,
+                             size_t               *changedRowCount,
                              const char           *tableName,
                              uint                 flags,
                              const DatabaseColumn toColumns[],
@@ -16505,7 +16582,7 @@ Errors Database_insertSelect(DatabaseHandle       *databaseHandle,
 }
 
 Errors Database_update(DatabaseHandle       *databaseHandle,
-                       ulong                *changedRowCount,
+                       size_t               *changedRowCount,
                        const char           *tableName,
                        uint                 flags,
                        const DatabaseValue  values[],
@@ -16655,7 +16732,7 @@ Errors Database_update(DatabaseHandle       *databaseHandle,
 }
 
 Errors Database_delete(DatabaseHandle       *databaseHandle,
-                       ulong                *changedRowCount,
+                       size_t               *changedRowCount,
                        const char           *tableName,
                        uint                 flags,
                        const char           *filter,
@@ -16776,13 +16853,13 @@ Errors Database_delete(DatabaseHandle       *databaseHandle,
 }
 
 Errors Database_deleteArray(DatabaseHandle       *databaseHandle,
-                            ulong                *changedRowCount,
+                            size_t               *changedRowCount,
                             const char           *tableName,
                             uint                 flags,
                             const char           *filter,
                             DatabaseDataTypes    filterDataType,
                             const void           *filterArrayData,
-                            ulong                filterArrayLength,
+                            size_t               filterArrayLength,
                             uint64               limit
                            )
 {
@@ -16858,7 +16935,7 @@ Errors Database_deleteArray(DatabaseHandle       *databaseHandle,
                DATABASE_LOCK_TYPE_READ_WRITE,
                databaseHandle->timeout,
   {
-    for (ulong i = 0; i < filterArrayLength; i++)
+    for (size_t i = 0; i < filterArrayLength; i++)
     {
       if (filter != NULL)
       {
@@ -16914,12 +16991,12 @@ Errors Database_deleteArray(DatabaseHandle       *databaseHandle,
 }
 
 Errors Database_deleteByIds(DatabaseHandle   *databaseHandle,
-                            ulong            *changedRowCount,
+                            size_t           *changedRowCount,
                             const char       *tableName,
                             const char       *columnName,
                             uint             flags,
                             const DatabaseId ids[],
-                            ulong            length
+                            size_t           length
                            )
 {
   Errors error;
@@ -16939,7 +17016,7 @@ Errors Database_deleteByIds(DatabaseHandle   *databaseHandle,
 
     // create SQL string
     String sqlString = String_format(String_new(),"DELETE FROM %s WHERE %s IN (",tableName,columnName);
-    for (ulong i = 0; i < length; i++)
+    for (size_t i = 0; i < length; i++)
     {
       if (i > 0) String_appendChar(sqlString,',');
       String_appendFormat(sqlString,"%"PRIi64,ids[i]);
@@ -17465,7 +17542,7 @@ bool Database_existsValue(DatabaseHandle       *databaseHandle,
 Errors Database_get(DatabaseHandle       *databaseHandle,
                     DatabaseRowFunction  databaseRowFunction,
                     void                 *databaseRowUserData,
-                    ulong                *changedRowCount,
+                    size_t               *changedRowCount,
                     const char           *tableNames[],
                     uint                 tableNameCount,
                     uint                 flags,
@@ -18497,7 +18574,7 @@ Errors Database_vacuum(DatabaseHandle     *databaseHandle,
   return error;
 }
 
-Errors Database_check(DatabaseHandle *databaseHandle, DatabaseChecks databaseCheck)
+Errors Database_check(DatabaseHandle *databaseHandle, DatabaseChecks databaseCheck, const char *tableName)
 {
   assert(databaseHandle != NULL);
   DEBUG_CHECK_RESOURCE_TRACE(databaseHandle);
@@ -18519,28 +18596,76 @@ Errors Database_check(DatabaseHandle *databaseHandle, DatabaseChecks databaseChe
         switch (databaseCheck)
         {
           case DATABASE_CHECK_QUICK:
-            return executeQuery(databaseHandle,
-                                NULL,  // changedRowCount
-                                databaseHandle->timeout,
-                                DATABASE_FLAG_NONE,
-                                "PRAGMA quick_check"
-                               );
+            if (tableName != NULL)
+            {
+              char sqlString[256];
+              return executeQuery(databaseHandle,
+                                  NULL,  // changedRowCount
+                                  databaseHandle->timeout,
+                                  DATABASE_FLAG_NONE,
+                                  stringFormat(sqlString,sizeof(sqlString),
+                                               "PRAGMA quick_check(%s)",
+                                               tableName
+                                              )
+                                 );
+            }
+            else
+            {
+              return executeQuery(databaseHandle,
+                                  NULL,  // changedRowCount
+                                  databaseHandle->timeout,
+                                  DATABASE_FLAG_NONE,
+                                  "PRAGMA quick_check"
+                                 );
+            }
             break;
           case DATABASE_CHECK_KEYS:
-            return executeQuery(databaseHandle,
-                                NULL,  // changedRowCount
-                                databaseHandle->timeout,
-                                DATABASE_FLAG_NONE,
-                                "PRAGMA foreign_key_check"
-                               );
+            if (tableName != NULL)
+            {
+              char sqlString[256];
+              return executeQuery(databaseHandle,
+                                  NULL,  // changedRowCount
+                                  databaseHandle->timeout,
+                                  DATABASE_FLAG_NONE,
+                                  stringFormat(sqlString,sizeof(sqlString),
+                                               "PRAGMA foreign_key_check(%s)",
+                                               tableName
+                                              )
+                                 );
+            }
+            else
+            {
+              return executeQuery(databaseHandle,
+                                  NULL,  // changedRowCount
+                                  databaseHandle->timeout,
+                                  DATABASE_FLAG_NONE,
+                                  "PRAGMA foreign_key_check"
+                                 );
+            }
             break;
           case DATABASE_CHECK_FULL:
-            return executeQuery(databaseHandle,
-                                NULL,  // changedRowCount
-                                databaseHandle->timeout,
-                                DATABASE_FLAG_NONE,
-                                "PRAGMA integrity_check"
-                               );
+            if (tableName != NULL)
+            {
+              char sqlString[256];
+              return executeQuery(databaseHandle,
+                                  NULL,  // changedRowCount
+                                  databaseHandle->timeout,
+                                  DATABASE_FLAG_NONE,
+                                  stringFormat(sqlString,sizeof(sqlString),
+                                               "PRAGMA integrity_check(%s)",
+                                               tableName
+                                              )
+                                 );
+            }
+            else
+            {
+              return executeQuery(databaseHandle,
+                                  NULL,  // changedRowCount
+                                  databaseHandle->timeout,
+                                  DATABASE_FLAG_NONE,
+                                  "PRAGMA integrity_check"
+                                 );
+            }
             break;
         }
         break;
@@ -18555,6 +18680,20 @@ Errors Database_check(DatabaseHandle *databaseHandle, DatabaseChecks databaseChe
               return ERROR_NONE;
               break;
             case DATABASE_CHECK_FULL:
+              if (tableName != NULL)
+              {
+                char sqlString[256];
+                error = executeQuery(databaseHandle,
+                                     NULL,  // changedRowCount
+                                     databaseHandle->timeout,
+                                     DATABASE_FLAG_NONE,
+                                     stringFormat(sqlString,sizeof(sqlString),
+                                                  "CHECK TABLE %s",
+                                                  tableName
+                                                 )
+                                    );
+              }
+              else
               {
                 // get table names
                 StringList tableNameList;

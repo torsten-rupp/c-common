@@ -23,6 +23,12 @@
   #include <execinfo.h>
 #endif
 #ifdef HAVE_BFD_H
+  #ifndef PACKAGE
+  #define PACKAGE
+  #endif
+  #ifndef PACKAGE_VERSION
+  #define PACKAGE_VERSION
+  #endif
   #include <bfd.h>
 #endif
 #if   defined(HAVE_DEMANGLE_H)
@@ -70,7 +76,7 @@ typedef struct
   bool                  symbolFound;
   const char            *fileName;
   const char            *symbolName;
-  size_t                lineNb;
+  unsigned int          lineNb;
 } AddressInfo;
 
 // file match info
@@ -134,7 +140,7 @@ LOCAL bool readSymbolTable(bfd           *abfd,
 
   // read mini-symbols
   (*symbols) = NULL;
-  size_t size;
+  unsigned int size;
   long n = bfd_read_minisymbols(abfd,
                                 FALSE,  // not dynamic
                                 (void**)symbols,
@@ -656,7 +662,7 @@ void Stacktrace_init(const SignalHandlerInfo *signalHandlerInfo_,
                      void                    *signalHandlerUserData_
                     )
 {
-  assert(signalHandlerInfo != NULL);
+  assert(signalHandlerInfo_ != NULL);
 
   #if   defined(PLATFORM_LINUX)
     // initialize signal handler stack
@@ -687,10 +693,10 @@ void Stacktrace_init(const SignalHandlerInfo *signalHandlerInfo_,
        sigaction(signalHandlerInfo[i].signalNumber, &signalActionInfo, NULL);
     }
   #elif defined(PLATFORM_WINDOWS)
-    UNUSED_VARIABLE(signalHandlerInfo);
-    UNUSED_VARIABLE(signalHandlerInfoCount);
-    UNUSED_VARIABLE(signalHandlerFunction);
-    UNUSED_VARIABLE(signalHandlerUserData);
+    UNUSED_VARIABLE(signalHandlerInfo_);
+    UNUSED_VARIABLE(signalHandlerInfoCount_);
+    UNUSED_VARIABLE(signalHandlerFunction_);
+    UNUSED_VARIABLE(signalHandlerUserData_);
   #endif /* PLATFORM_... */
 }
 

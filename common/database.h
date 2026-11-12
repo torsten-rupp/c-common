@@ -19,12 +19,17 @@
 #include <assert.h>
 
 #include "sqlite3.h"
-#ifdef HAVE_MARIADB_MYSQL_H
+
+#if   defined(HAVE_MARIADB_MYSQL_H)
   #include "mariadb/mysql.h"
+#elif defined(HAVE_MYSQL_MYSQL_H)
+  #include "mysql/mysql.h"
 #endif
-#ifdef HAVE_LIBPQ_FE_H
+#if defined(HAVE_POSTGRESQL_LIBPQ_FE_H)
+  #include "postgresql/libpq-fe.h"
+#elif defined(HAVE_LIBPQ_FE_H)
   #include "libpq-fe.h"
-#endif
+#endif /* HAVE_LIBPQ_FE_H */
 
 #include "common/arrays.h"
 #include "common/dictionaries.h"
@@ -38,10 +43,12 @@
 #include "errors.h"
 
 /****************** Conditional compilation switches *******************/
-#define _DATABASE_LOCK_PER_INSTANCE   // if defined use lock per database instance, otherwise a global lock for all database is used
+#define _DATABASE_LOCK_PER_INSTANCE   // if defined use lock per database instance, otherwise a global lock for all database handles is used
 
 // switch on for debugging only!
-#define _DATABASE_DEBUG_LOCK
+#define DATABASE_DEBUG_LOCK_SIMPLE 1
+#define DATABASE_DEBUG_LOCK_FULL   2
+#define _DATABASE_DEBUG_LOCK DATABASE_DEBUG_LOCK_FULL
 #define _DATABASE_DEBUG_LOCK_PRINT
 #define _DATABASE_DEBUG_TIMEOUT
 #define _DATABASE_DEBUG_COPY_TABLE
@@ -180,14 +187,14 @@ typedef enum
   DATABASE_TRANSACTION_TYPE_EXCLUSIVE
 } DatabaseTransactionTypes;
 
-#ifndef NDEBUG
+#if !defined(NDEBUG) || (DATABASE_DEBUG_LOCK == DATABASE_DEBUG_LOCK_FULL)
 typedef enum
 {
   DATABASE_HISTORY_TYPE_LOCK_READ,
   DATABASE_HISTORY_TYPE_LOCK_READ_WRITE,
   DATABASE_HISTORY_TYPE_UNLOCK
 } DatabaseHistoryThreadInfoTypes;
-#endif /* NDEBUG */
+#endif /* !NDEBUG || (DATABASE_DEBUG_LOCK == DATABASE_DEBUG_LOCK_FULL) */
 
 #define DATABASE_AUX "aux"
 
@@ -272,7 +279,7 @@ typedef struct
   Semaphore lock;
 } DatabaseProgressHandlerList;
 
-#ifndef NDEBUG
+#if !defined(NDEBUG) || (DATABASE_DEBUG_LOCK == DATABASE_DEBUG_LOCK_FULL)
   typedef struct
   {
     ThreadId   threadId;
@@ -298,14 +305,14 @@ typedef struct
       uint       stackTraceSize;
     #endif /* HAVE_BACKTRACE */
   } DatabaseHistoryThreadInfo;
-#endif /* not NDEBUG */
+#endif /* !NDEBUG || DATABASE_DEBUG_LOCK == DATABASE_DEBUG_LOCK_SIMPLE*/
 
 // locked by info
 typedef struct
 {
 // TODO: remove volatile
   volatile ThreadId threadId;
-  #ifndef NDEBUG
+  #if !defined(NDEBUG) || (DATABASE_DEBUG_LOCK == DATABASE_DEBUG_LOCK_FULL)
     volatile const char *fileName;
     volatile size_t     lineNb;
   #endif
@@ -339,14 +346,14 @@ typedef struct DatabaseNode
   DatabaseProgressHandlerList progressHandlerList;
 
   // simple locking information: LWP ids only
-  #ifdef DATABASE_DEBUG_LOCK
+  #if DATABASE_DEBUG_LOCK == DATABASE_DEBUG_LOCK_SIMPLE
     ThreadLWPId readLPWIds[32];
     ThreadLWPId readWriteLPWIds[32];
     ThreadLWPId transactionLPWId;
   #endif /* DATABASE_DEBUG_LOCK */
 
   // full locking information
-  #ifndef NDEBUG
+  #if !defined(NDEBUG) || (DATABASE_DEBUG_LOCK == DATABASE_DEBUG_LOCK_FULL)
     struct
     {
       // pending reads
@@ -404,9 +411,9 @@ typedef int64 DatabaseId;
 // database handle
 typedef struct DatabaseHandle
 {
-  #ifndef NDEBUG
+  #if !defined(NDEBUG) || (DATABASE_DEBUG_LOCK == DATABASE_DEBUG_LOCK_FULL)
     LIST_NODE_HEADER(struct DatabaseHandle);
-  #endif /* not NDEBUG */
+  #endif
 
   DatabaseNode                *databaseNode;
   union
@@ -441,7 +448,7 @@ typedef struct DatabaseHandle
   uint64                      lastCheckpointTimestamp;    // last time forced execution of a checkpoint
   sem_t                       wakeUp;                     // unlock wake-up
 
-  #ifndef NDEBUG
+  #if !defined(NDEBUG) || (DATABASE_DEBUG_LOCK == DATABASE_DEBUG_LOCK_FULL)
     struct
     {
       ThreadId                  threadId;                 // id of thread who opened/created database
@@ -469,7 +476,7 @@ typedef struct DatabaseHandle
         #endif /* HAVE_BACKTRACE */
       }                         current;
     } debug;
-  #endif /* not NDEBUG */
+  #endif /* !NDEBUG || (DATABASE_DEBUG_LOCK == DATABASE_DEBUG_LOCK_FULL) */
 } DatabaseHandle;
 
 // TODO: remove
@@ -1127,7 +1134,7 @@ LOCAL_INLINE DatabaseFilterArray __DatabaseFilterArray(void *data, ulong length,
 #define DATABASE_TRANSACTION_ABORT(databaseHandle) \
   continue
 
-#ifndef NDEBUG
+#if !defined(NDEBUG) || (DATABASE_DEBUG_LOCK == DATABASE_DEBUG_LOCK_FULL)
   #define Database_open(...)                __Database_open               (__FILE__,__LINE__, ## __VA_ARGS__)
   #define Database_close(...)               __Database_close              (__FILE__,__LINE__, ## __VA_ARGS__)
   #define Database_lock(...)                __Database_lock               (__FILE__,__LINE__, ## __VA_ARGS__)
@@ -1139,7 +1146,7 @@ LOCAL_INLINE DatabaseFilterArray __DatabaseFilterArray(void *data, ulong length,
   #define Database_finalize(...)            __Database_finalize           (__FILE__,__LINE__, ## __VA_ARGS__)
 
   #define Database_debugPrintQueryInfo(...) __Database_debugPrintQueryInfo(__FILE__,__LINE__, ## __VA_ARGS__)
-#endif /* not NDEBUG */
+#endif /* !defined(NDEBUG) || (DATABASE_DEBUG_LOCK == DATABASE_DEBUG_LOCK_FULL) */
 
 /***************************** Forwards ********************************/
 
@@ -1370,14 +1377,14 @@ Errors Database_drop(const DatabaseSpecifier *databaseSpecifier,
 * Notes  : -
 \***********************************************************************/
 
-#ifdef NDEBUG
+#if defined(NDEBUG) && (DATABASE_DEBUG_LOCK != DATABASE_DEBUG_LOCK_FULL)
   Errors Database_open(DatabaseHandle          *databaseHandle,
                        const DatabaseSpecifier *databaseSpecifier,
                        const char              *databaseName,
                        DatabaseOpenModes       databaseOpenMode,
                        long                    timeout
                       );
-#else /* not NDEBUG */
+#else /* not defined(NDEBUG) && (DATABASE_DEBUG_LOCK != DATABASE_DEBUG_LOCK_FULL) */
   Errors __Database_open(const char              *__fileName__,
                          size_t                  __lineNb__,
                          DatabaseHandle          *databaseHandle,
@@ -1386,7 +1393,7 @@ Errors Database_drop(const DatabaseSpecifier *databaseSpecifier,
                          DatabaseOpenModes       databaseOpenMode,
                          long                    timeout
                         );
-#endif /* NDEBUG */
+#endif /* defined(NDEBUG) && (DATABASE_DEBUG_LOCK != DATABASE_DEBUG_LOCK_FULL) */
 
 /***********************************************************************\
 * Name   : Database_close
@@ -1397,14 +1404,14 @@ Errors Database_drop(const DatabaseSpecifier *databaseSpecifier,
 * Notes  : -
 \***********************************************************************/
 
-#ifdef NDEBUG
+#if defined(NDEBUG) && (DATABASE_DEBUG_LOCK != DATABASE_DEBUG_LOCK_FULL)
   void Database_close(DatabaseHandle *databaseHandle);
-#else /* not NDEBUG */
+#else /* not defined(NDEBUG) && (DATABASE_DEBUG_LOCK != DATABASE_DEBUG_LOCK_FULL) */
   void __Database_close(const char     *__fileName__,
                         size_t         __lineNb__,
                         DatabaseHandle *databaseHandle
                        );
-#endif /* NDEBUG */
+#endif /* defined(NDEBUG) && (DATABASE_DEBUG_LOCK != DATABASE_DEBUG_LOCK_FULL) */
 
 /***********************************************************************\
 * Name   : Database_getType
@@ -1625,19 +1632,19 @@ void Database_yield(DatabaseHandle *databaseHandle,
 *          database file
 \***********************************************************************/
 
-#ifdef NDEBUG
+#if defined(NDEBUG) && (DATABASE_DEBUG_LOCK != DATABASE_DEBUG_LOCK_FULL)
   bool Database_lock(DatabaseHandle    *databaseHandle,
                      DatabaseLockTypes lockType,
                      long              timeout
                     );
-#else /* not NDEBUG */
+#else /* not defined(NDEBUG) && (DATABASE_DEBUG_LOCK != DATABASE_DEBUG_LOCK_FULL) */
   bool __Database_lock(const char        *__fileName__,
                        size_t            __lineNb__,
                        DatabaseHandle    *databaseHandle,
                        DatabaseLockTypes lockType,
                        long              timeout
                       );
-#endif /* NDEBUG */
+#endif /* defined(NDEBUG) && (DATABASE_DEBUG_LOCK != DATABASE_DEBUG_LOCK_FULL) */
 
 /***********************************************************************\
 * Name   : Database_unlock
@@ -1648,17 +1655,17 @@ void Database_yield(DatabaseHandle *databaseHandle,
 * Notes  : -
 \***********************************************************************/
 
-#ifdef NDEBUG
+#if defined(NDEBUG) && (DATABASE_DEBUG_LOCK != DATABASE_DEBUG_LOCK_FULL)
   void Database_unlock(DatabaseHandle    *databaseHandle,
                        DatabaseLockTypes lockType
                       );
-#else /* not NDEBUG */
+#else /* not defined(NDEBUG) && (DATABASE_DEBUG_LOCK != DATABASE_DEBUG_LOCK_FULL) */
   void __Database_unlock(const char        *__fileName__,
                          size_t            __lineNb__,
                          DatabaseHandle    *databaseHandle,
                          DatabaseLockTypes lockType
                         );
-#endif /* NDEBUG */
+#endif /* defined(NDEBUG) && (DATABASE_DEBUG_LOCK != DATABASE_DEBUG_LOCK_FULL) */
 
 /***********************************************************************\
 * Name   : Database_isLocked
@@ -2049,19 +2056,19 @@ Errors Database_removeColumn(DatabaseHandle *databaseHandle,
 * Notes  : -
 \***********************************************************************/
 
-#ifdef NDEBUG
+#if defined(NDEBUG) && (DATABASE_DEBUG_LOCK != DATABASE_DEBUG_LOCK_FULL)
   Errors Database_beginTransaction(DatabaseHandle           *databaseHandle,
                                    DatabaseTransactionTypes databaseTransactionType,
                                    long                     timeout
                                   );
-#else /* not NDEBUG */
+#else /* not defined(NDEBUG) && (DATABASE_DEBUG_LOCK != DATABASE_DEBUG_LOCK_FULL) */
   Errors __Database_beginTransaction(const char               *__fileName__,
                                      size_t                   __lineNb__,
                                      DatabaseHandle           *databaseHandle,
                                      DatabaseTransactionTypes databaseTransactionType,
                                      long                     timeout
                                     );
-#endif /* NDEBUG */
+#endif /* defined(NDEBUG) && (DATABASE_DEBUG_LOCK != DATABASE_DEBUG_LOCK_FULL) */
 
 /***********************************************************************\
 * Name   : Database_endTransaction
@@ -2072,14 +2079,14 @@ Errors Database_removeColumn(DatabaseHandle *databaseHandle,
 * Notes  : -
 \***********************************************************************/
 
-#ifdef NDEBUG
+#if defined(NDEBUG) && (DATABASE_DEBUG_LOCK != DATABASE_DEBUG_LOCK_FULL)
   Errors Database_endTransaction(DatabaseHandle *databaseHandle);
-#else /* not NDEBUG */
+#else /* not defined(NDEBUG) && (DATABASE_DEBUG_LOCK != DATABASE_DEBUG_LOCK_FULL) */
   Errors __Database_endTransaction(const char     *__fileName__,
                                    size_t         __lineNb__,
                                    DatabaseHandle *databaseHandle
                                   );
-#endif /* NDEBUG */
+#endif /* defined(NDEBUG) && (DATABASE_DEBUG_LOCK != DATABASE_DEBUG_LOCK_FULL) */
 
 /***********************************************************************\
 * Name   : Database_rollbackTransaction
@@ -2090,14 +2097,14 @@ Errors Database_removeColumn(DatabaseHandle *databaseHandle,
 * Notes  : -
 \***********************************************************************/
 
-#ifdef NDEBUG
+#if defined(NDEBUG) && (DATABASE_DEBUG_LOCK != DATABASE_DEBUG_LOCK_FULL)
   Errors Database_rollbackTransaction(DatabaseHandle *databaseHandle);
-#else /* not NDEBUG */
+#else /* not defined(NDEBUG) && (DATABASE_DEBUG_LOCK != DATABASE_DEBUG_LOCK_FULL) */
   Errors __Database_rollbackTransaction(const char     *__fileName__,
                                         size_t         __lineNb__,
                                         DatabaseHandle *databaseHandle
                                        );
-#endif /* NDEBUG */
+#endif /* defined(NDEBUG) && (DATABASE_DEBUG_LOCK != DATABASE_DEBUG_LOCK_FULL) */
 
 /***********************************************************************\
 * Name   : Database_flush
@@ -2247,7 +2254,7 @@ char *Database_filterTimeString(const DatabaseHandle *databaseHandle,
 \***********************************************************************/
 
 Errors Database_execute(DatabaseHandle *databaseHandle,
-                        ulong          *changedRowCount,
+                        size_t         *changedRowCount,
                         uint           flags,
                         const char     *sqlCommand
                        );
@@ -2310,7 +2317,7 @@ Errors Database_insert(DatabaseHandle       *databaseHandle,
 \***********************************************************************/
 
 Errors Database_insertSelect(DatabaseHandle       *databaseHandle,
-                             ulong                *changedRowCount,
+                             size_t               *changedRowCount,
                              const char           *tableName,
                              uint                 flags,
                              const DatabaseColumn toColumns[],
@@ -2345,7 +2352,7 @@ Errors Database_insertSelect(DatabaseHandle       *databaseHandle,
 \***********************************************************************/
 
 Errors Database_update(DatabaseHandle       *databaseHandle,
-                       ulong                *changedRowCount,
+                       size_t               *changedRowCount,
                        const char           *tableName,
                        uint                 flags,
                        const DatabaseValue  values[],
@@ -2372,7 +2379,7 @@ Errors Database_update(DatabaseHandle       *databaseHandle,
 \***********************************************************************/
 
 Errors Database_delete(DatabaseHandle       *databaseHandle,
-                       ulong                *changedRowCount,
+                       size_t               *changedRowCount,
                        const char           *tableName,
                        uint                 flags,
                        const char           *filter,
@@ -2399,13 +2406,13 @@ Errors Database_delete(DatabaseHandle       *databaseHandle,
 \***********************************************************************/
 
 Errors Database_deleteArray(DatabaseHandle       *databaseHandle,
-                            ulong                *changedRowCount,
+                            size_t               *changedRowCount,
                             const char           *tableName,
                             uint                 flags,
                             const char           *filter,
                             DatabaseDataTypes    filterDataType,
                             const void           *filterArrayData,
-                            ulong                filterArrayLength,
+                            size_t               filterArrayLength,
                             uint64               limit
                            );
 
@@ -2425,12 +2432,12 @@ Errors Database_deleteArray(DatabaseHandle       *databaseHandle,
 \***********************************************************************/
 
 Errors Database_deleteByIds(DatabaseHandle   *databaseHandle,
-                            ulong            *changedRowCount,
+                            size_t           *changedRowCount,
                             const char       *tableName,
                             const char       *columnName,
                             uint             flags,
                             const DatabaseId databaseIds[],
-                            ulong            databaseIdCount
+                            size_t           databaseIdCount
                            );
 
 /***********************************************************************\
@@ -2457,7 +2464,7 @@ Errors Database_deleteByIds(DatabaseHandle   *databaseHandle,
 * Notes  : Database is locked until Database_finalize() is called
 \***********************************************************************/
 
-#ifdef NDEBUG
+#if defined(NDEBUG) && (DATABASE_DEBUG_LOCK != DATABASE_DEBUG_LOCK_FULL)
   Errors Database_select(DatabaseStatementHandle *databaseStatementHandle,
                          DatabaseHandle          *databaseHandle,
 // TODO: use DatabaseTable
@@ -2473,7 +2480,7 @@ Errors Database_deleteByIds(DatabaseHandle   *databaseHandle,
                          uint64                  offset,
                          uint64                  limit
                         );
-#else /* not NDEBUG */
+#else /* not defined(NDEBUG) && (DATABASE_DEBUG_LOCK != DATABASE_DEBUG_LOCK_FULL) */
   Errors __Database_select(const char              *__fileName__,
                            size_t                  __lineNb__,
                            DatabaseStatementHandle *databaseStatementHandle,
@@ -2491,7 +2498,7 @@ Errors Database_deleteByIds(DatabaseHandle   *databaseHandle,
                            uint64                  offset,
                            uint64                  limit
                           );
-#endif /* NDEBUG */
+#endif /* defined(NDEBUG) && (DATABASE_DEBUG_LOCK != DATABASE_DEBUG_LOCK_FULL) */
 
 /***********************************************************************\
 * Name   : Database_getNextRow
@@ -2515,14 +2522,14 @@ bool Database_getNextRow(DatabaseStatementHandle *databaseStatementHandle,
 * Notes  : -
 \***********************************************************************/
 
-#ifdef NDEBUG
+#if defined(NDEBUG) && (DATABASE_DEBUG_LOCK != DATABASE_DEBUG_LOCK_FULL)
   void Database_finalize(DatabaseStatementHandle *databaseStatementHandle);
-#else /* not NDEBUG */
+#else /* not defined(NDEBUG) && (DATABASE_DEBUG_LOCK != DATABASE_DEBUG_LOCK_FULL) */
   void __Database_finalize(const char        *__fileName__,
                            size_t            __lineNb__,
                            DatabaseStatementHandle *databaseStatementHandle
                           );
-#endif /* NDEBUG */
+#endif /* defined(NDEBUG) && (DATABASE_DEBUG_LOCK != DATABASE_DEBUG_LOCK_FULL) */
 
 /***********************************************************************\
 * Name   : Database_existsValue
@@ -2575,7 +2582,7 @@ bool Database_existsValue(DatabaseHandle       *databaseHandle,
 Errors Database_get(DatabaseHandle       *databaseHandle,
                     DatabaseRowFunction  databaseRowFunction,
                     void                 *databaseRowUserData,
-                    ulong                *changedRowCount,
+                    size_t               *changedRowCount,
                     const char           *tableNames[],
                     uint                 tableNameCount,
                     uint                 flags,
@@ -3002,12 +3009,13 @@ Errors Database_vacuum(DatabaseHandle     *databaseHandle,
 * Purpose: check database integrity
 * Input  : databaseHandle - database handle
 *          databaseCheck  - database check to execute
+*          tableName      - table name (can be NULL)
 * Output : -
 * Return : ERROR_NONE or error code
 * Notes  : -
 \***********************************************************************/
 
-Errors Database_check(DatabaseHandle *databaseHandle, DatabaseChecks databaseCheck);
+Errors Database_check(DatabaseHandle *databaseHandle, DatabaseChecks databaseCheck, const char *tableName);
 
 /***********************************************************************\
 * Name   : Database_reindex
@@ -3020,7 +3028,7 @@ Errors Database_check(DatabaseHandle *databaseHandle, DatabaseChecks databaseChe
 
 Errors Database_reindex(DatabaseHandle *databaseHandle);
 
-#ifdef DATABASE_DEBUG_LOCK
+#if DATABASE_DEBUG_LOCK == DATABASE_DEBUG_LOCK_SIMPLE
 /***********************************************************************\
 * Name   : Database_debugPrintSimpleLockInfo
 * Purpose: print debug simple lock info
@@ -3058,17 +3066,6 @@ void Database_debugEnable(DatabaseHandle *databaseHandle, bool enabled);
 void Database_debugPrintInfo(void);
 
 /***********************************************************************\
-* Name   : Database_debugPrintInfo
-* Purpose: print debug lock info
-* Input  : databaseHandle - database handle
-* Output : -
-* Return : -
-* Notes  : -
-\***********************************************************************/
-
-void Database_debugPrintLockInfo(const DatabaseHandle *databaseHandle);
-
-/***********************************************************************\
 * Name   : Database_debugPrintQueryInfo
 * Purpose: print query info
 * Input  : databaseStatementHandle - database statement handle
@@ -3097,6 +3094,21 @@ void __Database_debugPrintQueryInfo(const char *__fileName__, size_t __lineNb__,
 void Database_debugDumpTable(DatabaseHandle *databaseHandle, const char *tableName, bool showHeaderFlag);
 
 #endif /* not NDEBUG */
+
+#if !defined(NDEBUG) || (DATABASE_DEBUG_LOCK == DATABASE_DEBUG_LOCK_FULL)
+
+/***********************************************************************\
+* Name   : Database_debugPrintInfo
+* Purpose: print debug lock info
+* Input  : databaseHandle - database handle
+* Output : -
+* Return : -
+* Notes  : -
+\***********************************************************************/
+
+void Database_debugPrintLockInfo(const DatabaseHandle *databaseHandle);
+
+#endif // !defined(NDEBUG) || (DATABASE_DEBUG_LOCK == DATABASE_DEBUG_LOCK_FULL)
 
 #ifdef __cplusplus
   }
